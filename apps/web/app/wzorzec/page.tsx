@@ -1,73 +1,108 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { FIELDS, GROUPS, SCHEMA_VERSION, type FieldDef } from "@aed/schema";
+import { PageHeader } from "@/components/ui";
 import { API_URL } from "@/lib/api/client";
+import { REQUIREMENT, VALUE_TYPE } from "@/lib/pattern-text";
 
 export const metadata: Metadata = { title: "Wzorzec danych AED" };
 
-const REQUIREMENT = { required: "wymagane", recommended: "zalecane", optional: "opcjonalne" } as const;
-const TYPE = { string: "tekst", number: "liczba", boolean: "true / false", date: "data RRRR-MM-DD" } as const;
-
-const DOWNLOADS = [
-  { href: "/dane/wzorzec.xlsx", label: "Wzorzec danych w Excelu (XLSX): opis pól, słowniki, przykład i pusty szablon do wypełnienia" },
+const OTHER_FILES = [
   { href: "/dane/szablon.csv", label: "Szablon CSV z przykładowym wierszem" },
-  { href: "/dane/schema.json", label: "Schemat w JSON – dla programistów, do automatycznego sprawdzania plików" },
   { href: "/dane/wzorzec.md", label: "Opis wszystkich pól jako zwykły tekst" },
-  { href: "/dane/aed.csv-metadata.json", label: "Opis kolumn pliku krajowego (CSVW) – dla programistów" },
+  { href: "/dane/schema.json", label: "Schemat w JSON do automatycznego sprawdzania plików", note: "dla programistów" },
+  { href: "/dane/aed.csv-metadata.json", label: "Opis kolumn pliku krajowego (CSVW)", note: "dla programistów" },
+];
+
+// Formats stay on one line, with plain hyphens, so a copied example works in a file.
+const FILE_RULES: ReactNode[] = [
+  "Zapisz plik jako CSV w kodowaniu UTF-8, z przecinkami między kolumnami i nagłówkiem w pierwszym wierszu.",
+  <>
+    Liczby zapisuj z kropką (52.2297), a daty jako <span className="whitespace-nowrap">RRRR-MM-DD</span> (<span className="whitespace-nowrap">2026-11-21</span>).
+  </>,
+  "Pole bez danych zostaw puste.",
 ];
 
 /** Rendered from the same field catalogue that generates the CSV, the Table Schema and the API contract. */
 export default function PatternPage() {
   const fields: readonly FieldDef[] = FIELDS;
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-bold">Wzorzec danych: lokalizacje defibrylatorów AED</h1>
-        <p className="max-w-3xl text-muted">
-          Wersja {SCHEMA_VERSION}. To lista informacji, które prosimy podać o każdym defibrylatorze, żeby dane z różnych miejsc dało się połączyć. Plik zapisz jako CSV w UTF-8, z przecinkami między kolumnami i
-          nagłówkiem w pierwszym wierszu. Liczby zapisuj z kropką, daty jako RRRR-MM-DD, a pole bez danych zostaw puste.
-        </p>
+    <div className="space-y-12">
+      <PageHeader
+        title="Wzorzec danych: lokalizacje defibrylatorów AED"
+        lead={`Wersja ${SCHEMA_VERSION}. To lista informacji, które prosimy podać o każdym defibrylatorze, żeby dane z różnych miejsc dało się połączyć.`}
+      />
+
+      <div className="grid gap-8 md:grid-cols-2">
+        <section aria-labelledby="pobierz" className="space-y-3">
+          <h2 id="pobierz" className="text-lg font-bold">
+            Pliki do pobrania
+          </h2>
+          <div className="space-y-1">
+            <a href={`${API_URL}/dane/wzorzec.xlsx`} className="btn btn-primary">
+              Pobierz wzorzec w Excelu (XLSX)
+            </a>
+            <p className="hint">Opis pól, słowniki, przykład i pusty szablon do wypełnienia.</p>
+          </div>
+          <ul className="space-y-1 text-sm">
+            {OTHER_FILES.map((file) => (
+              <li key={file.href}>
+                <a href={`${API_URL}${file.href}`} className="link">
+                  {file.label}
+                </a>
+                {file.note && <span className="text-muted"> – {file.note}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section aria-labelledby="zasady" className="space-y-3">
+          <h2 id="zasady" className="text-lg font-bold">
+            Jak zapisać plik
+          </h2>
+          <ul className="list-disc space-y-1 pl-5">
+            {FILE_RULES.map((rule, index) => (
+              <li key={index}>{rule}</li>
+            ))}
+          </ul>
+        </section>
       </div>
 
-      <section aria-labelledby="pobierz">
-        <h2 id="pobierz" className="text-lg font-bold">
-          Pliki do pobrania
-        </h2>
-        <ul className="mt-2 list-disc space-y-1 pl-6">
-          {DOWNLOADS.map((item) => (
-            <li key={item.href}>
-              <a href={`${API_URL}${item.href}`} className="text-gov underline">
-                {item.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </section>
-
       {GROUPS.map((group) => (
-        <section key={group.id} aria-labelledby={`grupa-${group.id}`}>
+        <section key={group.id} aria-labelledby={`grupa-${group.id}`} className="space-y-3">
           <h2 id={`grupa-${group.id}`} className="text-lg font-bold">
             {group.title}
           </h2>
-          <div className="mt-2 overflow-x-auto">
-            <table className="w-full min-w-[44rem] border-collapse text-left text-sm">
+          <div role="region" aria-labelledby={`grupa-${group.id}`} tabIndex={0} className="overflow-x-auto">
+            <table className="data-table min-w-176">
               <thead>
-                <tr className="border-b-2 border-ink">
-                  <th scope="col" className="w-56 py-2 pr-3">Kolumna</th>
-                  <th scope="col" className="w-32 py-2 pr-3">Typ</th>
-                  <th scope="col" className="w-28 py-2 pr-3">Wymagalność</th>
-                  <th scope="col" className="py-2 pr-3">Opis</th>
-                  <th scope="col" className="w-48 py-2">Przykład</th>
+                <tr>
+                  <th scope="col" className="w-56">
+                    Kolumna
+                  </th>
+                  <th scope="col" className="w-32">
+                    Typ
+                  </th>
+                  <th scope="col" className="w-28">
+                    Wymagalność
+                  </th>
+                  <th scope="col">Opis</th>
+                  <th scope="col" className="w-48">
+                    Przykład
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {fields
                   .filter((field) => field.group === group.id)
                   .map((field) => (
-                    <tr key={field.name} className="border-b border-line align-top">
-                      <th scope="row" className="py-2 pr-3 font-mono font-semibold">{field.name}</th>
-                      <td className="py-2 pr-3">{TYPE[field.type]}</td>
-                      <td className="py-2 pr-3">{REQUIREMENT[field.requirement]}</td>
-                      <td className="py-2 pr-3">
+                    <tr key={field.name}>
+                      <th scope="row" className="font-mono font-semibold">
+                        {field.name}
+                      </th>
+                      <td>{VALUE_TYPE[field.type]}</td>
+                      <td className={field.requirement === "required" ? "font-semibold" : "text-muted"}>{REQUIREMENT[field.requirement]}</td>
+                      <td>
                         {field.description}
                         {field.enum && (
                           <ul className="mt-1 list-disc pl-5">
@@ -80,7 +115,7 @@ export default function PatternPage() {
                           </ul>
                         )}
                       </td>
-                      <td className="py-2 font-mono">{String(field.example)}</td>
+                      <td className="font-mono">{String(field.example)}</td>
                     </tr>
                   ))}
               </tbody>

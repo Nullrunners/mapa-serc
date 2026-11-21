@@ -1,8 +1,9 @@
 "use client";
 
-import { api, type AedItem } from "@/lib/api/client";
 import NfcWrite from "@/components/nfc-write";
 import StickerFace from "@/components/sticker-face";
+import { PageHeader, PrintSetup } from "@/components/ui";
+import { api, type AedItem } from "@/lib/api/client";
 import { passportHref } from "@/lib/passport-text";
 import { useLoad } from "@/lib/use-load";
 
@@ -20,18 +21,14 @@ export default function Sticker({ id }: { id: string }) {
 
   return (
     <div className="space-y-6 print:space-y-0">
-      <style>{`
-        @page { size: 100mm 100mm; margin: 0; }
-        @media print { main { padding: 0 !important; max-width: none !important; } }
-      `}</style>
+      <PrintSetup page="size: 100mm 100mm; margin: 0;" />
 
-      <div className="max-w-2xl space-y-2 print:hidden">
-        <h1 className="text-2xl font-bold">Naklejka na defibrylator</h1>
-        <p className="text-muted">
-          Wydrukuj naklejkę i przyklej ją na szafce albo obok urządzenia. Kto zeskanuje kod telefonem, zobaczy paszport urządzenia i jednym kliknięciem potwierdzi, że defibrylator jest na miejscu, albo zgłosi
-          problem. Zgłoszenie trafi do Ciebie.
-        </p>
-        <button type="button" onClick={() => window.print()} className="rounded bg-gov px-4 py-2 font-semibold text-white hover:bg-gov-dark">
+      <div className="max-w-2xl space-y-4 print:hidden">
+        <PageHeader
+          title="Naklejka na defibrylator"
+          lead="Wydrukuj naklejkę i przyklej ją na szafce albo obok urządzenia. Kto zeskanuje kod telefonem, zobaczy paszport urządzenia i jednym kliknięciem potwierdzi, że defibrylator jest na miejscu, albo zgłosi problem. Zgłoszenie trafi do Ciebie."
+        />
+        <button type="button" onClick={() => window.print()} className="btn btn-primary">
           Drukuj naklejkę
         </button>
         {loaded.state === "error" && (
@@ -47,9 +44,9 @@ export default function Sticker({ id }: { id: string }) {
       </div>
 
       {url.state === "ready" && (
-        <div className="max-w-2xl space-y-4 text-sm text-muted print:hidden">
-          <p>
-            Adres w kodzie: <span className="break-all font-mono">{url.data}</span>
+        <div className="max-w-2xl space-y-6 text-sm print:hidden">
+          <p className="text-muted">
+            Adres w kodzie: <span className="font-mono break-all text-ink">{url.data}</span>
           </p>
           <NfcWrite url={url.data} />
         </div>

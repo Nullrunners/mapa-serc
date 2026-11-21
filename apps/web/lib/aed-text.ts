@@ -1,24 +1,36 @@
 import { UNNAMED_PLACE } from "@aed/schema";
 import type { AedItem, AedRecord } from "@/lib/api/client";
+import type { Tone } from "@/lib/format";
 
-/** Words shown to people for the values of an AED record. Shared by the list and the device panel. */
+/** Words shown to people for the values of an AED record. Shared by the list, the device panel and the passport. */
 
 export const ACCESS_LABEL: Record<string, string> = { publiczny: "dostęp publiczny", ograniczony: "dostęp ograniczony", prywatny: "tylko dla personelu" };
 
-/** The answer to "can I get to it right now?", in words, so that it does not depend on colour. */
-export const AVAILABLE_NOW = {
-  yes: { label: "Dostępny teraz", tone: "text-ok" },
-  no: { label: "Teraz niedostępny", tone: "text-danger" },
-  unknown: { label: "Nie wiadomo, czy teraz dostępny: dane nie podają godzin", tone: "text-muted" },
-} as const;
+/** The moment the person asks about: right now, or the coming night from Saturday to Sunday. */
+export type When = "now" | "night";
+
+/**
+ * The answer to "can I get to it?" at the chosen moment, in words, so that it does not depend on colour.
+ * Without opening hours there is no answer, whatever the moment.
+ */
+export const AVAILABILITY: Record<When, Record<AedItem["availableNow"], { label: string; tone: Tone }>> = {
+  now: {
+    yes: { label: "Dostępny teraz", tone: "ok" },
+    no: { label: "Teraz niedostępny", tone: "danger" },
+    unknown: { label: "Godziny nieznane", tone: "muted" },
+  },
+  night: {
+    yes: { label: "Dostępny o tej porze", tone: "ok" },
+    no: { label: "Niedostępny o tej porze", tone: "danger" },
+    unknown: { label: "Godziny nieznane", tone: "muted" },
+  },
+};
 
 /** Only the states worth a warning; "czynny" and "nieznany" say nothing a passer-by can act on. */
 export const STATUS_WARNING: Partial<Record<AedRecord["status"], string>> = {
   czasowo_niedostepny: "Urządzenie jest czasowo niedostępne.",
   wycofany: "Urządzenie zostało wycofane.",
 };
-
-export const distance = (metres: number) => (metres < 1000 ? `${metres} m` : `${(metres / 1000).toFixed(1).replace(".", ",")} km`);
 
 export const hours = (value: string) => (value === "24/7" ? "całą dobę" : value);
 
@@ -48,8 +60,15 @@ export const addressLine = (item: AedItem) => {
   return text && text !== title(item) ? text : null;
 };
 
-/** "2026-03-14" → "14.03.2026". Anything else is shown as it came. */
-export const date = (value: string) => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
-  return match ? `${match[3]}.${match[2]}.${match[1]}` : value;
-};
+/** Where exactly the device hangs: "przy recepcji, w budynku, piętro: 1". */
+export const spot = (record: AedRecord) =>
+  [
+    record.opis_lokalizacji,
+    record.wewnatrz_budynku === true ? "w budynku" : record.wewnatrz_budynku === false ? "na zewnątrz budynku" : null,
+    record.pietro ? `piętro: ${record.pietro}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+/** How to get to it: the kind of access and the keeper's note. */
+export const access = (record: AedRecord) => [record.dostep ? ACCESS_LABEL[record.dostep] : null, record.uwagi_dostepu].filter(Boolean).join(". ");

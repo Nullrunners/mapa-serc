@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { api, type Candidate } from "@/lib/api/client";
+import { count } from "@/lib/format";
 import { useLoad } from "@/lib/use-load";
 
 const KINDS = [
@@ -13,6 +14,7 @@ const KINDS = [
 const KIND_LABEL: Record<string, string> = { osm_gap: "mapa społeczności", procurement: "zakup publiczny", web: "strona urzędu" };
 const STATUS_LABEL: Record<string, string> = { new: "nowa", invited: "wysłano prośbę o potwierdzenie", confirmed: "potwierdzona przez opiekuna", rejected: "odrzucona" };
 
+/** Leads for devices the official data does not know yet, with the operator's decision on each. */
 export default function Candidates() {
   const [kind, setKind] = useState<(typeof KINDS)[number]["value"]>("");
   const [token, setToken] = useState("");
@@ -37,94 +39,101 @@ export default function Candidates() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
         <fieldset>
-          <legend className="text-sm font-semibold">Źródło wskazówek</legend>
-          <div className="mt-1 flex flex-wrap gap-2">
+          <legend className="label text-sm">Źródło wskazówek</legend>
+          <div className="mt-2 flex flex-wrap gap-2">
             {KINDS.map((option) => (
-              <label key={option.value} className={`cursor-pointer rounded-full border px-3 py-1 text-sm ${kind === option.value ? "border-gov bg-gov font-semibold text-white" : "border-line"}`}>
+              <label key={option.value} className="chip">
                 <input type="radio" name="rodzaj" value={option.value} checked={kind === option.value} onChange={() => setKind(option.value)} className="sr-only" />
                 {option.label}
               </label>
             ))}
           </div>
         </fieldset>
-        <div>
-          <label htmlFor="token" className="block text-sm font-semibold">
+        <div className="space-y-1">
+          <label htmlFor="token" className="label text-sm">
             Token administratora
           </label>
-          <input id="token" type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} aria-describedby="token-opis" className="mt-1 w-64 rounded border border-muted px-3 py-1.5" />
+          <input id="token" type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} aria-describedby="token-opis" className="field w-64 py-1.5" />
           <p id="token-opis" className="text-xs text-muted">
-            Potrzebny tylko do podejmowania decyzji. Podpowiedzi może przeglądać każdy.
+            Potrzebny tylko do podejmowania decyzji. Wskazówki może przeglądać każdy.
           </p>
         </div>
       </div>
 
       {error && (
-        <p role="alert" className="rounded border-2 border-danger p-3 text-danger">
+        <p role="alert" className="rounded-lg border border-l-4 border-line border-l-danger p-3 text-danger">
           {error}
         </p>
       )}
 
-      <div aria-live="polite">
-        {result.state === "loading" && <p className="text-muted">Wczytuję…</p>}
+      <div className="space-y-3">
+        <p aria-live="polite" className="text-sm text-muted">
+          {result.state === "loading" && "Wczytuję…"}
+          {result.state === "ready" &&
+            (result.data.total === 0
+              ? "Na razie nie ma wskazówek. Uruchom zadanie „radar”, żeby je wygenerować."
+              : `Wskazówki: ${count(result.data.total)}${result.data.total > result.data.items.length ? `, poniżej ${result.data.items.length} najważniejszych` : ""}.`)}
+        </p>
         {result.state === "error" && (
           <p role="alert" className="text-danger">
             {result.message}
           </p>
         )}
         {result.state === "ready" && (
-          <>
-            <p className="text-sm text-muted">
-              {result.data.total === 0 ? "Na razie nie ma podpowiedzi. Uruchom zadanie „radar”, żeby je wygenerować." : `Podpowiedzi: ${result.data.total.toLocaleString("pl-PL")}. Poniżej ${result.data.items.length} najważniejszych.`}
-            </p>
-            <ul className="mt-3 space-y-3">
-              {result.data.items.map((candidate) => (
-                <li key={candidate.id} className="rounded border border-line p-4">
-                  <p className="text-sm text-muted">
-                    {KIND_LABEL[candidate.kind] ?? candidate.kind}
-                    {candidate.locality ? ` · ${candidate.locality}` : ""}
-                    {candidate.evidence.date ? ` · ${candidate.evidence.date}` : ""}
-                    {candidate.status !== "new" && <span className="ml-2 rounded bg-gov-light px-2 py-0.5 font-semibold text-gov">{STATUS_LABEL[candidate.status]}</span>}
-                  </p>
-                  <h2 className="font-semibold">{candidate.title}</h2>
-                  <blockquote className="mt-1 border-l-4 border-line pl-3 text-sm">
-                    „{candidate.evidence.quote}”{" "}
-                    <a href={candidate.evidence.url} className="text-gov underline">
-                      skąd to wiemy
-                    </a>
-                  </blockquote>
-                  {candidate.kind === "procurement" && candidate.registered !== null && (
-                    <p className="mt-1 text-sm">
-                      Urządzeń z tej gminy w oficjalnych danych: <strong>{candidate.registered}</strong>
-                      {candidate.devices !== null ? `, a w ogłoszeniu kupiono ich: ${candidate.devices}` : ""}.
-                    </p>
-                  )}
-                  {links[candidate.id] && (
-                    <div className="mt-3">
-                      <label htmlFor={`link-${candidate.id}`} className="block text-sm font-semibold">
-                        Link do wysłania opiekunowi urządzenia (np. e-mailem)
-                      </label>
-                      <input id={`link-${candidate.id}`} readOnly value={links[candidate.id]} onFocus={(event) => event.target.select()} className="mt-1 w-full rounded border border-muted px-2 py-1 font-mono text-xs" />
-                    </div>
-                  )}
-                  {(candidate.status === "new" || candidate.status === "invited") && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => decide(candidate, "invite")} className="rounded bg-gov px-3 py-1.5 text-sm font-semibold text-white hover:bg-gov-dark">
-                        {candidate.status === "invited" ? "Pokaż link ponownie" : "Poproś o potwierdzenie"}
-                      </button>
-                      <button type="button" onClick={() => decide(candidate, "reject")} className="rounded border-2 border-gov px-3 py-1.5 text-sm font-semibold text-gov">
-                        Odrzuć
-                      </button>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </>
+          <ul className="space-y-3">
+            {result.data.items.map((candidate) => (
+              <Lead key={candidate.id} candidate={candidate} link={links[candidate.id]} onDecide={(decision) => decide(candidate, decision)} />
+            ))}
+          </ul>
         )}
       </div>
     </div>
+  );
+}
+
+function Lead({ candidate, link, onDecide }: { candidate: Candidate; link?: string; onDecide: (decision: "invite" | "reject") => void }) {
+  const meta = [KIND_LABEL[candidate.kind] ?? candidate.kind, candidate.locality, candidate.evidence.date].filter(Boolean);
+  const open = candidate.status === "new" || candidate.status === "invited";
+  return (
+    <li className="card space-y-2">
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+        {meta.join(" · ")}
+        {candidate.status !== "new" && <span className="rounded bg-gov-light px-2 py-0.5 text-xs font-semibold text-gov">{STATUS_LABEL[candidate.status]}</span>}
+      </p>
+      <h2 className="font-semibold">{candidate.title}</h2>
+      <blockquote className="border-l-4 border-line pl-3 text-sm">
+        „{candidate.evidence.quote}”{" "}
+        <a href={candidate.evidence.url} className="link">
+          skąd to wiemy
+        </a>
+      </blockquote>
+      {candidate.kind === "procurement" && candidate.registered !== null && (
+        <p className="text-sm">
+          Urządzeń z tej gminy w oficjalnych danych: <strong>{candidate.registered}</strong>
+          {candidate.devices !== null ? `, a w ogłoszeniu kupiono ich: ${candidate.devices}` : ""}.
+        </p>
+      )}
+      {link && (
+        <div className="space-y-1 pt-1">
+          <label htmlFor={`link-${candidate.id}`} className="label text-sm">
+            Link do wysłania opiekunowi urządzenia (np. e-mailem)
+          </label>
+          <input id={`link-${candidate.id}`} readOnly value={link} onFocus={(event) => event.target.select()} className="field w-full py-1 font-mono text-xs" />
+        </div>
+      )}
+      {open && (
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button type="button" onClick={() => onDecide("invite")} className="btn btn-primary btn-sm">
+            {candidate.status === "invited" ? "Pokaż link ponownie" : "Poproś o potwierdzenie"}
+          </button>
+          <button type="button" onClick={() => onDecide("reject")} className="btn btn-secondary btn-sm">
+            Odrzuć
+          </button>
+        </div>
+      )}
+    </li>
   );
 }

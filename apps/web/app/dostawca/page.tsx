@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
+import { PageHeader } from "@/components/ui";
 import Wizard from "@/components/wizard";
 
 export const metadata: Metadata = { title: "Zgłoś urządzenia" };
 
 export default function ProviderPage() {
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-bold">Zgłoś swoje defibrylatory</h1>
-        <p className="max-w-3xl text-muted">Masz listę urządzeń w urzędzie, szkole czy firmie? Wgraj ją, a my pomożemy resztę. Cztery krótkie kroki, nic nie trzeba instalować ani umieć programować.</p>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        title="Zgłoś swoje defibrylatory"
+        lead="Masz listę urządzeń w urzędzie, szkole czy firmie? Wgraj ją, a resztą zajmiemy się my. Cztery krótkie kroki, bez instalowania czegokolwiek i bez programowania."
+      />
       <Wizard />
     </div>
   );

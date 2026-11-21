@@ -1,5 +1,5 @@
 import type { components } from "@/lib/api/schema";
-import { date } from "@/lib/aed-text";
+import { capitalize, date, type Tone } from "@/lib/format";
 
 export type PassportPublic = components["schemas"]["PassportPublic"];
 export type ReportKind = components["schemas"]["ReportKind"];
@@ -31,18 +31,17 @@ const few = (count: number) => count % 10 >= 2 && count % 10 <= 4 && (count % 10
 /** " (zgłosiły 3 osoby)", " (zgłosiło 5 osób)" after a reported problem; nothing when one person reported it. */
 export const reportedBy = (count: number) => (count > 1 ? ` (${few(count) ? "zgłosiły" : "zgłosiło"} ${count} ${few(count) ? "osoby" : "osób"})` : "");
 
-/** "2026-11-21T14:03:00Z" → "21.11.2026, 15:03" in Polish time. */
-export const dateTime = (value: string) =>
-  new Intl.DateTimeFormat("pl-PL", { timeZone: "Europe/Warsaw", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
-
 type ExpiryItem = PassportPublic["items"][number];
 
+/** "Elektrody", "Bateria": the name of a part that wears out, at the start of a line. */
+export const partName = (item: ExpiryItem) => capitalize(item.label);
+
 /** "ważne do 30.06.2027", "kończy się 15.12.2026 (za 24 dni)", "termin minął 01.11.2026". */
-export function expiryText(item: ExpiryItem): { text: string; tone: string } {
-  if (!item.date) return { text: "brak danych", tone: "text-muted" };
-  if (item.state === "expired") return { text: `termin minął ${date(item.date)}`, tone: "text-danger" };
-  if (item.state === "soon") return { text: `kończy się ${date(item.date)} (za ${item.daysLeft} ${item.daysLeft === 1 ? "dzień" : "dni"})`, tone: "text-warn" };
-  return { text: `ważne do ${date(item.date)}`, tone: "text-ok" };
+export function expiryText(item: ExpiryItem): { text: string; tone: Tone } {
+  if (!item.date) return { text: "brak danych", tone: "muted" };
+  if (item.state === "expired") return { text: `termin minął ${date(item.date)}`, tone: "danger" };
+  if (item.state === "soon") return { text: `kończy się ${date(item.date)} (za ${item.daysLeft} ${item.daysLeft === 1 ? "dzień" : "dni"})`, tone: "warn" };
+  return { text: `ważne do ${date(item.date)}`, tone: "ok" };
 }
 
 /** Short code printed under the QR, for people who type the address by hand. */

@@ -41,9 +41,9 @@ export async function walkingRoute(from: Point, to: Point, signal: AbortSignal):
   return { line, distanceM: Math.round(route.distance), durationS: route.duration };
 }
 
-/** "ok. 6 min". */
-export const walkTime = (seconds: number) => (seconds < 60 ? "mniej niż minuta" : `ok. ${Math.round(seconds / 60)} min`);
-
-/** Google Maps with the walking directions from the person's position. */
+/** Google Maps with the walking directions to a point, from the person's position when we know it. */
 export const googleDirections = (from: Point | null, to: Point) =>
   `https://www.google.com/maps/dir/?api=1${from ? `&origin=${from.lat},${from.lon}` : ""}&destination=${to.lat},${to.lon}&travelmode=walking`;
+
+/** Google Maps centred on a point. */
+export const googlePlace = (point: Point) => `https://www.google.com/maps/search/?api=1&query=${point.lat},${point.lon}`;

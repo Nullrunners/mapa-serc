@@ -1,7 +1,8 @@
 "use client";
 
-import { api, type AedItem } from "@/lib/api/client";
 import StickerFace from "@/components/sticker-face";
+import { LoadStatus, PageHeader, PrintSetup } from "@/components/ui";
+import { api, type AedItem } from "@/lib/api/client";
 import { STICKERS_PER_PAGE, STICKERS_PER_SHEET } from "@/lib/passport-text";
 import { useLoad } from "@/lib/use-load";
 
@@ -20,13 +21,7 @@ export default function StickerSheet() {
   if (loaded.state !== "ready") {
     return (
       <div aria-live="polite" className="max-w-2xl">
-        {loaded.state === "error" ? (
-          <p role="alert" className="text-danger">
-            {loaded.message}
-          </p>
-        ) : (
-          <p className="text-muted">Wczytuję…</p>
-        )}
+        <LoadStatus of={loaded} />
       </div>
     );
   }
@@ -37,22 +32,22 @@ export default function StickerSheet() {
 
   return (
     <div className="space-y-6 print:space-y-0">
-      <style>{`
-        @page { size: A4; margin: 4mm; }
-        @media print { main { padding: 0 !important; max-width: none !important; } }
-      `}</style>
+      <PrintSetup page="size: A4; margin: 4mm;" />
 
-      <div className="max-w-2xl space-y-2 print:hidden">
-        <h1 className="text-2xl font-bold">Naklejki na defibrylatory</h1>
-        <p className="text-muted">
-          Na jednej kartce A4 mieszczą się cztery naklejki. Wydrukuj je w skali 100%, wytnij wzdłuż przerywanych linii i przyklej każdą przy swoim urządzeniu. Sprawdź nazwę pod kodem, żeby nie pomylić
-          naklejek.
-        </p>
-        <button type="button" onClick={() => window.print()} className="rounded bg-gov px-4 py-2 font-semibold text-white hover:bg-gov-dark">
+      <div className="max-w-2xl space-y-4 print:hidden">
+        <PageHeader
+          title="Naklejki na defibrylatory"
+          lead="Na jednej kartce A4 mieszczą się cztery naklejki. Wydrukuj je w skali 100%, wytnij wzdłuż przerywanych linii i przyklej każdą przy swoim urządzeniu. Sprawdź nazwę pod kodem, żeby nie pomylić naklejek."
+        />
+        <button type="button" onClick={() => window.print()} className="btn btn-primary">
           Drukuj naklejki ({devices.length})
         </button>
         {unknown > 0 && <p className="text-warn">Nie znamy {unknown === 1 ? "jednego urządzenia" : `${unknown} urządzeń`} z tego linku, więc pominęliśmy ich naklejki.</p>}
-        {cut > 0 && <p className="text-warn">Jeden arkusz mieści najwyżej {STICKERS_PER_SHEET} naklejek. Pozostałe {cut} wydrukujesz z kolejnego linku.</p>}
+        {cut > 0 && (
+          <p className="text-warn">
+            Jeden arkusz mieści najwyżej {STICKERS_PER_SHEET} naklejek. Pozostałe {cut} wydrukujesz z kolejnego linku.
+          </p>
+        )}
       </div>
 
       {pages.map((page, index) => (

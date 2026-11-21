@@ -2,23 +2,17 @@
 
 import Link from "next/link";
 import { useEffect, useRef, type ReactNode, type Ref } from "react";
+import DeviceList, { type Picked } from "@/components/device-list";
+import { BackButton, ExternalLink, LoadStatus, Status } from "@/components/ui";
+import { AVAILABILITY, STATUS_WARNING, access, addressLine, hours, spot, title } from "@/lib/aed-text";
 import { api, type AedItem } from "@/lib/api/client";
-import { ACCESS_LABEL, AVAILABLE_NOW, STATUS_WARNING, addressLine, date, distance, hours, title } from "@/lib/aed-text";
+import { date } from "@/lib/format";
 import type { PassportPublic } from "@/lib/passport-text";
 import { googleDirections, type Point } from "@/lib/route";
 import { useLoad } from "@/lib/use-load";
 import PassportNote from "./passport-note";
 
-/** A device picked on the map or in a list. The position comes with it, so the map can fly there before the details arrive. */
-export interface Picked {
-  id: string;
-  lat: number;
-  lon: number;
-}
-
 const NEARBY = 5;
-
-export const pickedFrom = (item: AedItem): Picked => ({ id: item.id, lat: item.record.szerokosc_geograficzna, lon: item.record.dlugosc_geograficzna });
 
 export interface AedDetailsProps {
   picked: Picked;
@@ -60,95 +54,70 @@ export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClo
   }, [ready, picked.id]);
 
   return (
-    <section aria-labelledby="urzadzenie-naglowek" className="space-y-4">
-      <button type="button" onClick={onClose} className="text-sm font-semibold text-gov underline">
-        ← Wróć do listy
-      </button>
-
+    <section aria-labelledby="urzadzenie-naglowek" className="space-y-5">
+      <BackButton onClick={onClose}>Wróć do listy</BackButton>
       <div aria-live="polite">
-        {loaded.state === "loading" && <p className="text-muted">Wczytuję…</p>}
-        {loaded.state === "error" && (
-          <p role="alert" className="text-danger">
-            {loaded.message}
-          </p>
-        )}
-        {loaded.state === "ready" && <Device item={loaded.data.item} passport={loaded.data.passport} headingRef={heading} from={from} walkNote={walkNote} />}
+        <LoadStatus of={loaded} />
       </div>
 
       {loaded.state === "ready" && (
-        <section aria-labelledby="najblizsze-naglowek" className="space-y-2">
-          <h3 id="najblizsze-naglowek" className="font-bold">
-            Najbliższe inne defibrylatory
-          </h3>
-          {loaded.data.nearby === null && <p className="text-sm text-danger">Nie udało się wczytać urządzeń w pobliżu.</p>}
-          {loaded.data.nearby?.length === 0 && <p className="text-sm text-muted">W pobliżu nie ma innych urządzeń, które pasują do wybranych filtrów.</p>}
-          {!!loaded.data.nearby?.length && (
-            <ol className="divide-y divide-line border-y border-line">
-              {loaded.data.nearby.map((item) => (
-                <li key={item.id} className="space-y-0.5 px-1 py-2">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <button type="button" onClick={() => onPick(pickedFrom(item))} className="text-left font-semibold text-gov underline-offset-2 hover:underline">
-                      {title(item)}
-                    </button>
-                    {item.distanceM !== null && <span className="shrink-0 text-sm font-semibold">{distance(item.distanceM)} stąd</span>}
-                  </div>
-                  {addressLine(item) && <p className="text-sm">{addressLine(item)}</p>}
-                  <p className={`text-sm ${AVAILABLE_NOW[item.availableNow].tone}`}>{AVAILABLE_NOW[item.availableNow].label}</p>
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
+        <>
+          <Device item={loaded.data.item} passport={loaded.data.passport} headingRef={heading} from={from} walkNote={walkNote} />
+
+          <section aria-labelledby="najblizsze-naglowek" className="space-y-2 border-t border-line pt-5">
+            <h3 id="najblizsze-naglowek" className="font-bold">
+              Najbliższe inne defibrylatory
+            </h3>
+            {loaded.data.nearby === null && <p className="text-sm text-danger">Nie udało się wczytać urządzeń w pobliżu.</p>}
+            {loaded.data.nearby?.length === 0 && <p className="hint">W pobliżu nie ma innych urządzeń, które pasują do wybranych filtrów.</p>}
+            {!!loaded.data.nearby?.length && <DeviceList items={loaded.data.nearby} compact onPick={onPick} />}
+          </section>
+        </>
       )}
     </section>
   );
 }
 
-function Device({
-  item,
-  passport,
-  headingRef,
-  from,
-  walkNote,
-}: {
-  item: AedItem;
-  passport: PassportPublic | null;
-  headingRef: Ref<HTMLHeadingElement>;
-  from: Point | null;
-  walkNote: ReactNode;
-}) {
+function Device({ item, passport, headingRef, from, walkNote }: { item: AedItem; passport: PassportPublic | null; headingRef: Ref<HTMLHeadingElement>; from: Point | null; walkNote: ReactNode }) {
   const { record } = item;
-  const where = [
-    record.opis_lokalizacji,
-    record.wewnatrz_budynku === true ? "w budynku" : record.wewnatrz_budynku === false ? "na zewnątrz budynku" : null,
-    record.pietro ? `piętro: ${record.pietro}` : null,
-  ].filter(Boolean);
-  const access = [record.dostep ? ACCESS_LABEL[record.dostep] : null, record.uwagi_dostepu].filter(Boolean);
   const warning = STATUS_WARNING[record.status];
+  const availability = AVAILABILITY.now[item.availableNow];
 
   const rows: [string, ReactNode][] = [
-    ["Adres", addressLine(item)],
-    ["Gdzie dokładnie", where.length ? where.join(", ") : null],
+    ["Gdzie dokładnie", spot(record) || null],
     ["Godziny", record.godziny_dostepnosci ? hours(record.godziny_dostepnosci) : null],
-    ["Dostęp", access.length ? access.join(". ") : null],
+    ["Dostęp", access(record) || null],
     ["Elektrody dla dzieci", record.elektrody_pediatryczne === null ? null : record.elektrody_pediatryczne ? "tak" : "nie"],
     ["Opiekun", record.podmiot_odpowiedzialny],
-    ["Telefon", record.telefon_kontaktowy ? <a href={`tel:${record.telefon_kontaktowy.replace(/\s/g, "")}`} className="text-gov underline">{record.telefon_kontaktowy}</a> : null],
+    [
+      "Telefon",
+      record.telefon_kontaktowy ? (
+        <a href={`tel:${record.telefon_kontaktowy.replace(/\s/g, "")}`} className="link">
+          {record.telefon_kontaktowy}
+        </a>
+      ) : null,
+    ],
     // After the keeper's confirmation this is the same date as in the passport note above; say it once.
     ["Ostatnio sprawdzony", record.data_weryfikacji && !passport?.confirmedByKeeper ? date(record.data_weryfikacji) : null],
     ["Skąd te dane", record.zrodlo],
   ];
 
   return (
-    <article className="space-y-3 rounded border border-line p-4">
-      <h2 id="urzadzenie-naglowek" ref={headingRef} tabIndex={-1} className="text-lg font-bold">
-        {title(item)}
-      </h2>
-      {warning && <p className="font-semibold text-danger">{warning}</p>}
-      <PassportNote publication={item.publication} passport={passport} />
-      <p className={`font-semibold ${AVAILABLE_NOW[item.availableNow].tone}`}>{AVAILABLE_NOW[item.availableNow].label}</p>
+    <article className="space-y-4">
+      <div className="space-y-1">
+        <h2 id="urzadzenie-naglowek" ref={headingRef} tabIndex={-1} className="text-xl leading-snug font-bold text-balance">
+          {title(item)}
+        </h2>
+        {addressLine(item) && <p>{addressLine(item)}</p>}
+      </div>
 
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
+      <div className="space-y-1.5">
+        {warning && <p className="font-semibold text-danger">{warning}</p>}
+        <Status tone={availability.tone}>{availability.label}</Status>
+        <PassportNote publication={item.publication} passport={passport} />
+      </div>
+
+      <dl className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
         {rows
           .filter(([, value]) => value)
           .map(([label, value]) => (
@@ -160,20 +129,15 @@ function Device({
       </dl>
 
       {walkNote}
-      <a
-        href={googleDirections(from, { lat: record.szerokosc_geograficzna, lon: record.dlugosc_geograficzna })}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-block rounded bg-gov px-4 py-2 font-semibold text-white hover:bg-gov-dark"
-      >
-        Pokaż drogę w Mapach Google<span className="sr-only"> (otworzy się w nowej karcie)</span>
-      </a>
-      <p className="text-sm">
-        <Link href={`/aed/${item.id}`} className="font-semibold text-gov underline">
+      <div className="flex flex-wrap gap-2">
+        <ExternalLink href={googleDirections(from, { lat: record.szerokosc_geograficzna, lon: record.dlugosc_geograficzna })} className="btn btn-primary">
+          Pokaż drogę w Mapach Google
+        </ExternalLink>
+        <Link href={`/aed/${item.id}`} className="btn btn-secondary">
           Paszport urządzenia
         </Link>
-        : potwierdź, że jest na miejscu, zgłoś problem albo wydrukuj naklejkę z kodem QR.
-      </p>
+      </div>
+      <p className="hint">W paszporcie potwierdzisz, że urządzenie jest na miejscu, zgłosisz problem albo wydrukujesz naklejkę z kodem QR.</p>
     </article>
   );
 }

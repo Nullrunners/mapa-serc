@@ -2,9 +2,12 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { api, type AedItem } from "@/lib/api/client";
-import { ACCESS_LABEL, AVAILABLE_NOW, STATUS_WARNING, addressLine, date, hours, title } from "@/lib/aed-text";
-import { PROBLEMS, REPORT_BUTTON, REPORT_TEXT, dateTime, expiryText, reportedBy, type PassportPublic, type ReportKind } from "@/lib/passport-text";
+import { ExternalLink, LiveMessage, LoadStatus, Status, TONE_TEXT, type Message } from "@/components/ui";
+import { AVAILABILITY, STATUS_WARNING, access, addressLine, hours, spot, title } from "@/lib/aed-text";
+import { api, problemMessage, type AedItem } from "@/lib/api/client";
+import { date, dateTime } from "@/lib/format";
+import { PROBLEMS, REPORT_BUTTON, REPORT_TEXT, expiryText, partName, reportedBy, type PassportPublic, type ReportKind } from "@/lib/passport-text";
+import { googleDirections } from "@/lib/route";
 import { useLoad } from "@/lib/use-load";
 
 /**
@@ -21,20 +24,17 @@ export default function Passport({ id }: { id: string }) {
   });
 
   return (
-    <div className="mx-auto max-w-xl space-y-5">
-      <p className="rounded border-2 border-danger bg-white p-3 font-semibold">
-        Ktoś stracił przytomność? Dzwoń <a href="tel:112" className="text-danger underline">112</a>. Włącz defibrylator i rób to, co mówi.
+    <div className="mx-auto max-w-xl space-y-6">
+      <p className="rounded-lg border-2 border-danger p-4 font-semibold">
+        Ktoś stracił przytomność? Dzwoń{" "}
+        <a href="tel:112" className="text-danger underline">
+          112
+        </a>
+        . Włącz defibrylator i rób to, co mówi.
       </p>
-
       <div aria-live="polite">
-        {loaded.state === "loading" && <p className="text-muted">Wczytuję…</p>}
-        {loaded.state === "error" && (
-          <p role="alert" className="text-danger">
-            {loaded.message}
-          </p>
-        )}
+        <LoadStatus of={loaded} />
       </div>
-
       {loaded.state === "ready" && <Card item={loaded.data.item} passport={passport ?? loaded.data.passport} onPassport={setPassport} />}
     </div>
   );
@@ -43,28 +43,30 @@ export default function Passport({ id }: { id: string }) {
 function Card({ item, passport, onPassport }: { item: AedItem; passport: PassportPublic; onPassport: (passport: PassportPublic) => void }) {
   const { record } = item;
   const warning = STATUS_WARNING[record.status];
-  const where = [record.opis_lokalizacji, record.pietro ? `piętro: ${record.pietro}` : null].filter(Boolean).join(", ");
-  const access = [record.dostep ? ACCESS_LABEL[record.dostep] : null, record.uwagi_dostepu].filter(Boolean).join(". ");
-  const items = passport.items.filter((entry) => entry.date);
+  const availability = AVAILABILITY.now[item.availableNow];
+  const where = spot(record);
+  const how = access(record);
 
   return (
     <>
       <section aria-labelledby="paszport-naglowek" className="space-y-2">
-        <p className="text-sm font-semibold uppercase tracking-wide text-gov">Paszport defibrylatora</p>
-        <h1 id="paszport-naglowek" className="text-2xl font-bold">
+        <p className="text-sm font-semibold tracking-wide text-gov uppercase">Paszport defibrylatora</p>
+        <h1 id="paszport-naglowek" className="text-2xl font-bold text-balance">
           {title(item)}
         </h1>
         {addressLine(item) && <p>{addressLine(item)}</p>}
         {where && <p className="text-sm text-muted">{where}</p>}
-        {warning && <p className="font-semibold text-danger">{warning}</p>}
-        <p className={`font-semibold ${AVAILABLE_NOW[item.availableNow].tone}`}>{AVAILABLE_NOW[item.availableNow].label}</p>
-        {record.godziny_dostepnosci && <p className="text-sm">Godziny: {hours(record.godziny_dostepnosci)}</p>}
-        {access && <p className="text-sm">Dostęp: {access}</p>}
+        <div className="space-y-1 pt-1">
+          {warning && <p className="font-semibold text-danger">{warning}</p>}
+          <Status tone={availability.tone}>{availability.label}</Status>
+          {record.godziny_dostepnosci && <p className="text-sm">Godziny: {hours(record.godziny_dostepnosci)}</p>}
+          {how && <p className="text-sm">Dostęp: {how}</p>}
+        </div>
       </section>
 
       <Report id={item.id} onPassport={onPassport} />
 
-      <section aria-labelledby="stan-naglowek" className="space-y-2 rounded border border-line p-4">
+      <section aria-labelledby="stan-naglowek" className="card space-y-2">
         <h2 id="stan-naglowek" className="font-bold">
           Stan urządzenia
         </h2>
@@ -81,28 +83,23 @@ function Card({ item, passport, onPassport }: { item: AedItem; passport: Passpor
               {reportedBy(problem.count)}, ostatnio {dateTime(problem.lastAt)}. Opiekun dostał wiadomość.
             </li>
           ))}
-          {items.map((entry) => {
-            const expiry = expiryText(entry);
-            return (
-              <li key={entry.item}>
-                {entry.label[0]!.toUpperCase() + entry.label.slice(1)}: <span className={`font-semibold ${expiry.tone}`}>{expiry.text}</span>
-              </li>
-            );
-          })}
+          {passport.items
+            .filter((entry) => entry.date)
+            .map((entry) => {
+              const expiry = expiryText(entry);
+              return (
+                <li key={entry.item}>
+                  {partName(entry)}: <span className={`font-semibold ${TONE_TEXT[expiry.tone]}`}>{expiry.text}</span>
+                </li>
+              );
+            })}
         </ul>
-        {item.publication === "community" && (
-          <p className="text-sm text-warn">Dane tego urządzenia pochodzą z OpenStreetMap i nikt z instytucji ich jeszcze nie potwierdził.</p>
-        )}
+        {item.publication === "community" && <p className="text-sm text-warn">Dane tego urządzenia pochodzą z OpenStreetMap i nikt z instytucji ich jeszcze nie potwierdził.</p>}
       </section>
 
-      <a
-        href={`https://www.google.com/maps/dir/?api=1&destination=${record.szerokosc_geograficzna},${record.dlugosc_geograficzna}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-block font-semibold text-gov underline"
-      >
-        Pokaż drogę w Mapach Google<span className="sr-only"> (otworzy się w nowej karcie)</span>
-      </a>
+      <ExternalLink href={googleDirections(null, { lat: record.szerokosc_geograficzna, lon: record.dlugosc_geograficzna })} className="link inline-block font-semibold">
+        Pokaż drogę w Mapach Google
+      </ExternalLink>
 
       <Keeper id={item.id} passport={passport} />
     </>
@@ -112,22 +109,22 @@ function Card({ item, passport, onPassport }: { item: AedItem; passport: Passpor
 function Report({ id, onPassport }: { id: string; onPassport: (passport: PassportPublic) => void }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ text: string; tone: string } | null>(null);
+  const [message, setMessage] = useState<Message | null>(null);
 
   async function send(kind: ReportKind) {
     setBusy(true);
     setMessage(null);
-    const { data } = await api.POST("/v1/aed/{id}/reports", { params: { path: { id } }, body: { kind } });
+    const { data } = await api.POST("/v1/aed/{id}/reports", { params: { path: { id } }, body: { kind } }).catch(() => ({ data: undefined }));
     setBusy(false);
     setOpen(false);
-    if (!data) return setMessage({ text: "Nie udało się wysłać zgłoszenia. Spróbuj ponownie za chwilę.", tone: "text-danger" });
+    if (!data) return setMessage({ text: "Nie udało się wysłać zgłoszenia. Spróbuj ponownie za chwilę.", tone: "danger" });
     onPassport(data.passport);
-    if (data.outcome === "duplicate") return setMessage({ text: "Twoje zgłoszenie z ostatniej godziny już mamy. Dziękujemy!", tone: "text-ok" });
-    if (data.outcome === "limit") return setMessage({ text: "Na dziś przyjęliśmy już wiele zgłoszeń o tym urządzeniu albo od Ciebie. Spróbuj jutro.", tone: "text-warn" });
+    if (data.outcome === "duplicate") return setMessage({ text: "Twoje zgłoszenie z ostatniej godziny już mamy. Dziękujemy!", tone: "ok" });
+    if (data.outcome === "limit") return setMessage({ text: "Na dziś przyjęliśmy już wiele zgłoszeń o tym urządzeniu albo od Ciebie. Spróbuj jutro.", tone: "warn" });
     setMessage(
       kind === "ok"
-        ? { text: "Dziękujemy! Dzięki Tobie wiadomo, że ten defibrylator jest gotowy do użycia.", tone: "text-ok" }
-        : { text: "Dziękujemy! Przekazaliśmy zgłoszenie opiekunowi urządzenia.", tone: "text-ok" },
+        ? { text: "Dziękujemy! Dzięki Tobie wiadomo, że ten defibrylator jest gotowy do użycia.", tone: "ok" }
+        : { text: "Dziękujemy! Przekazaliśmy zgłoszenie opiekunowi urządzenia.", tone: "ok" },
     );
   }
 
@@ -136,49 +133,42 @@ function Report({ id, onPassport }: { id: string; onPassport: (passport: Passpor
       <h2 id="zglos-naglowek" className="font-bold">
         Przechodzisz obok? Daj znać, w jakim stanie jest urządzenie
       </h2>
-      <button type="button" disabled={busy} onClick={() => send("ok")} className="w-full rounded bg-ok px-4 py-4 text-lg font-bold text-white hover:opacity-90 disabled:opacity-60">
-        ✓ {REPORT_BUTTON.ok}
+      <button type="button" disabled={busy} onClick={() => send("ok")} className="btn btn-ok btn-lg w-full">
+        <span>
+          <span aria-hidden>✓ </span>
+          {REPORT_BUTTON.ok}
+        </span>
       </button>
-      <button
-        type="button"
-        disabled={busy}
-        aria-expanded={open}
-        aria-controls="problemy"
-        onClick={() => setOpen(!open)}
-        className="w-full rounded border-2 border-danger px-4 py-3 font-bold text-danger hover:bg-red-50 disabled:opacity-60"
-      >
+      <button type="button" disabled={busy} aria-expanded={open} aria-controls="problemy" onClick={() => setOpen(!open)} className="btn btn-danger w-full py-3">
         Zgłoś problem
       </button>
       {open && (
         <ul id="problemy" className="space-y-2">
           {PROBLEMS.map((kind) => (
             <li key={kind}>
-              <button type="button" disabled={busy} onClick={() => send(kind)} className="w-full rounded border border-line px-4 py-3 text-left font-semibold hover:bg-gov-light disabled:opacity-60">
+              <button type="button" disabled={busy} onClick={() => send(kind)} className="btn w-full justify-start border-line py-3 text-left hover:bg-surface">
                 {REPORT_BUTTON[kind]}
               </button>
             </li>
           ))}
         </ul>
       )}
-      <p aria-live="polite" className={`font-semibold ${message?.tone ?? ""}`}>
-        {message?.text}
-      </p>
+      <LiveMessage message={message} />
     </section>
   );
 }
 
 function Keeper({ id, passport }: { id: string; passport: PassportPublic }) {
-  const [state, setState] = useState<{ text: string; tone: string } | null>(null);
+  const [message, setMessage] = useState<Message | null>(null);
 
   async function request() {
-    const { data, error } = await api.POST("/v1/aed/{id}/passport/link", { params: { path: { id } } });
-    if (data) setState({ text: `Wysłaliśmy link na adres ${data.sentTo}. Sprawdź skrzynkę.`, tone: "text-ok" });
-    else setState({ text: (error as { detail?: string } | undefined)?.detail ?? "Nie udało się wysłać linku. Spróbuj ponownie za chwilę.", tone: "text-danger" });
+    const { data, error } = await api.POST("/v1/aed/{id}/passport/link", { params: { path: { id } } }).catch(() => ({ data: undefined, error: undefined }));
+    setMessage(data ? { text: `Wysłaliśmy link na adres ${data.sentTo}. Sprawdź skrzynkę.`, tone: "ok" } : { text: problemMessage(error, "Nie udało się wysłać linku. Spróbuj ponownie za chwilę."), tone: "danger" });
   }
 
   return (
-    <section aria-labelledby="opiekun-naglowek" className="space-y-2 border-t border-line pt-4 text-sm">
-      <h2 id="opiekun-naglowek" className="font-bold">
+    <section aria-labelledby="opiekun-naglowek" className="space-y-3 border-t border-line pt-5 text-sm">
+      <h2 id="opiekun-naglowek" className="text-base font-bold">
         Opiekujesz się tym defibrylatorem?
       </h2>
       <p>
@@ -186,17 +176,15 @@ function Keeper({ id, passport }: { id: string; passport: PassportPublic }) {
         działa.
       </p>
       {passport.keeperEmail ? (
-        <button type="button" onClick={request} className="rounded bg-gov px-4 py-2 font-semibold text-white hover:bg-gov-dark">
+        <button type="button" onClick={request} className="btn btn-secondary">
           Wyślij link na adres {passport.keeperEmail}
         </button>
       ) : (
         <p>W danych tego urządzenia nie ma adresu e-mail opiekuna. Napisz do operatora serwisu, a przygotuje dla Ciebie link.</p>
       )}
-      <p aria-live="polite" className={`font-semibold ${state?.tone ?? ""}`}>
-        {state?.text}
-      </p>
+      <LiveMessage message={message} />
       <p>
-        <Link href={`/aed/${id}/naklejka`} className="text-gov underline">
+        <Link href={`/aed/${id}/naklejka`} className="link">
           Wydrukuj naklejkę z kodem QR
         </Link>
       </p>

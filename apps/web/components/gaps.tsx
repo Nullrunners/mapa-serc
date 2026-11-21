@@ -3,12 +3,16 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MapLayout, MapPlaceholder } from "@/components/map-frame";
+import { LoadStatus } from "@/components/ui";
 import { api, API_URL, type GapsMethod, type GapsTotals } from "@/lib/api/client";
+import { count } from "@/lib/format";
+import { coverageNow, people, placeName, share } from "@/lib/gaps-text";
 import { useLoad } from "@/lib/use-load";
-import GapReport, { coverageNow, people, placeName } from "./gap-report";
+import GapReport from "./gap-report";
 import { DETAIL_ZOOM, type MapView } from "./gaps-map";
 
-const GapsMap = dynamic(() => import("./gaps-map"), { ssr: false, loading: () => <div className="h-full min-h-[420px] rounded border border-line bg-gov-light" aria-hidden /> });
+const GapsMap = dynamic(() => import("./gaps-map"), { ssr: false, loading: () => <MapPlaceholder /> });
 
 type Bbox = [number, number, number, number];
 
@@ -23,61 +27,6 @@ const CITIES: { name: string; bbox: Bbox }[] = [
 ];
 
 const PLACES = 10;
-const share = (part: number, whole: number) => (whole > 0 ? `${Math.round((part / whole) * 100)}% mieszkańców` : "");
-
-function Totals({ totals }: { totals: GapsTotals }) {
-  return (
-    <dl className="grid gap-3 sm:grid-cols-3">
-      {[
-        ["Mieszkańcy", people(totals.residents), ""],
-        ["Bez AED w promieniu 400 m", people(totals.noDevice), share(totals.noDevice, totals.residents)],
-        ["Bez AED dostępnego w nocy", people(totals.noNight), share(totals.noNight, totals.residents)],
-      ].map(([label, value, note]) => (
-        <div key={label} className="rounded border border-line p-3">
-          <dt className="text-sm text-muted">{label}</dt>
-          <dd className="text-lg font-bold leading-tight">{value}</dd>
-          {note && <dd className="text-sm text-muted">{note}</dd>}
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-function Method({ method }: { method: GapsMethod }) {
-  const { devices } = method;
-  return (
-    <details className="rounded border border-line p-3 text-sm">
-      <summary className="cursor-pointer font-semibold text-gov">Jak to liczymy</summary>
-      <div className="mt-2 space-y-2">
-        <p>
-          Dzielimy mapę na sześciokąty o powierzchni ok. 0,1 km². Liczbę mieszkańców bierzemy ze spisu powszechnego 2021, który podaje ją w kwadratach 1 × 1 km. Zakładamy, że w każdym kwadracie ludzie
-          mieszkają równomiernie.
-        </p>
-        <p>
-          Defibrylator liczy się dla sześciokąta, jeśli stoi najwyżej {method.reachM} m od jego środka: tyle da się przebiec tam i z powrotem w kilka minut. Liczymy też, przez ile godzin w tygodniu można do
-          niego dojść. Urządzenie w urzędzie czynnym 7:30–15:30 pomaga tylko przez 40 ze 168 godzin. „W nocy” znaczy u nas: w niedzielę o {method.nightHour.replace("niedziela ", "")}.
-        </p>
-        <p>
-          Miejsca na nowe urządzenia wybieramy po kolei. Każde następne stawiamy tam, gdzie defibrylator dostępny całą dobę obejmie najwięcej osób, które dziś go w pobliżu nie mają. Osoby w wieku 65+ liczymy{" "}
-          {method.seniorWeight === 3 ? "potrójnie" : `${method.seniorWeight} razy`}, bo to u nich najczęściej dochodzi do nagłego zatrzymania krążenia.
-        </p>
-        <p>
-          Godziny dostępności znamy dla {devices.hours.toLocaleString("pl-PL")} z {devices.total.toLocaleString("pl-PL")} urządzeń. Dla {devices.outdoor.toLocaleString("pl-PL")} stojących na zewnątrz bez
-          podanych godzin przyjmujemy całą dobę, a dla {devices.assumed.toLocaleString("pl-PL")} pozostałych dni robocze 8–16. {devices.excluded.toLocaleString("pl-PL")} urządzeń nie
-          liczymy: są tylko dla personelu, wycofane, mają przeterminowane elektrody lub baterię albo przechodnie zgłosili, że ich nie ma. Dlatego liczba osób „bez żadnego AED” nie zależy od tych założeń, a liczba „bez AED w nocy” trochę tak.
-        </p>
-        <p>
-          Wyniki są tak dobre jak dane: nie znamy każdego defibrylatora w Polsce, a część urządzeń pochodzi z OpenStreetMap i nie jest potwierdzona. Jeśli znasz defibrylator, którego brakuje,{" "}
-          <Link href="/dostawca" className="text-gov underline">
-            zgłoś go
-          </Link>
-          .
-        </p>
-        <p className="text-muted">Źródła: {method.sources.map((source) => `${source.name} (${source.licence})`).join("; ")}. Wynik analizy jest na licencji ODbL 1.0 i nie wchodzi do zbioru dla dane.gov.pl.</p>
-      </div>
-    </details>
-  );
-}
 
 export default function Gaps() {
   const [view, setView] = useState<MapView | null>(null);
@@ -131,115 +80,171 @@ export default function Gaps() {
   const csvHref = `${API_URL}/v1/gaps.csv?bbox=${bboxText}&n=${PLACES}`;
   const canAnalyseView = view !== null && view.zoom >= DETAIL_ZOOM;
 
-  return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
-      {place && method ? (
-        <GapReport place={place} method={method} csvHref={csvHref} onClose={closeReport} />
-      ) : (
-        <section aria-labelledby="braki-naglowek" className="space-y-5">
-          <div className="space-y-3" aria-live="polite">
-            <h2 id="braki-naglowek" className="text-lg font-bold">
-              Cała Polska
-            </h2>
-            {summary.state === "loading" && <p className="text-muted">Wczytuję…</p>}
-            {summary.state === "error" && (
-              <p role="alert" className="text-danger">
-                {summary.message}
-              </p>
-            )}
-            {waiting && <p className="text-muted">Liczymy dane dla całego kraju. To potrwa kilkanaście sekund…</p>}
-            {summary.state === "ready" && summary.data.ready && <Totals totals={summary.data.totals} />}
-            {summary.state === "ready" && summary.data.ready && (
-              <p className="text-sm text-muted">Według znanych danych. Na mapie im ciemniejszy kolor, tym więcej osób bez defibrylatora w pobliżu.</p>
-            )}
-          </div>
+  const map = <GapsMap hexes={result && !result.tooLarge ? result.hexes : null} places={places} selected={selected} onSelect={setSelected} onView={onView} fitTo={fitTo} />;
 
-          <div className="space-y-2">
-            <h2 className="text-lg font-bold">Gdzie postawić nowe defibrylatory?</h2>
-            <p className="text-sm">Wybierz miasto albo przybliż mapę na swoją okolicę i kliknij „Policz dla widoku mapy”.</p>
-            <ul className="flex flex-wrap gap-2">
-              {CITIES.map((city) => (
-                <li key={city.name}>
-                  <button
-                    type="button"
-                    onClick={() => chooseCity(city)}
-                    aria-pressed={analysed?.label === city.name}
-                    className={`rounded-full border-2 px-3 py-1 text-sm font-semibold ${analysed?.label === city.name ? "border-gov bg-gov text-white" : "border-gov text-gov hover:bg-gov-light"}`}
-                  >
-                    {city.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <button type="button" onClick={analyseView} disabled={!canAnalyseView} className="rounded bg-gov px-4 py-2 font-semibold text-white hover:bg-gov-dark disabled:cursor-not-allowed disabled:bg-muted">
-              Policz dla widoku mapy
-            </button>
-            {!canAnalyseView && <p className="text-sm text-muted">Przybliż mapę do wielkości miasta albo dzielnicy, żeby policzyć ją dokładnie.</p>}
-          </div>
+  if (place && method) return <MapLayout controls={<GapReport place={place} method={method} csvHref={csvHref} onClose={closeReport} />} map={map} />;
 
-          <div aria-live="polite" className="space-y-3">
-            {analysis.state === "loading" && analysed && <p className="text-muted">Liczę dla obszaru: {analysed.label}…</p>}
-            {analysis.state === "error" && (
-              <p role="alert" className="text-danger">
-                {analysis.message}
-              </p>
-            )}
-            {result?.tooLarge && (
-              <p role="alert" className="text-danger">
-                Ten obszar jest za duży, żeby policzyć go dokładnie. Przybliż mapę i spróbuj jeszcze raz.
-              </p>
-            )}
-            {result && !result.tooLarge && analysed && (
-              <>
-                <h2 id="miejsca-naglowek" ref={listHeading} tabIndex={-1} className="text-lg font-bold">
-                  {analysed.label}: {places.length} najlepszych miejsc
-                </h2>
-                <Totals totals={result.totals} />
-                {places.length === 0 ? (
-                  <p>Na tym obszarze każdy mieszkaniec ma defibrylator dostępny całą dobę w promieniu 400 m. Nie mamy czego polecić.</p>
-                ) : (
-                  <>
-                    <p className="text-sm text-muted">Kolejność: najpierw tam, gdzie nowy defibrylator dostępny całą dobę obejmie najwięcej osób, które dziś go w pobliżu nie mają.</p>
-                    <ol className="divide-y divide-line border-y border-line">
-                      {places.map((candidate) => (
-                        <li key={candidate.rank} className="flex gap-3 px-1 py-3">
-                          <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full bg-ink text-sm font-bold text-white">
-                            {candidate.rank}
-                          </span>
-                          <div className="min-w-0 space-y-0.5">
-                            <h3 className="font-semibold">
-                              <button type="button" onClick={() => setSelected(candidate.rank)} className="text-left text-gov underline-offset-2 hover:underline">
-                                <span className="sr-only">Miejsce {candidate.rank}: </span>
-                                {placeName(candidate)}
-                              </button>
-                            </h3>
-                            <p className="text-sm">
-                              {people(candidate.gained.residents)} mieszkańców zyska defibrylator dostępny całą dobę, w tym {people(candidate.gained.seniors)} w wieku 65+.
-                            </p>
-                            <p className="text-sm text-muted">Teraz: {coverageNow(candidate.coveredHoursNow)}.</p>
-                          </div>
-                        </li>
-                      ))}
-                    </ol>
-                    <p className="text-sm">
-                      <a href={csvHref} className="text-gov underline">
-                        Pobierz listę miejsc jako plik CSV
-                      </a>{" "}
-                      (otworzysz go w Excelu).
-                    </p>
-                  </>
-                )}
-              </>
-            )}
-          </div>
+  const controls = (
+    <div className="space-y-8">
+      <section aria-labelledby="polska-naglowek" className="space-y-3">
+        <h2 id="polska-naglowek" className="text-lg font-bold">
+          Cała Polska
+        </h2>
+        <div aria-live="polite">
+          <LoadStatus of={summary} />
+          {waiting && <p className="text-muted">Liczymy dane dla całego kraju. To potrwa kilkanaście sekund…</p>}
+        </div>
+        {summary.state === "ready" && summary.data.ready && (
+          <>
+            <Totals totals={summary.data.totals} />
+            <p className="hint">Według znanych danych. Na mapie: im ciemniejszy kolor, tym więcej osób bez defibrylatora w pobliżu.</p>
+          </>
+        )}
+      </section>
 
-          {method && <Method method={method} />}
+      <section aria-labelledby="gdzie-naglowek" className="space-y-3">
+        <h2 id="gdzie-naglowek" className="text-lg font-bold">
+          Gdzie postawić nowe defibrylatory?
+        </h2>
+        <p>Wybierz miasto albo przybliż mapę na swoją okolicę i kliknij „Policz dla widoku mapy”.</p>
+        <ul className="flex flex-wrap gap-2">
+          {CITIES.map((city) => (
+            <li key={city.name}>
+              <button type="button" onClick={() => chooseCity(city)} aria-pressed={analysed?.label === city.name} className="chip">
+                {city.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="space-y-1">
+          <button type="button" onClick={analyseView} disabled={!canAnalyseView} className="btn btn-primary">
+            Policz dla widoku mapy
+          </button>
+          {!canAnalyseView && <p className="hint">Przybliż mapę do wielkości miasta albo dzielnicy, żeby policzyć ją dokładnie.</p>}
+        </div>
+      </section>
+    </div>
+  );
+
+  const results = (
+    <div className="space-y-8">
+      <div aria-live="polite" className="space-y-3">
+        {analysis.state === "loading" && analysed && <p className="text-muted">Liczę dla obszaru: {analysed.label}…</p>}
+        {analysis.state === "error" && (
+          <p role="alert" className="text-danger">
+            {analysis.message}
+          </p>
+        )}
+        {result?.tooLarge && (
+          <p role="alert" className="text-danger">
+            Ten obszar jest za duży, żeby policzyć go dokładnie. Przybliż mapę i spróbuj jeszcze raz.
+          </p>
+        )}
+      </div>
+
+      {result && !result.tooLarge && analysed && (
+        <section aria-labelledby="miejsca-naglowek" className="space-y-4">
+          <h2 id="miejsca-naglowek" ref={listHeading} tabIndex={-1} className="text-lg font-bold">
+            {analysed.label}: {places.length} najlepszych miejsc
+          </h2>
+          <Totals totals={result.totals} />
+          {places.length === 0 ? (
+            <p>Na tym obszarze każdy mieszkaniec ma defibrylator dostępny całą dobę w promieniu 400 m. Nie mamy czego polecić.</p>
+          ) : (
+            <>
+              <p className="hint">Najpierw tam, gdzie nowy defibrylator dostępny całą dobę obejmie najwięcej osób, które dziś go w pobliżu nie mają.</p>
+              <ol className="divide-y divide-line border-y border-line">
+                {places.map((candidate) => (
+                  <li key={candidate.rank} className="relative flex gap-3 px-2 py-3 hover:bg-surface">
+                    <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full bg-ink text-sm font-bold text-white">
+                      {candidate.rank}
+                    </span>
+                    <div className="min-w-0 space-y-0.5">
+                      <h3 className="leading-snug font-semibold">
+                        <button type="button" onClick={() => setSelected(candidate.rank)} className="text-left text-gov after:absolute after:inset-0 hover:underline">
+                          <span className="sr-only">Miejsce {candidate.rank}: </span>
+                          {placeName(candidate)}
+                        </button>
+                      </h3>
+                      <p className="text-sm">
+                        {people(candidate.gained.residents)} mieszkańców zyska defibrylator dostępny całą dobę, w tym {people(candidate.gained.seniors)} w wieku 65+.
+                      </p>
+                      <p className="text-sm text-muted">Teraz: {coverageNow(candidate.coveredHoursNow)}.</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              <p className="text-sm">
+                <a href={csvHref} className="link">
+                  Pobierz listę miejsc jako plik CSV
+                </a>{" "}
+                <span className="text-muted">(otworzysz go w Excelu)</span>
+              </p>
+            </>
+          )}
         </section>
       )}
 
-      <section aria-label="Mapa" className="min-h-[420px] lg:sticky lg:top-4 lg:h-[calc(100vh-8rem)] print:hidden">
-        <GapsMap hexes={result && !result.tooLarge ? result.hexes : null} places={places} selected={selected} onSelect={setSelected} onView={onView} fitTo={fitTo} />
-      </section>
+      {method && <Method method={method} />}
     </div>
+  );
+
+  return <MapLayout controls={controls} map={map} results={results} />;
+}
+
+function Totals({ totals }: { totals: GapsTotals }) {
+  const rows = [
+    { label: "Mieszkańcy", value: people(totals.residents), note: "" },
+    { label: "Bez AED w promieniu 400 m", value: people(totals.noDevice), note: share(totals.noDevice, totals.residents) },
+    { label: "Bez AED dostępnego w nocy", value: people(totals.noNight), note: share(totals.noNight, totals.residents) },
+  ];
+  return (
+    <dl className="divide-y divide-line rounded-lg bg-surface px-4">
+      {rows.map((row) => (
+        <div key={row.label} className="flex items-baseline justify-between gap-4 py-2.5">
+          <dt>
+            {row.label}
+            {row.note && <span className="block text-sm text-muted">{row.note}</span>}
+          </dt>
+          <dd className="shrink-0 text-lg font-bold tabular-nums">{row.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function Method({ method }: { method: GapsMethod }) {
+  const { devices } = method;
+  return (
+    <details className="rounded-lg border border-line px-4 py-3 text-sm">
+      <summary className="cursor-pointer font-semibold text-gov">Jak to liczymy</summary>
+      <div className="mt-3 space-y-2">
+        <p>
+          Dzielimy mapę na sześciokąty o powierzchni ok. 0,1 km². Liczbę mieszkańców bierzemy ze spisu powszechnego 2021, który podaje ją w kwadratach 1 × 1 km. Zakładamy, że w każdym kwadracie ludzie
+          mieszkają równomiernie.
+        </p>
+        <p>
+          Defibrylator liczy się dla sześciokąta, jeśli stoi najwyżej {method.reachM} m od jego środka: tyle da się przebiec tam i z powrotem w kilka minut. Liczymy też, przez ile godzin w tygodniu można do
+          niego dojść. Urządzenie w urzędzie czynnym 7:30–15:30 pomaga tylko przez 40 ze 168 godzin. „W nocy” znaczy u nas: w niedzielę o {method.nightHour.replace("niedziela ", "")}.
+        </p>
+        <p>
+          Miejsca na nowe urządzenia wybieramy po kolei. Każde następne stawiamy tam, gdzie defibrylator dostępny całą dobę obejmie najwięcej osób, które dziś go w pobliżu nie mają. Osoby w wieku 65+ liczymy{" "}
+          {method.seniorWeight === 3 ? "potrójnie" : `${method.seniorWeight} razy`}, bo to u nich najczęściej dochodzi do nagłego zatrzymania krążenia.
+        </p>
+        <p>
+          Godziny dostępności znamy dla {count(devices.hours)} z {count(devices.total)} urządzeń. Dla {count(devices.outdoor)} stojących na zewnątrz bez podanych godzin przyjmujemy całą dobę, a dla{" "}
+          {count(devices.assumed)} pozostałych dni robocze 8–16. {count(devices.excluded)} urządzeń nie liczymy: są tylko dla personelu, wycofane, mają przeterminowane elektrody lub baterię albo przechodnie
+          zgłosili, że ich nie ma. Dlatego liczba osób „bez żadnego AED” nie zależy od tych założeń, a liczba „bez AED w nocy” trochę tak.
+        </p>
+        <p>
+          Wyniki są tak dobre jak dane: nie znamy każdego defibrylatora w Polsce, a część urządzeń pochodzi z OpenStreetMap i nie jest potwierdzona. Jeśli znasz defibrylator, którego brakuje,{" "}
+          <Link href="/dostawca" className="link">
+            zgłoś go
+          </Link>
+          .
+        </p>
+        <p className="text-muted">Źródła: {method.sources.map((source) => `${source.name} (${source.licence})`).join("; ")}. Wynik analizy jest na licencji ODbL 1.0 i nie wchodzi do zbioru dla dane.gov.pl.</p>
+      </div>
+    </details>
   );
 }
