@@ -70,6 +70,7 @@ export type FixCode =
   | 'decimal_comma'
   | 'coordinates_dms'
   | 'coordinates_puwg1992'
+  | 'coordinates_puwg2000'
   | 'address_split'
   | 'postcode_format'
   | 'phone_format'
