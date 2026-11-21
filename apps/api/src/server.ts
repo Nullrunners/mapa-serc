@@ -4,6 +4,7 @@ import { config } from './config'
 import { getContext } from './context'
 import { endpointStatuses } from './endpoints'
 import { overviewFor } from './gaps/state'
+import { watchRequests } from './http/load'
 import { runJob } from './jobs'
 
 const app = createApp()
@@ -36,6 +37,9 @@ const server = serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' 
     console.error('could not open the database or run the first pipeline', error)
   }
 })
+
+// The national figures are counted in the background; they step aside while somebody is being answered.
+watchRequests(server)
 
 server.on('error', (error: NodeJS.ErrnoException) => {
   if (error.code !== 'EADDRINUSE') throw error

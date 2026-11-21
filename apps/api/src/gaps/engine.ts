@@ -121,12 +121,16 @@ export interface Overview {
 
 /**
  * The country takes most of a minute to count, and a request that comes in meanwhile waits until this lets go.
- * So it lets go this often: a list of devices or a map layer is then held up by a blink, not by a quarter of a second.
+ * So it lets go this often: a request is then noticed within a blink, not after a quarter of a second.
  */
-const SLICE_MS = 8
+const SLICE_MS = 4
 
-/** The whole country, summed straight into large hexagons; yields to other requests every few milliseconds. */
-export async function nationalOverview(cells: readonly GridCell[], coverage: Coverage): Promise<Overview> {
+/**
+ * The whole country, summed straight into large hexagons. It lets the server answer every few milliseconds, and
+ * while `answering` says a request is being answered, after every square: an answer takes many small steps (read
+ * the request, look things up, send the pieces), and each of them would otherwise wait for a whole slice.
+ */
+export async function nationalOverview(cells: readonly GridCell[], coverage: Coverage, answering: () => boolean = () => false): Promise<Overview> {
   const total = new TotalsBuilder()
   const areas = new Map<string, TotalsBuilder>()
   let sliceEnd = performance.now() + SLICE_MS
@@ -139,7 +143,7 @@ export async function nationalOverview(cells: readonly GridCell[], coverage: Cov
       if (!area) areas.set(parent, (area = new TotalsBuilder()))
       area.add(state)
     }
-    if (performance.now() >= sliceEnd) {
+    if (answering() || performance.now() >= sliceEnd) {
       await new Promise((done) => setImmediate(done))
       sliceEnd = performance.now() + SLICE_MS
     }
