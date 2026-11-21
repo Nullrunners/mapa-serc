@@ -8,7 +8,7 @@ export default function NotFound() {
     <>
       <SiteHeader />
       <main id="tresc" className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-6 sm:py-8">
-        <PageHeader title="Nie ma takiej strony" lead="Sprawdź, czy adres przepisał się w całości, albo zacznij od mapy defibrylatorów." />
+        <PageHeader title="Nie ma takiej strony" lead="Sprawdź adres albo wróć do mapy." />
         <Link href="/" className="btn btn-primary">
           Znajdź defibrylator
         </Link>

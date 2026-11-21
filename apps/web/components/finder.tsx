@@ -204,7 +204,7 @@ export default function Finder({ title, lead }: { title: string; lead: string })
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <button type="button" onClick={() => locate()} disabled={locating === "asking"} className="btn btn-secondary">
           <LocateIcon />
-          {locating === "asking" ? "Ustalam położenie…" : "Pokaż najbliższe mnie"}
+          {locating === "asking" ? "Ustalam położenie…" : "Najbliżej mnie"}
         </button>
         {near && (
           <button type="button" onClick={() => setNear(null)} className="text-sm font-semibold text-gov hover:underline">
@@ -214,14 +214,14 @@ export default function Finder({ title, lead }: { title: string; lead: string })
       </div>
       {locating === "denied" && (
         <p role="alert" className="text-sm text-danger">
-          Nie udało się ustalić, gdzie jesteś. Wpisz miejscowość albo ulicę w polu wyszukiwania.
+          Nie znamy Twojego położenia. Wpisz miejscowość.
         </p>
       )}
 
       {near && walkNote && nearest && (
         <section aria-labelledby="droga-naglowek" className="space-y-2 rounded-lg border border-l-4 border-line border-l-danger p-4">
           <h2 id="droga-naglowek" className="text-sm font-semibold text-danger">
-            Droga do najbliższego defibrylatora
+            Najbliższy defibrylator
           </h2>
           <div>
             <button type="button" onClick={() => pick(pickedFrom(nearest))} className="text-left text-lg leading-snug font-bold text-gov hover:underline">
@@ -238,10 +238,10 @@ export default function Finder({ title, lead }: { title: string; lead: string })
               </button>
             )}
             <ExternalLink href={googleDirections(near, pickedFrom(nearest))} className={canGuide ? "btn btn-secondary" : "btn btn-primary"}>
-              Otwórz w Mapach Google
+              Trasa w Mapach Google
             </ExternalLink>
           </div>
-          <p className="text-xs text-muted">Drogę wyznacza bezpłatny serwis map OpenStreetMap (FOSSGIS). Wysyłamy mu tylko Twoje położenie i miejsce urządzenia.</p>
+          <p className="text-xs text-muted">Trasę liczy OpenStreetMap (FOSSGIS) z Twojego położenia.</p>
         </section>
       )}
     </div>
@@ -255,7 +255,7 @@ export default function Finder({ title, lead }: { title: string; lead: string })
         </h2>
         <p aria-live="polite" className="text-sm text-muted">
           {list.state === "loading" && "Wczytuję…"}
-          {list.state === "ready" && list.data.total > 0 && `Znaleziono: ${count(list.data.total)}${list.data.total > list.data.items.length ? `, poniżej ${list.data.items.length} pierwszych` : ""}`}
+          {list.state === "ready" && list.data.total > 0 && `Znaleziono: ${count(list.data.total)}${list.data.total > list.data.items.length ? ` (widać ${list.data.items.length})` : ""}`}
         </p>
       </div>
 
@@ -267,7 +267,7 @@ export default function Finder({ title, lead }: { title: string; lead: string })
               {(
                 [
                   ["reach", "Najszybciej w ręku"],
-                  ["distance", "Najbliżej w linii prostej"],
+                  ["distance", "W linii prostej"],
                 ] as const
               ).map(([value, label]) => (
                 <label key={value} className="chip">
@@ -276,9 +276,7 @@ export default function Finder({ title, lead }: { title: string; lead: string })
                 </label>
               ))}
             </div>
-            {order === "reach" && (
-              <p className="text-muted">Liczymy dojście, godziny otwarcia, święta, szafkę z kodem albo recepcję i piętro. Defibrylator na ścianie 250 m dalej wygrywa z zamkniętym urzędem obok.</p>
-            )}
+            {order === "reach" && <p className="text-muted">Liczymy dojście, godziny otwarcia i sposób dostępu.</p>}
           </fieldset>
         )}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -287,19 +285,16 @@ export default function Finder({ title, lead }: { title: string; lead: string })
           </label>
           <select id="kiedy" value={when} onChange={(event) => setWhen(event.target.value as When)} className="field py-1">
             <option value="now">teraz</option>
-            <option value="night">w nocy z soboty na niedzielę, o 3:00</option>
+            <option value="night">w nocy (niedziela, 3:00)</option>
           </select>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={onlyAvailable} onChange={(event) => setOnlyAvailable(event.target.checked)} className="size-4" />
             {when === "now" ? "Tylko dostępne teraz" : "Tylko dostępne o tej porze"}
           </label>
         </div>
-        <label className="flex items-start gap-2">
-          <input type="checkbox" checked={showCommunity} onChange={(event) => setShowCommunity(event.target.checked)} className="mt-0.5 size-4" />
-          <span>
-            Pokaż też niepotwierdzone urządzenia
-            <span className="block text-muted">Pochodzą z OpenStreetMap, więc mogą być nieaktualne. Nie trafiają do oficjalnych danych na dane.gov.pl.</span>
-          </span>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={showCommunity} onChange={(event) => setShowCommunity(event.target.checked)} className="size-4" />
+          Pokaż też niepotwierdzone (z OpenStreetMap)
         </label>
       </div>
 
@@ -309,7 +304,7 @@ export default function Finder({ title, lead }: { title: string; lead: string })
         </p>
       )}
       {list.state === "ready" &&
-        (list.data.total === 0 ? <p>Nic nie znaleźliśmy. Spróbuj innej nazwy albo miejscowości.</p> : <DeviceList items={list.data.items} when={when} onPick={pick} />)}
+        (list.data.total === 0 ? <p>Nic nie znaleźliśmy. Spróbuj innej nazwy.</p> : <DeviceList items={list.data.items} when={when} onPick={pick} />)}
     </section>
   );
 
@@ -347,10 +342,10 @@ export default function Finder({ title, lead }: { title: string; lead: string })
 /** How far the walk is and how long it takes; the way itself is drawn on the map. */
 function WalkNote({ route, from, to, tooFar }: { route: Loaded<WalkingRoute | null>; from: Point; to: Point; tooFar: boolean }) {
   let text: string;
-  if (tooFar) text = `To ${distance(Math.round(straightDistance(from, to)))} w linii prostej, za daleko, żeby pokazać drogę pieszo.`;
-  else if (route.state === "loading") text = "Wyznaczam drogę pieszo…";
-  else if (route.state === "ready" && route.data) text = `Pieszo ${distance(route.data.distanceM)}, ${minutes(route.data.durationS)}. Drogę zaznaczyliśmy na mapie na czerwono.`;
-  else text = "Nie udało się wyznaczyć drogi. Na mapie przerywana linia pokazuje kierunek w linii prostej.";
+  if (tooFar) text = `${distance(Math.round(straightDistance(from, to)))} w linii prostej, za daleko na pieszo.`;
+  else if (route.state === "loading") text = "Wyznaczam trasę…";
+  else if (route.state === "ready" && route.data) text = `Pieszo ${distance(route.data.distanceM)}, ${minutes(route.data.durationS)}.`;
+  else text = "Brak trasy. Linia na mapie pokazuje kierunek.";
   return (
     <p aria-live="polite" className="text-sm">
       {text}

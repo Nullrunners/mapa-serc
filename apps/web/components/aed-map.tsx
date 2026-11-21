@@ -247,7 +247,7 @@ export default function AedMap({ showCommunity, focus, walk, guide, banner, sele
     });
   }, [mapRef, selected]);
 
-  if (!drawable) return <MapUnavailable>Ta przeglądarka nie potrafi wyświetlić mapy. Lista urządzeń działa bez niej: wpisz miejscowość albo ulicę w wyszukiwarce.</MapUnavailable>;
+  if (!drawable) return <MapUnavailable>Ta przeglądarka nie wyświetli mapy. Lista obok działa bez niej.</MapUnavailable>;
 
   return (
     <MapFrame frameRef={frame} containerRef={container} label="Mapa defibrylatorów AED. Te same urządzenia są na liście obok.">
@@ -270,7 +270,7 @@ export default function AedMap({ showCommunity, focus, walk, guide, banner, sele
             {walk && walk.line !== "loading" && (
               <li className="flex items-center gap-1.5">
                 <span aria-hidden className={`inline-block w-4 border-t-4 ${walk.line === "straight" ? "border-dotted" : ""}`} style={{ borderColor: WALK_COLOR }} />
-                {walk.line === "straight" ? "kierunek (trasy nie udało się wyznaczyć)" : "trasa pieszo"}
+                {walk.line === "straight" ? "kierunek" : "trasa pieszo"}
               </li>
             )}
           </ul>

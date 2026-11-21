@@ -74,10 +74,10 @@ export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClo
 
           <section aria-labelledby="najblizsze-naglowek" className="space-y-2 border-t border-line pt-5">
             <h3 id="najblizsze-naglowek" className="font-bold">
-              Najbliższe inne defibrylatory
+              Inne w pobliżu
             </h3>
             {loaded.data.nearby === null && <p className="text-sm text-danger">Nie udało się wczytać urządzeń w pobliżu.</p>}
-            {loaded.data.nearby?.length === 0 && <p className="hint">W pobliżu nie ma innych urządzeń, które pasują do wybranych filtrów.</p>}
+            {loaded.data.nearby?.length === 0 && <p className="hint">Brak innych w pobliżu.</p>}
             {!!loaded.data.nearby?.length && <DeviceList items={loaded.data.nearby} compact onPick={onPick} />}
           </section>
         </>
@@ -103,7 +103,7 @@ function Device({ item, passport, headingRef, from, walkNote, onGuide, guided }:
   const availability = AVAILABILITY.now[item.availableNow];
 
   const rows: [string, ReactNode][] = [
-    ["Gdzie dokładnie", spot(record) || null],
+    ["Gdzie", spot(record) || null],
     ["Godziny", record.godziny_dostepnosci ? hours(record.godziny_dostepnosci) : null],
     ["Dostęp", access(record) || null],
     ["Elektrody dla dzieci", record.elektrody_pediatryczne === null ? null : record.elektrody_pediatryczne ? "tak" : "nie"],
@@ -117,8 +117,8 @@ function Device({ item, passport, headingRef, from, walkNote, onGuide, guided }:
       ) : null,
     ],
     // After the keeper's confirmation this is the same date as in the passport note above; say it once.
-    ["Ostatnio sprawdzony", record.data_weryfikacji && !passport?.confirmedByKeeper ? date(record.data_weryfikacji) : null],
-    ["Skąd te dane", record.zrodlo],
+    ["Sprawdzony", record.data_weryfikacji && !passport?.confirmedByKeeper ? date(record.data_weryfikacji) : null],
+    ["Źródło", record.zrodlo],
   ];
 
   return (
@@ -156,13 +156,13 @@ function Device({ item, passport, headingRef, from, walkNote, onGuide, guided }:
           </button>
         )}
         <ExternalLink href={googleDirections(from, { lat: record.szerokosc_geograficzna, lon: record.dlugosc_geograficzna })} className={onGuide || guided ? "btn btn-secondary" : "btn btn-primary"}>
-          Pokaż drogę w Mapach Google
+          Trasa w Mapach Google
         </ExternalLink>
         <Link href={`/aed/${item.id}`} className="btn btn-secondary">
           Paszport urządzenia
         </Link>
       </div>
-      <p className="hint">W paszporcie potwierdzisz, że urządzenie jest na miejscu, zgłosisz problem albo wydrukujesz naklejkę z kodem QR.</p>
+      <p className="hint">W paszporcie zgłosisz problem albo wydrukujesz naklejkę QR.</p>
     </article>
   );
 }

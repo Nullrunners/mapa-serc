@@ -5,18 +5,17 @@ export function FooterNotes() {
   return (
     <>
       <p className="text-ink">
-        W nagłym wypadku dzwoń pod{" "}
+        Nagły wypadek? Dzwoń{" "}
         <a href="tel:112" className="font-bold">
           112
         </a>
-        . Dyspozytor wskaże najbliższy defibrylator i poprowadzi przez pierwszą pomoc.
+        .
       </p>
       <p className="max-w-4xl">
-        Dane urzędowe pochodzą od instytucji wymienionych przy każdym urządzeniu i są otwarte (licencja CC0 1.0 lub CC BY 4.0). Urządzenia oznaczone jako niepotwierdzone pochodzą z OpenStreetMap, © autorzy
-        OpenStreetMap (ODbL). Mapa: OpenFreeMap © OpenMapTiles, dane © OpenStreetMap.
+        Dane: instytucje podane przy urządzeniach (CC0 1.0 lub CC BY 4.0), niepotwierdzone © autorzy OpenStreetMap (ODbL). Mapa: OpenFreeMap © OpenMapTiles.
       </p>
       <p>
-        {BRAND.name} – {BRAND.slogan}. Prototyp zrobiony na HackNation 2026.
+        {BRAND.name} – {BRAND.slogan}. Prototyp z HackNation 2026.
       </p>
     </>
   );

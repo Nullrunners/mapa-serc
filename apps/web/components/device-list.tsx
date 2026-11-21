@@ -80,7 +80,7 @@ function Facts({ item }: { item: AedItem }) {
       {facts.map((fact) => (
         <span key={fact}>{fact}</span>
       ))}
-      {unconfirmed && <span className="rounded bg-warn/10 px-1.5 py-0.5 text-xs font-semibold text-warn">niepotwierdzone (OpenStreetMap)</span>}
+      {unconfirmed && <span className="rounded bg-warn/10 px-1.5 py-0.5 text-xs font-semibold text-warn">niepotwierdzone</span>}
     </p>
   );
 }

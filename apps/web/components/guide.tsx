@@ -125,13 +125,13 @@ export function GuidePanel({ words, steps, next, lost, onStop }: GuidePanelProps
       </p>
       {lost && (
         <p role="alert" className="text-sm text-danger">
-          Nie widzimy już, gdzie jesteś. Sprawdź, czy przeglądarka ma dostęp do Twojego położenia.
+          Straciliśmy Twoje położenie. Sprawdź dostęp do lokalizacji.
         </p>
       )}
 
       {steps.length > 0 && (
         <details className="text-sm">
-          <summary className="cursor-pointer font-semibold text-gov">Cała droga krok po kroku</summary>
+          <summary className="cursor-pointer font-semibold text-gov">Cała trasa</summary>
           <ol className="mt-2 divide-y divide-line border-y border-line">
             {steps.map((step, index) => (
               <li key={index} aria-current={step === next ? "step" : undefined} className={`flex items-start gap-2 py-1.5 ${step === next ? "font-semibold" : ""}`}>

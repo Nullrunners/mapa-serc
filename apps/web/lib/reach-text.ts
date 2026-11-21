@@ -9,23 +9,23 @@ type ReasonCode = Reach["reasons"][number];
 const STATE: Record<Reach["state"], { label: string; tone: Tone }> = {
   open: { label: "Dostępny", tone: "ok" },
   likely_open: { label: "Prawdopodobnie dostępny", tone: "ok" },
-  unknown: { label: "Nie wiadomo, czy dostępny", tone: "muted" },
+  unknown: { label: "Dostępność nieznana", tone: "muted" },
   closed: { label: "Niedostępny", tone: "danger" },
 };
 
 const REASON: Partial<Record<ReasonCode, string>> = {
-  hours_24_7: "dostępny całą dobę",
-  outdoor_no_hours: "na zewnątrz budynku, godzin nie podano",
-  no_hours: "dane nie podają godzin",
-  assumed_closed: "o tej porze budynki są zwykle zamknięte",
+  hours_24_7: "całą dobę",
+  outdoor_no_hours: "na zewnątrz, godziny nieznane",
+  no_hours: "godziny nieznane",
+  assumed_closed: "budynek zwykle zamknięty o tej porze",
   staff_only: "tylko dla personelu",
   out_of_service: "wyłączony z użytku",
   method_free: "wystarczy sięgnąć",
-  method_alarm: "szafka z alarmem, otwiera się bez klucza",
-  method_code: "szafka na kod: kod poda dyspozytor 112",
-  method_staff: "wydaje go obsługa (recepcja, portier, ochrona)",
-  outdoor: "na zewnątrz budynku",
-  reported_problem: "ktoś niedawno zgłosił problem",
+  method_alarm: "szafka z alarmem, bez klucza",
+  method_code: "szafka na kod, poda go 112",
+  method_staff: "u obsługi (recepcja, portier)",
+  outdoor: "na zewnątrz",
+  reported_problem: "zgłoszono problem",
 };
 
 const DAY_NAMES = ["dziś", "jutro", "pojutrze"];
@@ -45,11 +45,11 @@ export function reachSummary(reach: Reach, pietro: string | null) {
   const details = reach.reasons
     .map((code) => (code === "floor" ? (pietro ? `piętro ${pietro}` : null) : (REASON[code] ?? null)))
     .filter((text): text is string => text !== null);
-  if (reach.methodGuessed) details.push("sposób dostępu odczytany z opisu");
+  if (reach.methodGuessed) details.push("dostęp odczytany z opisu");
   return {
     headline: [state.label, change(reach)].filter(Boolean).join(", "),
     tone: state.tone,
-    eta: reach.etaS === null ? null : `${minutes(reach.etaS)} do defibrylatora w ręku`,
+    eta: reach.etaS === null ? null : reach.etaS < 60 ? "w ręku w niecałą minutę" : `w ręku za ${minutes(reach.etaS)}`,
     details,
   };
 }
