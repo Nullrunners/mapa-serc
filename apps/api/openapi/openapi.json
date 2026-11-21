@@ -1373,6 +1373,13 @@
               "$ref": "#/components/schemas/FieldCoverage"
             },
             "description": "Zakres danych źródła względem wzorca: jedna pozycja na każde pole, które źródło może dostarczyć"
+          },
+          "feedUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Plik XML tego dostawcy dla harvestera dane.gov.pl (zbiór dostawcy z tagiem wykaz-aed); null, gdy źródła nie można opublikować w portalu"
           }
         },
         "required": [
@@ -1395,7 +1402,8 @@
           "fileFixes",
           "fixes",
           "issues",
-          "coverage"
+          "coverage",
+          "feedUrl"
         ],
         "description": "Raport jakości dla dostawcy: co odczytano, co poprawiono, czego nie udało się naprawić."
       },
@@ -1905,13 +1913,21 @@
               },
               "report": {
                 "type": "string"
+              },
+              "feed": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The provider's own feed for the dane.gov.pl harvester; null while the submission waits for approval or when its licence is outside the portal list"
               }
             },
             "required": [
               "csv",
-              "report"
+              "report",
+              "feed"
             ],
-            "description": "Links for the provider: their data in the pattern, and the quality report"
+            "description": "Links for the provider: their data in the pattern, the quality report and their feed for dane.gov.pl"
           },
           "devices": {
             "type": "array",
@@ -4486,20 +4502,50 @@
         "x-status": "live"
       }
     },
-    "/feeds/dane-gov-pl.xml": {
+    "/feeds/dostawcy/{id}/dane-gov-pl.xml": {
       "get": {
-        "operationId": "getHarvesterFeed",
+        "operationId": "getProviderFeed",
         "tags": [
           "files"
         ],
-        "summary": "Feed for the dane.gov.pl harvester (XML, schema 1.13)",
+        "summary": "One provider's feed for the dane.gov.pl harvester (XML, schema 1.13): a dataset of that provider, tagged for the portal's summary list of AEDs",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Feed for the dane.gov.pl harvester (XML, schema 1.13)",
+            "description": "Harvester feed of one provider",
             "content": {
               "application/xml": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No source with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The source cannot be published in dane.gov.pl yet: awaiting approval, community data, a licence outside the portal list, or no devices",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             }

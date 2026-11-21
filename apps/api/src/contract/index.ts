@@ -273,6 +273,7 @@ export const SourceReport = z
     fixes: z.array(ReportLine),
     issues: z.array(ReportLine.extend({ severity: z.enum(['error', 'warning']) })),
     coverage: z.array(FieldCoverage).openapi({ description: 'Zakres danych źródła względem wzorca: jedna pozycja na każde pole, które źródło może dostarczyć' }),
+    feedUrl: z.string().nullable().openapi({ description: 'Plik XML tego dostawcy dla harvestera dane.gov.pl (zbiór dostawcy z tagiem wykaz-aed); null, gdy źródła nie można opublikować w portalu' }),
   })
   .openapi('SourceReport', { description: 'Raport jakości dla dostawcy: co odczytano, co poprawiono, czego nie udało się naprawić.' })
 
@@ -351,7 +352,20 @@ export const patternXlsxRoute = fileRoute(
 export const templateRoute = fileRoute('/dane/szablon.csv', 'downloadTemplate', 'text/csv', 'Empty CSV template with the header and one example row')
 export const sourceScopeRoute = fileRoute('/dane/zakres-zrodel.csv', 'downloadSourceScope', 'text/csv', 'Data scope of every source against the pattern: one row per source and field')
 export const communityRoute = fileRoute('/dane/aed-osm.geojson', 'downloadCommunity', 'application/geo+json', 'Unconfirmed devices known only from OpenStreetMap (ODbL) – not part of the dataset for dane.gov.pl')
-export const feedRoute = fileRoute('/feeds/dane-gov-pl.xml', 'getHarvesterFeed', 'application/xml', 'Feed for the dane.gov.pl harvester (XML, schema 1.13)')
+export const providerFeedRoute = createRoute({
+  method: 'get',
+  path: '/feeds/dostawcy/{id}/dane-gov-pl.xml',
+  operationId: 'getProviderFeed',
+  tags: ['files'],
+  summary: "One provider's feed for the dane.gov.pl harvester (XML, schema 1.13): a dataset of that provider, tagged for the portal's summary list of AEDs",
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    200: file('application/xml', 'Harvester feed of one provider'),
+    404: problem('No source with this id'),
+    409: problem('The source cannot be published in dane.gov.pl yet: awaiting approval, community data, a licence outside the portal list, or no devices'),
+    ...problems,
+  },
+})
 
 // -------------------------------------------------------------------- wizard
 
@@ -435,7 +449,13 @@ export const ImportResult = z
     added: z.number().int(),
     merged: z.number().int().openapi({ description: 'Rows merged into devices already in the national dataset' }),
     incomplete: z.number().int(),
-    files: z.object({ csv: z.string(), report: z.string() }).openapi({ description: 'Links for the provider: their data in the pattern, and the quality report' }),
+    files: z
+      .object({
+        csv: z.string(),
+        report: z.string(),
+        feed: z.string().nullable().openapi({ description: 'The provider\'s own feed for the dane.gov.pl harvester; null while the submission waits for approval or when its licence is outside the portal list' }),
+      })
+      .openapi({ description: 'Links for the provider: their data in the pattern, the quality report and their feed for dane.gov.pl' }),
     devices: z
       .array(z.object({ id: z.string(), name: z.string(), ownerUrl: z.string(), passportUrl: z.string(), stickerUrl: z.string() }))
       .openapi({ description: 'Published devices of the submission with the keeper links: passport management and the sticker to print. Empty while pending.' }),

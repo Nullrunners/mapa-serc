@@ -16,6 +16,7 @@ import {
   type healthRoute,
   type jobRoute,
   type mapRoute,
+  type providerFeedRoute,
   type schemaRoute,
   type sourcesRoute,
   type statsRoute,
@@ -30,7 +31,8 @@ import type { MergedAed } from './pipeline/merge'
 import { summariseReports } from './passport/model'
 import { csvCell, toCsv, toGeoJson, toJsonLd, toScopeCsv } from './publish/files'
 import { reach, soonestInHand } from './reach/score'
-import { harvesterXml, nationalFeed } from './publish/harvester'
+import { harvesterXml, isPortalLicence, providerFeed } from './publish/harvester'
+import { feedBlocker, feedUrls, providerRecords } from './publish/providers'
 import { patternWorkbook } from './publish/xlsx'
 import type { Context } from 'hono'
 
@@ -224,7 +226,8 @@ export const statsHandler: RouteHandler<typeof statsRoute> = async (c) => {
 
 export const sourcesHandler: RouteHandler<typeof sourcesRoute> = async (c) => {
   const { store } = await getContext()
-  return c.json({ items: store.reports, notIncluded: KNOWN_SOURCES }, 200)
+  const feeds = feedUrls(store)
+  return c.json({ items: store.reports.map((report) => ({ ...report, feedUrl: feeds.get(report.id) ?? null })), notIncluded: KNOWN_SOURCES }, 200)
 }
 
 export const schemaHandler: RouteHandler<typeof schemaRoute> = (c) =>
@@ -292,16 +295,22 @@ export const templateHandler: FileHandler = (c) => {
   return send(c, `${csvHeader().join(',')}\r\n${example.join(',')}\r\n`, 'text/csv; charset=utf-8', 'szablon-aed.csv')
 }
 
-export const feedHandler: FileHandler = async (c) => {
+/** One provider's dataset for the portal's harvester; the portal merges every provider into the summary list. */
+export const providerFeedHandler: RouteHandler<typeof providerFeedRoute> = async (c) => {
+  const { id } = c.req.valid('param')
   const { store } = await getContext()
-  const official = await records('official')
+  const report = store.reports.find((candidate) => candidate.id === id)
+  if (!report) throw new ApiError(404, 'not_found', `No source with id ${id}.`)
+  const own = providerRecords(store, id)
+  const blocker = feedBlocker(report, own.length)
+  if (blocker !== null || !isPortalLicence(report.licence)) throw new ApiError(409, 'conflict', blocker ?? 'Licence outside the portal list.')
   const xml = harvesterXml(
-    nationalFeed({
+    providerFeed({
       baseUrl: config.publicApiUrl,
-      landingPage: config.publicWebUrl,
-      count: official.length,
-      attributions: [...new Set(official.flatMap((record) => record.zrodlo.split('; ')))].sort((a, b) => a.localeCompare(b, 'pl')),
-      dataDate: official.reduce((latest, record) => (record.data_aktualizacji > latest ? record.data_aktualizacji : latest), '') || today(),
+      landingPage: report.landingPage ?? config.publicWebUrl,
+      source: { id, name: report.name, attribution: report.attribution, licence: report.licence },
+      count: own.length,
+      dataDate: own.reduce((latest, record) => (record.data_aktualizacji > latest ? record.data_aktualizacji : latest), '') || today(),
       lastUpdate: store.ranAt ?? now(),
     }),
   )

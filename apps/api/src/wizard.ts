@@ -8,7 +8,7 @@
  */
 import { createHash } from 'node:crypto'
 import type { RouteHandler } from '@hono/zod-openapi'
-import { COMPOSITE_TARGETS, FIELD_NAMES, type AedRecord, type MappingTarget } from '@aed/schema'
+import { COMPOSITE_TARGETS, FIELD_NAMES, type MappingTarget } from '@aed/schema'
 import { config, now } from './config'
 import { getContext } from './context'
 import type { ImportRequest, approveSourceRoute, importCommitRoute, importPreviewRoute, sourceCsvRoute } from './contract'
@@ -23,6 +23,7 @@ import { checkSource, normalizeSource } from './pipeline/sources'
 import { PRIORITY, type NormalizedRecord, type RawTable, type SourceDef } from './pipeline/types'
 import { isLegacyXls, isXlsx, parseXls, parseXlsx } from './pipeline/xlsx'
 import { toCsv } from './publish/files'
+import { feedUrls, providerRecords } from './publish/providers'
 import { deviceName, welcomeProvider, type DeviceLinks } from './passport/service'
 import { ownerUrl, passportUrl, stickerUrl, verifyInvitation } from './radar/links'
 import type { z } from '@hono/zod-openapi'
@@ -176,7 +177,11 @@ function deviceLinks(store: Store, sourceId: string): DeviceLinks[] {
     .map((aed) => ({ id: aed.id, name: deviceName(aed.record), ownerUrl: ownerUrl(aed.id, store.passports.get(aed.id)?.linkVersion ?? 0), passportUrl: passportUrl(aed.id), stickerUrl: stickerUrl(aed.id) }))
 }
 
-const files = (sourceId: string) => ({ csv: `${config.publicApiUrl}/v1/sources/${sourceId}/aed.csv`, report: `${config.publicApiUrl}/v1/sources` })
+const files = (store: Store, sourceId: string) => ({
+  csv: `${config.publicApiUrl}/v1/sources/${sourceId}/aed.csv`,
+  report: `${config.publicApiUrl}/v1/sources`,
+  feed: feedUrls(store).get(sourceId) ?? null,
+})
 
 export const importCommitHandler: RouteHandler<typeof importCommitRoute> = async (c) => {
   const request = c.req.valid('json')
@@ -200,7 +205,7 @@ export const importCommitHandler: RouteHandler<typeof importCommitRoute> = async
   if (prepared.def.contactEmail) await welcomeProvider(store, prepared.def.contactEmail, devices, now())
 
   return c.json(
-    { stub: false, status: approved ? ('published' as const) : ('pending' as const), sourceId: prepared.def.id, ...outcome(store, prepared.def.id), files: files(prepared.def.id), devices },
+    { stub: false, status: approved ? ('published' as const) : ('pending' as const), sourceId: prepared.def.id, ...outcome(store, prepared.def.id), files: files(store, prepared.def.id), devices },
     200,
   )
 }
@@ -217,7 +222,7 @@ export const approveSourceHandler: RouteHandler<typeof approveSourceRoute> = asy
   const devices = deviceLinks(store, id)
   const contactEmail = (await store.storedDef(id))?.contactEmail
   if (contactEmail) await welcomeProvider(store, contactEmail, devices, now())
-  return c.json({ stub: false, status: 'published' as const, sourceId: id, ...outcome(store, id), files: files(id), devices }, 200)
+  return c.json({ stub: false, status: 'published' as const, sourceId: id, ...outcome(store, id), files: files(store, id), devices }, 200)
 }
 
 /** A provider's own devices in the data pattern, whatever their publication state. */
@@ -225,10 +230,5 @@ export const sourceCsvHandler: RouteHandler<typeof sourceCsvRoute> = async (c) =
   const { id } = c.req.valid('param')
   const { store } = await getContext()
   if (!store.reports.some((report) => report.id === id)) throw new ApiError(404, 'not_found', `No source with id ${id}.`)
-  const records: AedRecord[] = store.aeds
-    // Only devices whose values come from this source: a record built from someone else's data is not theirs to publish.
-    .filter((aed) => aed.publication !== 'incomplete' && aed.sources.some((ref) => ref.sourceId === id && ref.role === 'values'))
-    .map((aed) => aed.record)
-    .sort((a, b) => a.nazwa.localeCompare(b.nazwa, 'pl') || a.id.localeCompare(b.id))
-  return c.body(toCsv(records), 200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="aed-${id}.csv"` })
+  return c.body(toCsv(providerRecords(store, id)), 200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="aed-${id}.csv"` })
 }

@@ -99,6 +99,9 @@ describe('commit and approval', () => {
     sourceId = result.sourceId
 
     expect(await counts()).toEqual({ ...before, pending: 2 })
+    // Nothing goes to dane.gov.pl before approval: no feed link, and the feed itself refuses.
+    expect(result.files.feed).toBeNull()
+    expect((await app.request(`/feeds/dostawcy/${sourceId}/dane-gov-pl.xml`)).status).toBe(409)
     expect(await csvRows('/dane/aed.csv')).toHaveLength(before.official + 1)
     const map = (await (await app.request('/v1/aed.geojson?layer=all')).json()) as any
     expect(map.features.some((feature: any) => feature.properties.nazwa === 'Urząd Gminy Testowo')).toBe(false)
@@ -136,6 +139,16 @@ describe('commit and approval', () => {
 
     const own = await csvRows(`/v1/sources/${sourceId}/aed.csv`)
     expect(own).toHaveLength(3)
+
+    // The provider publishes its own dataset in dane.gov.pl, tagged for the portal's summary list.
+    const sources = ((await (await app.request('/v1/sources')).json()) as any).items as any[]
+    const feedUrl: string = sources.find((source) => source.id === sourceId).feedUrl
+    expect(feedUrl.endsWith(`/feeds/dostawcy/${sourceId}/dane-gov-pl.xml`)).toBe(true)
+    const feed = await (await app.request(new URL(feedUrl).pathname)).text()
+    expect(feed).toContain('<tag lang="pl">wykaz-aed</tag>')
+    expect(feed).toContain(`/v1/sources/${sourceId}/aed.csv</url>`)
+    expect(feed).toContain('<dbOrCopyrightedLicenseChosen>CC0 1.0</dbOrCopyrightedLicenseChosen>')
+    expect(feed).toContain('Defibrylatory AED – Urząd Gminy Testowo')
     const detail = (await (await app.request(`/v1/aed/${list.items[0].id}`)).json()) as any
     expect(detail.sources).toEqual([expect.objectContaining({ sourceId, role: 'values', name: 'Urząd Gminy Testowo' })])
   })
@@ -182,5 +195,18 @@ describe('passports for the provider', () => {
     expect((await post('/admin/jobs/reminders', {}, OPERATOR)).status).toBe(200)
     const reminder = (await outbox()).find((message) => message.reason === 'reminder' && message.recipient === provider.email)
     expect(reminder.body).toContain('elektrody dla dorosłych: ważne do 25.11.2026 (zostało 4 dni)')
+  })
+})
+
+describe('feeds for dane.gov.pl', () => {
+  it('gives every official source a feed of its own, but not OpenStreetMap', async () => {
+    const sources = ((await (await app.request('/v1/sources')).json()) as any).items as any[]
+    const city = sources.find((source) => source.id === 'dane-gov-pl-54632')
+    expect(city.feedUrl).toBe('https://api.aed.example.gov.pl/feeds/dostawcy/dane-gov-pl-54632/dane-gov-pl.xml')
+    expect(await (await app.request(new URL(city.feedUrl).pathname)).text()).toContain('/v1/sources/dane-gov-pl-54632/aed.csv</url>')
+    const osm = sources.find((source) => source.kind === 'osm')
+    expect(osm.feedUrl).toBeNull()
+    expect((await app.request(`/feeds/dostawcy/${osm.id}/dane-gov-pl.xml`)).status).toBe(409)
+    expect((await app.request('/feeds/dostawcy/nie-ma-takiego/dane-gov-pl.xml')).status).toBe(404)
   })
 })

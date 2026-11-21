@@ -12,7 +12,7 @@ import { parseDelimited } from '../src/pipeline/parse'
 import { runPipeline, type PipelineResult } from '../src/pipeline/run'
 import { loadSourceDefs } from '../src/pipeline/sources'
 import { csvCell, toCsv, toGeoJson } from '../src/publish/files'
-import { harvesterXml, nationalFeed } from '../src/publish/harvester'
+import { WYKAZ_TAG, harvesterXml, providerFeed } from '../src/publish/harvester'
 
 const XSD = resolve(import.meta.dirname, 'fixtures/harvester/xml_import_otwarte_dane_1_13.xsd')
 const officialDefs = loadSourceDefs().filter((def) => def.id.startsWith('dane-gov-pl-'))
@@ -153,14 +153,14 @@ describe('files for dane.gov.pl', () => {
     expect(office.geometry.coordinates).toEqual([20.931382, 52.395198])
   })
 
-  it('writes a harvester feed that the portal schema accepts', () => {
-    const official = store.official()
+  it('writes a provider feed that the portal schema accepts', () => {
     const xml = harvesterXml(
-      nationalFeed({
+      providerFeed({
         baseUrl: 'https://api.aed.example.gov.pl',
         landingPage: 'https://aed.example.gov.pl',
-        count: official.length,
-        attributions: [...new Set(official.map((record) => record.zrodlo))],
+        // A wizard source id is longer than the 36 characters extIdent allows.
+        source: { id: 'upload-urzad-gminy-bardzo-dluga-nazwa-gminy-0123abcd', name: 'Urząd Gminy Testowo', attribution: 'Urząd Gminy Testowo', licence: 'CC BY 4.0' },
+        count: 2,
         dataDate: '2026-11-21',
         lastUpdate: '2026-11-21T10:00:00.000Z',
       }),
@@ -171,6 +171,9 @@ describe('files for dane.gov.pl', () => {
     const output = execFileSync('xmllint', ['--noout', '--schema', XSD, file], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
     expect(output).toBe('')
     expect(xml).toContain('<dbOrCopyrightedLicenseChosen>CC BY 4.0</dbOrCopyrightedLicenseChosen>')
-    expect(xml).toContain('<url>https://api.aed.example.gov.pl/dane/aed.csv</url>')
+    expect(xml).toContain('<url>https://api.aed.example.gov.pl/v1/sources/upload-urzad-gminy-bardzo-dluga-nazwa-gminy-0123abcd/aed.csv</url>')
+    // The tag that enrols the dataset in the portal's summary list.
+    expect(xml).toContain(`<tag lang="pl">${WYKAZ_TAG}</tag>`)
+    expect(xml).toContain('Urząd Gminy Testowo')
   })
 })

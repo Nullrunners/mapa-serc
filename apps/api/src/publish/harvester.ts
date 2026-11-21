@@ -3,8 +3,12 @@
  *
  * The portal has no write API for providers: an administrator registers the feed's address once and the
  * portal then downloads it on a schedule, creating and updating the dataset and its resources by `extIdent`.
- * The XSD (test/fixtures/harvester) is the portal's own; test/publish.test.ts validates this output against it.
+ * The XSD (test/fixtures/harvester) is the portal's own; test/pipeline.test.ts validates this output against it.
+ *
+ * Every provider gets a feed of its own: data published as one dataset under one provider make that provider
+ * answerable for all of it (organisers' rule), so the nationwide list is built by the portal, not by us.
  */
+import { createHash } from 'node:crypto'
 
 export const HARVESTER_NAMESPACE = 'urn:otwarte-dane:harvester:1.13'
 
@@ -100,55 +104,70 @@ export function harvesterXml(dataset: FeedDataset): string {
   ].join('\n')
 }
 
-/** The national AED dataset as the portal should list it. `baseUrl` is the public https address of this API. */
-export function nationalFeed(options: { baseUrl: string; landingPage?: string; count: number; attributions: string[]; dataDate: string; lastUpdate: string }): FeedDataset {
+/**
+ * The tag that enrols a dataset in the portal's summary list of AEDs ("wykaz zbiorczy", see portal/ in this
+ * repository). Tags exist in the admin panel, in the XML feed and in CKAN, so a provider can join without any
+ * schema change; the portal then checks the columns of every tagged CSV against the data pattern.
+ */
+export const WYKAZ_TAG = 'wykaz-aed'
+
+/** Licences the portal's dictionary knows; a source under any other licence cannot be published there. */
+export const PORTAL_LICENCES = ['CC0 1.0', 'CC BY 4.0'] as const
+export type PortalLicence = (typeof PORTAL_LICENCES)[number]
+export const isPortalLicence = (licence: string): licence is PortalLicence => (PORTAL_LICENCES as readonly string[]).includes(licence)
+
+/** extIdent is at most 36 characters; a long source id is shortened to a stable hash. */
+function extIdentFor(sourceId: string, suffix: string): string {
+  const plain = `aed-${sourceId}${suffix}`
+  if (plain.length <= 36) return plain
+  return `aed-${createHash('sha1').update(sourceId).digest('hex').slice(0, 36 - 4 - suffix.length)}${suffix}`
+}
+
+/**
+ * One provider's AEDs as a dataset of that provider. The provider registers this feed in the portal under its own
+ * institution, so it stays the one responsible for its devices; the portal merges all providers into one list.
+ * `baseUrl` is the public https address of this API.
+ */
+export function providerFeed(options: {
+  baseUrl: string
+  landingPage?: string
+  source: { id: string; name: string; attribution: string; licence: PortalLicence }
+  count: number
+  dataDate: string
+  lastUpdate: string
+}): FeedDataset {
   const base = options.baseUrl.replace(/\/$/, '')
-  const sources = options.attributions.join('; ')
+  const { source } = options
   return {
-    extIdent: 'aed-polska',
-    titlePl: 'Lokalizacje defibrylatorów AED w Polsce',
-    titleEn: 'Locations of AED defibrillators in Poland',
+    extIdent: extIdentFor(source.id, ''),
+    titlePl: `Defibrylatory AED – ${source.name}`,
+    titleEn: `AED defibrillators – ${source.name}`,
     descriptionPl:
-      `Ogólnopolski zbiór publicznie dostępnych automatycznych defibrylatorów zewnętrznych (AED): położenie, dokładne umiejscowienie, godziny i zasady dostępu, ` +
-      `podmiot odpowiedzialny oraz data ostatniej weryfikacji. Zbiór powstaje ze zgłoszeń opiekunów urządzeń i ze zbiorów samorządów; wszystkie rekordy mają ` +
-      `jednolity zakres danych (wzorzec danych AED), stały identyfikator i kod TERYT gminy. Liczba urządzeń: ${options.count}. Źródła: ${sources}.`,
+      `Publicznie dostępne automatyczne defibrylatory zewnętrzne (AED), za które odpowiada ${source.name}: położenie, dokładne umiejscowienie, ` +
+      `godziny i zasady dostępu oraz data ostatniej weryfikacji. Dane mają zakres wzorca danych AED, dlatego portal włącza je do wykazu zbiorczego ` +
+      `defibrylatorów z całej Polski (tag „${WYKAZ_TAG}”). Liczba urządzeń: ${options.count}.`,
     descriptionEn:
-      `Nationwide dataset of publicly accessible automated external defibrillators (AED): position, exact placement, opening hours and access rules, ` +
-      `responsible entity and the date of the last verification. Built from submissions by device owners and from municipal datasets; every record follows one ` +
-      `data pattern and carries a stable identifier and the TERYT code of its commune. Number of devices: ${options.count}.`,
+      `Publicly accessible automated external defibrillators (AED) maintained by ${source.name}: position, exact placement, opening hours, access rules ` +
+      `and the date of the last verification. The data follow the AED data pattern, so the portal merges them into the nationwide summary list ` +
+      `(tag "${WYKAZ_TAG}"). Number of devices: ${options.count}.`,
     url: options.landingPage,
-    licence: 'CC BY 4.0',
+    licence: source.licence,
     conditions:
-      `Dane można wykorzystywać bez ograniczeń pod warunkiem podania źródła wskazanego w kolumnie „zrodlo" każdego rekordu oraz informacji o przetworzeniu. ` +
-      `Licencję rekordu podaje kolumna „licencja". Źródła: ${sources}.`,
-    tagsPl: ['AED', 'defibrylator', 'pierwsza pomoc', 'ratownictwo', 'zdrowie', 'bezpieczeństwo'],
+      source.licence === 'CC0 1.0'
+        ? `Dane można wykorzystywać bez ograniczeń.`
+        : `Dane można wykorzystywać bez ograniczeń pod warunkiem podania źródła: ${source.attribution}.`,
+    tagsPl: [WYKAZ_TAG, 'AED', 'defibrylator', 'pierwsza pomoc', 'ratownictwo', 'zdrowie'],
     tagsEn: ['AED', 'defibrillator', 'first aid', 'emergency', 'health'],
     dataDate: options.dataDate,
     lastUpdate: options.lastUpdate,
     resources: [
       {
-        extIdent: 'aed-polska-csv',
-        url: `${base}/dane/aed.csv`,
-        titlePl: 'Defibrylatory AED – tabela (CSV)',
-        titleEn: 'AED defibrillators – table (CSV)',
-        descriptionPl: 'Wszystkie urządzenia w pliku CSV zgodnym ze wzorcem danych AED (RFC 4180, UTF-8, separator przecinek). Kolumny szerokosc_geograficzna i dlugosc_geograficzna są w układzie WGS84.',
-        descriptionEn: 'All devices as a CSV file following the AED data pattern (RFC 4180, UTF-8, comma separated). Coordinates in WGS84.',
-      },
-      {
-        extIdent: 'aed-polska-geojson',
-        url: `${base}/dane/aed.geojson`,
-        titlePl: 'Defibrylatory AED – dane przestrzenne (GeoJSON)',
-        titleEn: 'AED defibrillators – spatial data (GeoJSON)',
-        descriptionPl: 'Te same urządzenia jako punkty GeoJSON (WGS84), gotowe do wczytania do aplikacji mapowych i systemów GIS.',
-        descriptionEn: 'The same devices as GeoJSON points (WGS84), ready for map applications and GIS.',
-      },
-      {
-        extIdent: 'aed-polska-jsonld',
-        url: `${base}/dane/aed.jsonld`,
-        titlePl: 'Defibrylatory AED – dane połączone (JSON-LD)',
-        titleEn: 'AED defibrillators – linked data (JSON-LD)',
-        descriptionPl: 'Te same urządzenia opisane słownikiem schema.org w formacie JSON-LD.',
-        descriptionEn: 'The same devices described with the schema.org vocabulary as JSON-LD.',
+        extIdent: extIdentFor(source.id, '-csv'),
+        url: `${base}/v1/sources/${encodeURIComponent(source.id)}/aed.csv`,
+        titlePl: `Defibrylatory AED – ${source.name} (CSV)`,
+        titleEn: `AED defibrillators – ${source.name} (CSV)`,
+        descriptionPl: 'Urządzenia w pliku CSV zgodnym ze wzorcem danych AED (RFC 4180, UTF-8, separator przecinek). Kolumny szerokosc_geograficzna i dlugosc_geograficzna są w układzie WGS84.',
+        descriptionEn: 'The devices as a CSV file following the AED data pattern (RFC 4180, UTF-8, comma separated). Coordinates in WGS84.',
       },
     ],
   }
