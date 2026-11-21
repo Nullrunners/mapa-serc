@@ -4,6 +4,7 @@ import { Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, useState } from "react";
 import { API_URL } from "@/lib/api/client";
+import type { Picked } from "./aed-details";
 
 // maplibre-gl 6 looks for its worker next to its own module (import.meta.url). Once Turbopack bundles it
 // into a chunk that file is not there, so the workers fail to load. Point it at the worker explicitly;
@@ -32,14 +33,25 @@ export interface AedMapProps {
   showCommunity: boolean;
   /** Point the list is sorted from; the map flies there. */
   focus: { lat: number; lon: number } | null;
-  onSelect: (id: string) => void;
+  /** Device shown in the panel next to the map; it gets a ring and the map flies to it. */
+  selected: Picked | null;
+  onSelect: (picked: Picked) => void;
+}
+
+type SourceData = Parameters<GeoJSONSource["setData"]>[0];
+const NOTHING: SourceData = { type: "FeatureCollection", features: [] };
+
+/** Runs `apply` now if our sources are on the map, otherwise right after they are added on "load". */
+function whenReady(map: MapLibreMap, apply: () => void) {
+  if (map.getSource("selected")) apply();
+  else map.once("load", apply);
 }
 
 /**
  * The map is an addition to the list next to it, not a replacement: everything it shows can be reached
  * from the list with a keyboard. Points come as two clustered GeoJSON sources straight from the API.
  */
-export default function AedMap({ showCommunity, focus, onSelect }: AedMapProps) {
+export default function AedMap({ showCommunity, focus, selected, onSelect }: AedMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const selectRef = useRef(onSelect);
@@ -97,14 +109,27 @@ export default function AedMap({ showCommunity, focus, onSelect }: AedMapProps) 
           map.easeTo({ center: feature.geometry.coordinates as [number, number], zoom });
         });
         map.on("click", `${layer.id}-points`, (event) => {
-          const id = event.features?.[0]?.properties?.id as string | undefined;
-          if (id) selectRef.current(id);
+          const feature = event.features?.[0];
+          const id = feature?.properties?.id as string | undefined;
+          if (!id || feature?.geometry.type !== "Point") return;
+          const [lon, lat] = feature.geometry.coordinates;
+          // Tile geometry carries float noise; 6 decimals is ~10 cm, more than any record holds.
+          selectRef.current({ id, lat: Number(lat.toFixed(6)), lon: Number(lon.toFixed(6)) });
         });
         for (const suffix of ["clusters", "points"]) {
           map.on("mouseenter", `${layer.id}-${suffix}`, () => (map.getCanvas().style.cursor = "pointer"));
           map.on("mouseleave", `${layer.id}-${suffix}`, () => (map.getCanvas().style.cursor = ""));
         }
       }
+
+      // A ring around the device shown in the panel, drawn above both layers.
+      map.addSource("selected", { type: "geojson", data: NOTHING });
+      map.addLayer({
+        id: "selected-ring",
+        type: "circle",
+        source: "selected",
+        paint: { "circle-radius": 12, "circle-opacity": 0, "circle-stroke-width": 4, "circle-stroke-color": "#1b1b1b" },
+      });
     });
 
     return () => {
@@ -129,6 +154,18 @@ export default function AedMap({ showCommunity, focus, onSelect }: AedMapProps) 
     if (focus) mapRef.current?.flyTo({ center: [focus.lon, focus.lat], zoom: 14 });
   }, [focus]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    whenReady(map, () => {
+      const data: SourceData = selected
+        ? { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [selected.lon, selected.lat] } }] }
+        : NOTHING;
+      (map.getSource("selected") as GeoJSONSource | undefined)?.setData(data);
+      if (selected) map.flyTo({ center: [selected.lon, selected.lat], zoom: Math.max(map.getZoom(), 15) });
+    });
+  }, [selected]);
+
   if (!drawable) {
     return (
       <div className="flex h-full min-h-[420px] w-full items-center justify-center rounded border border-line bg-gov-light p-6 text-center">
@@ -139,7 +176,11 @@ export default function AedMap({ showCommunity, focus, onSelect }: AedMapProps) 
 
   return (
     <div className="relative h-full min-h-[420px] w-full overflow-hidden rounded border border-line">
-      <div ref={container} className="absolute inset-0" role="region" aria-label="Mapa defibrylatorów AED. Te same urządzenia są na liście obok." />
+      {/* MapLibre's own CSS sets `.maplibregl-map { position: relative }` outside any cascade layer, so it beats
+          Tailwind's layered `absolute` and the map collapses to 0 px. The positioning lives on a wrapper instead. */}
+      <div className="absolute inset-0">
+        <div ref={container} className="h-full w-full" role="region" aria-label="Mapa defibrylatorów AED. Te same urządzenia są na liście obok." />
+      </div>
       <ul className="absolute bottom-2 left-2 flex gap-3 rounded bg-white/95 px-2 py-1 text-xs shadow" aria-label="Legenda mapy">
         {LAYERS.filter((layer) => layer.id === "official" || showCommunity).map((layer) => (
           <li key={layer.id} className="flex items-center gap-1">
