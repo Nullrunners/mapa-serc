@@ -47,6 +47,7 @@ export default function Finder({ title, lead }: { title: string; lead: string })
   const [lost, setLost] = useState(false);
   const listHeading = useRef<HTMLHeadingElement>(null);
   const wayRef = useRef<WalkingRoute | null>(null);
+  const noWayRef = useRef(false);
   const reroutedAt = useRef(0);
 
   const startGuiding = (picked: Picked) => {
@@ -113,9 +114,10 @@ export default function Finder({ title, lead }: { title: string; lead: string })
   const routeResult = route.state === "ready" ? route.data : route.state;
   const walk = useMemo<WalkOnMap | null>(() => {
     if (!near || toLat === undefined || toLon === undefined) return null;
-    const line = routeResult === "loading" ? "loading" : routeResult === "error" || routeResult === null ? "straight" : routeResult.line;
+    // The person being led keeps the direction on the map while a new way is looked for.
+    const line = routeResult === "loading" ? (guiding ? "straight" : "loading") : routeResult === "error" || routeResult === null ? "straight" : routeResult.line;
     return { from: near, to: { lat: toLat, lon: toLon }, line };
-  }, [near, toLat, toLon, routeResult]);
+  }, [near, toLat, toLon, routeResult, guiding]);
   const walkNote = near && target ? <WalkNote route={route} from={near} to={target} tooFar={!walkable} /> : null;
 
   // We can lead the person as soon as the device is within a walk; the way itself may still be on its way.
@@ -132,7 +134,8 @@ export default function Finder({ title, lead }: { title: string; lead: string })
 
   useEffect(() => {
     wayRef.current = way;
-  }, [way]);
+    noWayRef.current = route.state === "error";
+  }, [way, route.state]);
 
   useEffect(() => {
     if (!guiding) return;
@@ -141,9 +144,9 @@ export default function Finder({ title, lead }: { title: string; lead: string })
         const fix = { lat: coords.latitude, lon: coords.longitude };
         setHere(fix);
         setLost(false);
-        // Off the way by more than the GPS can be wrong: ask for a new way from here.
+        // Off the way by more than the GPS can be wrong, or no way at all because the router failed: ask again from here.
         const current = wayRef.current;
-        if (current && timestamp - reroutedAt.current > REROUTE_MS && follow(current, fix).offM > Math.max(OFF_WAY_M, coords.accuracy)) {
+        if (timestamp - reroutedAt.current > REROUTE_MS && (current ? follow(current, fix).offM > Math.max(OFF_WAY_M, coords.accuracy) : noWayRef.current)) {
           reroutedAt.current = timestamp;
           setNear(rounded(fix.lat, fix.lon));
         }

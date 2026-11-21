@@ -61,6 +61,8 @@ const EARTH_M = 6_371_000;
 export const MAX_WALK_M = 10_000;
 /** This far from the way the person is no longer walking along it, and a new way is worth asking for. */
 export const OFF_WAY_M = 40;
+/** The router answers in a fraction of a second; one quiet for longer is stuck, and the person needs a direction now. */
+const ROUTER_WAIT_MS = 6_000;
 
 /** GPS wanders by a dozen metres; within this the person is shown on the way, not next to it. */
 const ON_WAY_M = 25;
@@ -99,11 +101,25 @@ interface RouterRoute {
   legs: { steps: RouterStep[] }[];
 }
 
+/** Asks the router, giving up after `ROUTER_WAIT_MS` as well as when `signal` aborts. */
+async function askRouter(url: string, signal: AbortSignal): Promise<{ code: string; routes?: RouterRoute[] }> {
+  // Not `AbortSignal.any`: Safari has it only since 17.4, and older phones must still get a way.
+  const giveUp = new AbortController();
+  const abort = () => giveUp.abort();
+  const timer = setTimeout(abort, ROUTER_WAIT_MS);
+  signal.addEventListener("abort", abort);
+  try {
+    const response = await fetch(url, { signal: giveUp.signal });
+    if (!response.ok) throw new Error("Nie udało się wyznaczyć trasy.");
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener("abort", abort);
+  }
+}
+
 export async function walkingRoute(from: Point, to: Point, signal: AbortSignal): Promise<WalkingRoute> {
-  const url = `${ROUTER}/${from.lon},${from.lat};${to.lon},${to.lat}?overview=false&geometries=geojson&steps=true`;
-  const response = await fetch(url, { signal });
-  if (!response.ok) throw new Error("Nie udało się wyznaczyć trasy.");
-  const body = (await response.json()) as { code: string; routes?: RouterRoute[] };
+  const body = await askRouter(`${ROUTER}/${from.lon},${from.lat};${to.lon},${to.lat}?overview=false&geometries=geojson&steps=true`, signal);
   const route = body.code === "Ok" ? body.routes?.[0] : undefined;
   const steps = route?.legs[0]?.steps;
   if (!route || !steps?.length) throw new Error("Nie udało się wyznaczyć trasy.");
