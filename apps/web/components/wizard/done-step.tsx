@@ -26,7 +26,19 @@ export default function DoneStep({ headingRef, result, email }: { headingRef: Re
           Raport jakości
         </Link>
       </div>
-      <p className="hint">Ten plik możesz też wgrać na dane.gov.pl.</p>
+      <p className="hint">
+        Opublikuj go na dane.gov.pl jako swój zbiór z tagiem <strong>wykaz-aed</strong>, a portal sam doda Twoje urządzenia do wspólnego wykazu.
+        {result.files.feed && (
+          <>
+            {" "}
+            Możesz też podać w portalu{" "}
+            <a href={result.files.feed} className="link">
+              ten plik XML
+            </a>
+            , wtedy portal sam będzie pobierał aktualne dane.
+          </>
+        )}
+      </p>
 
       {result.devices.length > 0 && (
         <section aria-labelledby="paszporty-naglowek" className="space-y-3 border-t border-line pt-5">

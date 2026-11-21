@@ -18,7 +18,6 @@ const DOWNLOADS = [
   { label: "CSV", href: "/dane/aed.csv" },
   { label: "GeoJSON", href: "/dane/aed.geojson" },
   { label: "JSON-LD", href: "/dane/aed.jsonld" },
-  { label: "XML dla portalu dane.gov.pl", href: "/feeds/dane-gov-pl.xml" },
 ];
 
 const rowsWord = (rows: number) => (rows === 1 ? "wiersz" : "wierszy");
@@ -107,6 +106,18 @@ function SourceCard({ source }: { source: SourceReport }) {
         )}
         .
       </p>
+      {source.feedUrl && (
+        <p className="text-sm">
+          Dla dane.gov.pl:{" "}
+          <a href={`${API_URL}/v1/sources/${encodeURIComponent(source.id)}/aed.csv`} className="link">
+            dane we wzorcu (CSV)
+          </a>
+          {" · "}
+          <a href={source.feedUrl} className="link">
+            plik dla harvestera (XML)
+          </a>
+        </p>
+      )}
       {source.error && (
         <p role="alert" className="text-danger">
           {source.error}

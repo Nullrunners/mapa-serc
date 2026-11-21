@@ -344,15 +344,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/feeds/dane-gov-pl.xml": {
+    "/feeds/dostawcy/{id}/dane-gov-pl.xml": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Feed for the dane.gov.pl harvester (XML, schema 1.13) */
-        get: operations["getHarvesterFeed"];
+        /** One provider's feed for the dane.gov.pl harvester (XML, schema 1.13): a dataset of that provider, tagged for the portal's summary list of AEDs */
+        get: operations["getProviderFeed"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1211,6 +1211,8 @@ export interface components {
             }[];
             /** @description Zakres danych źródła względem wzorca: jedna pozycja na każde pole, które źródło może dostarczyć */
             coverage: components["schemas"]["FieldCoverage"][];
+            /** @description Plik XML tego dostawcy dla harvestera dane.gov.pl (zbiór dostawcy z tagiem wykaz-aed); null, gdy źródła nie można opublikować w portalu */
+            feedUrl: string | null;
         };
         /** @description Poprawka, którą system wprowadził sam. */
         Fix: {
@@ -1357,10 +1359,12 @@ export interface components {
             /** @description Rows merged into devices already in the national dataset */
             merged: number;
             incomplete: number;
-            /** @description Links for the provider: their data in the pattern, and the quality report */
+            /** @description Links for the provider: their data in the pattern, the quality report and their feed for dane.gov.pl */
             files: {
                 csv: string;
                 report: string;
+                /** @description The provider's own feed for the dane.gov.pl harvester; null while the submission waits for approval or when its licence is outside the portal list */
+                feed: string | null;
             };
             /** @description Published devices of the submission with the keeper links: passport management and the sticker to print. Empty while pending. */
             devices: {
@@ -2597,22 +2601,42 @@ export interface operations {
             };
         };
     };
-    getHarvesterFeed: {
+    getProviderFeed: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Feed for the dane.gov.pl harvester (XML, schema 1.13) */
+            /** @description Harvester feed of one provider */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/xml": string;
+                };
+            };
+            /** @description No source with this id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The source cannot be published in dane.gov.pl yet: awaiting approval, community data, a licence outside the portal list, or no devices */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description The request does not match the contract */

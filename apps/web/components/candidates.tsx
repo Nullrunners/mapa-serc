@@ -18,9 +18,10 @@ const TOKEN_KEY = "admin-token";
 
 /**
  * Leads for devices the official data does not know yet. Anyone can browse them;
- * with `admin` the operator also enters their token and decides on each one.
+ * with `admin` the operator also enters their token and decides on each one. A page that asks for the token
+ * itself passes a way to read it as `token`, and then this list shows no token field of its own.
  */
-export default function Candidates({ admin = false }: { admin?: boolean }) {
+export default function Candidates({ admin = false, token: sharedToken }: { admin?: boolean; token?: () => string }) {
   const [kind, setKind] = useState<(typeof KINDS)[number]["value"]>("");
   const tokenField = useRef<HTMLInputElement>(null);
   const [version, setVersion] = useState(0);
@@ -49,7 +50,7 @@ export default function Candidates({ admin = false }: { admin?: boolean }) {
 
   async function decide(candidate: Candidate, decision: "invite" | "reject") {
     setError(null);
-    const token = tokenField.current?.value ?? "";
+    const token = sharedToken ? sharedToken() : (tokenField.current?.value ?? "");
     const { data, response } = await api
       .POST("/v1/candidates/{id}/decision", { params: { path: { id: candidate.id } }, body: { decision }, headers: { Authorization: `Bearer ${token}` } })
       .catch(() => ({ data: undefined, response: undefined }));
@@ -72,7 +73,7 @@ export default function Candidates({ admin = false }: { admin?: boolean }) {
             ))}
           </div>
         </fieldset>
-        {admin && (
+        {admin && sharedToken === undefined && (
           <div className="space-y-1">
             <label htmlFor="token" className="label text-sm">
               Token administratora
