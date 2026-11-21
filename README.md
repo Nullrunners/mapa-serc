@@ -15,6 +15,7 @@ Dane urzędowe o AED to dziś pięć samorządowych zbiorów w portalu (782 urz�
 | Cyfrowy Paszport AED: strona urządzenia pod kodem QR (`/aed/{id}`), naklejka 10 × 10 cm z kodem QR i logo akcji (logo to na razie znak zastępczy w `apps/web/public/logo.svg`), wszystkie naklejki dostawcy na kartkach A4 po cztery (`/naklejki`), zgłoszenia przechodniów („jest na miejscu", szafka zamknięta, brak urządzenia, alarm baterii, uszkodzenie), panel opiekuna (`/opiekun`) z terminami ważności elektrod i baterii i przyciskiem „Potwierdzam sprawność", który od razu zmienia status i datę weryfikacji w plikach dla portalu; karta urządzenia na mapie pokazuje potwierdzenia opiekuna i przechodniów oraz otwarte zgłoszenia z paszportu | działa; API w testach, strony i wydruk do PDF obejrzane w przeglądarce |
 | Paszport: zgłoszenia przechodniów z limitami (jedno na godzinę od osoby, 30 dziennie od osoby, 20 dziennie na urządzenie); problem liczy się według liczby osób, nie kliknięć | działa w testach; bez captchy |
 | Paszport: po publikacji zgłoszenia z kreatora dostawca dostaje e-mailem naklejki i linki do paneli opiekuna, a jego adres staje się adresem przypomnień; przypomnienia e-mail (SMTP) i SMS (SMSAPI.pl) 30 i 7 dni przed terminem i po nim, powiadomienie opiekuna o zgłoszonym problemie, link do panelu wysyłany na adres e-mail z danych urządzenia | działa w testach; bez `SMTP_URL` / `SMSAPI_TOKEN` wiadomości trafiają tylko do dziennika (`GET /admin/outbox`). Wiadomości dostają tylko ci, którzy sami podali adres: opiekunowie z paszportem i dostawcy, którzy wpisali e-mail w kreatorze |
+| Paszport: logowanie opiekuna przez mObywatel (`/logowanie`, `/opiekun`). Opiekun, który wszedł do panelu linkiem, dodaje urządzenie do swojego konta i potem wchodzi już samym logowaniem, także prosto ze strony urządzenia po zeskanowaniu naklejki; „Moje defibrylatory” pokazują wszystkie jego urządzenia. Przy potwierdzeniu sprawności widać, że zrobiła to zalogowana osoba, a współopiekunowie widzą kto (imię i pierwsza litera nazwiska) | **wersja pokazowa**: zamiast login.gov.pl jest ekran z trzema zmyślonymi osobami do wyboru, więc logowanie niczego nie chroni i nie potwierdza tożsamości. Reszta (konta, sesje, urządzenia przy koncie, odłączanie) działa w testach API i była przeklikana w przeglądarce. Samo logowanie nie daje dostępu do urządzenia: potrzebny jest jeszcze link opiekuna |
 | Naklejka NFC | na stronie naklejki przycisk zapisuje ten sam adres co w kodzie QR na naklejce NFC (Chrome na Androidzie), w innych przeglądarkach można skopiować adres; nie testowaliśmy tego na telefonie z prawdziwą naklejką |
 | Potok scalania: odczyt plików w dowolnym dialekcie, automatyczne poprawki (także współrzędne w metrach, w układach PUWG 1992 i PUWG 2000), kody TERYT i geokodowanie z rejestrów GUGiK, deduplikacja, pochodzenie każdego pola, ocena jakości | działa |
 | Pliki zbioru krajowego: CSV (RFC 4180), GeoJSON, JSON-LD, metadane CSVW | działa |
@@ -29,6 +30,8 @@ Dane urzędowe o AED to dziś pięć samorządowych zbiorów w portalu (782 urz�
 | Łączenie rekordów po numerze urządzenia zapisanym w innym źródle (OpenStreetMap podaje numer z API Warszawy) | działa |
 | „Gdzie brakuje AED" (`/braki`, `/v1/gaps`): mieszkańcy ze spisu 2021 w sześciokątach H3 na tle godzin tygodnia, w których sprawny defibrylator jest w zasięgu 400 m (bez przeterminowanych elektrod i baterii i bez zgłoszonych przez przechodniów jako brakujące); mapa luk, 10 najlepszych miejsc na nowe urządzenie w wybranym obszarze, raport miejsca z gotowym uzasadnieniem do wniosku (druk do PDF, CSV) | działa; sprawdzone w przeglądarce na komputerze i telefonie |
 | Budynek-gospodarz z OpenStreetMap przy polecanym miejscu (szkoła, urząd, apteka) i ruch dzienny (dworce, galerie) w liczeniu potrzeb | do zrobienia |
+
+Logowanie przez mObywatel w wersji docelowej to login.gov.pl (Węzeł Krajowy): serwis przekierowuje tam opiekuna, a z powrotem dostaje podpisane potwierdzenie z imieniem, nazwiskiem i numerem PESEL. Przyłączenie serwisu wymaga testów na środowisku integracyjnym, wniosku i zgody ministra właściwego do spraw informatyzacji ([gov.pl/web/login/dla-integratorow](https://www.gov.pl/web/login/dla-integratorow)), dlatego w prototypie tę wymianę zastępuje ekran pokazowy. Kod za nim jest ten sam, który obsłuży prawdziwe logowanie (`apps/api/src/auth/identity.ts`): z tożsamości zapisujemy imię, pierwszą literę nazwiska i skrót identyfikatora, nigdy sam PESEL.
 
 Zgłoszenie wysłane z kreatora bez tokenu operatora ma stan „oczekuje": dostawca widzi wynik, ale rekordy wchodzą do plików dla portalu dopiero po zatwierdzeniu (`POST /admin/sources/{id}/approve`). Niezatwierdzone zgłoszenie nie może też zmienić rekordów już opublikowanych. W wersji docelowej token operatora zastępuje tożsamość dostawcy z login.gov.pl.
 
@@ -83,6 +86,7 @@ apps/api/          Hono + TypeScript + DuckDB
   src/wizard.ts    kreator: podgląd pliku, zgłoszenie, zatwierdzenie
   src/radar/       Radar AED: budowanie wskazówek, decyzje, linki zaproszeń
   src/passport/    Cyfrowy Paszport AED: zgłoszenia przechodniów, panel opiekuna, przypomnienia
+  src/auth/        konto opiekuna: logowanie przez mObywatel (w prototypie pokazowe), sesja, urządzenia przy koncie
   src/notify/      wysyłka e-mail (SMTP) i SMS (SMSAPI.pl) z dziennikiem wiadomości
   src/reach/       ranking „Najszybciej w ręku”
   src/gaps/        analiza luk: ludność w H3, godziny tygodnia urządzeń, wybór miejsc (zachłanny MCLP)
@@ -143,6 +147,7 @@ Zmienne nieobowiązkowe:
 
 - `SMTP_URL` i `MAIL_FROM` – wysyłka e-maili do opiekunów urządzeń (naklejki i linki do paszportów, przypomnienia o terminach, zgłoszenia przechodniów)
 - `SMSAPI_TOKEN`, `SMS_FROM` i `SMSAPI_TEST` – te same wiadomości SMS-em przez SMSAPI.pl; `SMSAPI_TEST=1` sprawdza wysyłkę bez dostarczania i bez kosztów
+- `MOBYWATEL_LOGIN` (domyślnie `demo`) – logowanie opiekuna przez mObywatel: `demo` to ekran pokazowy z przykładowymi osobami, `off` wyłącza logowanie i zostawia samo wejście linkiem. Na wdrożeniu z prawdziwymi opiekunami ustaw `off`, bo w trybie pokazowym każdy może wejść jako ta sama przykładowa osoba
 - `TRUSTED_PROXY_HOPS` (domyślnie 1) – liczba serwerów pośredniczących przed API; limity zgłoszeń przechodniów biorą adres klienta z nagłówka `X-Forwarded-For`, z tego miejsca od końca
 
 Bez zmiennych SMTP i SMSAPI wiadomości trafiają tylko do dziennika (`GET /admin/outbox`).
