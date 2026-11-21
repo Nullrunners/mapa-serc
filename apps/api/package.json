@@ -23,6 +23,7 @@
     "@hono/zod-openapi": "^1.6.3",
     "@scalar/hono-api-reference": "^0.12.20",
     "exceljs": "^4.4.0",
+    "h3-js": "^4.5.0",
     "hono": "^4.13.18",
     "tsx": "^4.23.15",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",

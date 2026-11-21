@@ -412,6 +412,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/gaps/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** National figures: residents with no defibrillator in reach, at all and at night, and how they were counted */
+        get: operations["getGapsSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/gaps/overview.geojson": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The country in large hexagons (H3 resolution 6) with residents and gaps, for the map */
+        get: operations["getGapsOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/gaps.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The recommended places of an area as CSV (ODbL 1.0: device positions come partly from OpenStreetMap) */
+        get: operations["downloadGapsCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/gaps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Gaps in one area: hexagons with the hours a defibrillator is in reach, and the best places for new ones */
+        get: operations["getGaps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/jobs/{name}": {
         parameters: {
             query?: never;
@@ -974,6 +1042,174 @@ export interface components {
         CandidateDecision: {
             /** @enum {string} */
             decision: "reject" | "invite";
+        };
+        GapsSummary: {
+            /** @description false while the national figures are being computed (a few seconds after a start or a new merge) */
+            ready: boolean;
+            computedAt: string | null;
+            tookMs: number | null;
+            totals: components["schemas"]["GapsTotals"];
+            method: components["schemas"]["GapsMethod"];
+        };
+        GapsTotals: {
+            residents: number;
+            /** @description Residents aged 65 or more */
+            seniors: number;
+            /** @description Residents with no known device within reach at all */
+            noDevice: number;
+            /** @description Residents with no device they can reach on Sunday at 3:00 */
+            noNight: number;
+            /** @description Share of resident-hours of the week with a device in reach (0–1) */
+            coveredShare: number;
+        } | null;
+        GapsMethod: {
+            /** @description H3 resolution of the analysis */
+            resolution: number;
+            /** @description A device counts for a hexagon when it is at most this far from its centre */
+            reachM: number;
+            /** @description How many times a resident aged 65+ counts in the ranking */
+            seniorWeight: number;
+            /** @example niedziela 3:00 */
+            nightHour: string;
+            /**
+             * @description Hours assumed for a device indoors that gives none
+             * @example Mo-Fr 08:00-16:00
+             */
+            assumedHours: string;
+            devices: components["schemas"]["GapsDeviceCounts"];
+            sources: {
+                name: string;
+                url: string;
+                licence: string;
+                attribution: string;
+            }[];
+            datasetRanAt: string | null;
+        };
+        GapsDeviceCounts: {
+            total: number;
+            /** @description Hours read from the record */
+            hours: number;
+            /** @description No hours, outside a building: counted as available around the clock */
+            outdoor: number;
+            /** @description No hours, inside a building or unknown: office hours assumed */
+            assumed: number;
+            /** @description Private, withdrawn or out of service: not counted */
+            excluded: number;
+        };
+        GapsOverview: {
+            /** @enum {string} */
+            type: "FeatureCollection";
+            features: {
+                /** @enum {string} */
+                type: "Feature";
+                geometry: {
+                    /** @enum {string} */
+                    type: "Polygon";
+                    coordinates: [
+                        number,
+                        number
+                    ][][];
+                };
+                properties: {
+                    hex: string;
+                    residents: number;
+                    noDevice: number;
+                    noNight: number;
+                    coveredShare: number;
+                };
+            }[];
+        };
+        GapsView: {
+            /** @description The area holds more populated squares than one analysis may; zoom in */
+            tooLarge: boolean;
+            cells: number;
+            maxCells: number;
+            totals: components["schemas"]["GapsTotals"];
+            hexes: components["schemas"]["GapsHexes"];
+            places: components["schemas"]["GapsPlace"][];
+            method: components["schemas"]["GapsMethod"];
+        };
+        GapsHexes: {
+            /** @enum {string} */
+            type: "FeatureCollection";
+            features: {
+                /** @enum {string} */
+                type: "Feature";
+                geometry: {
+                    /** @enum {string} */
+                    type: "Polygon";
+                    coordinates: [
+                        number,
+                        number
+                    ][][];
+                };
+                properties: {
+                    hex: string;
+                    residents: number;
+                    coveredHours: number;
+                    noDevice: boolean;
+                    noNight: boolean;
+                    /** @description Residents × share of the week without a device in reach */
+                    uncovered: number;
+                };
+            }[];
+        };
+        GapsPlace: {
+            rank: number;
+            hex: string;
+            lat: number;
+            lon: number;
+            /** @description Weighted resident-hours without a device that this place removes */
+            gain: number;
+            /** @description Residents in reach who gain round-the-clock access by this place (not counted again by later places) */
+            gained: {
+                residents: number;
+                seniors: number;
+                noDevice: number;
+                noNight: number;
+            };
+            inReach: {
+                residents: number;
+                seniors: number;
+            };
+            coveredHoursNow: number;
+            nearby: components["schemas"]["GapsNearbyDevice"][];
+            nearestAllWeek: {
+                id: string;
+                name: string;
+                distanceM: number;
+            } | null;
+            commune: {
+                terc: string;
+                gmina: string;
+                powiat: string;
+                wojewodztwo: string;
+            } | null;
+            /** @description Nearest address point within 100 m, if there is one */
+            address: string | null;
+            boundary: {
+                /** @enum {string} */
+                type: "Polygon";
+                coordinates: [
+                    number,
+                    number
+                ][][];
+            };
+        };
+        GapsNearbyDevice: {
+            id: string;
+            name: string;
+            distanceM: number;
+            hours: string | null;
+            /**
+             * @description Where the hours come from: the record, outdoors (around the clock), assumed office hours, or not counted
+             * @enum {string}
+             */
+            basis: "hours" | "outdoor" | "assumed" | "excluded";
+            hoursPerWeek: number;
+            atNight: boolean;
+            /** @enum {string} */
+            publication: "official" | "community";
         };
         JobResult: {
             job: string;
@@ -2003,6 +2239,168 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getGapsSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description National figures */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GapsSummary"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getGapsOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Large hexagons; empty while the national figures are being computed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GapsOverview"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    downloadGapsCsv: {
+        parameters: {
+            query: {
+                /** @description minLon,minLat,maxLon,maxLat – the area to analyse */
+                bbox: string;
+                /** @description How many places to recommend */
+                n?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One row per recommended place */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getGaps: {
+        parameters: {
+            query: {
+                /** @description minLon,minLat,maxLon,maxLat – the area to analyse */
+                bbox: string;
+                /** @description How many places to recommend */
+                n?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The analysis of the area */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GapsView"];
                 };
             };
             /** @description The request does not match the contract */

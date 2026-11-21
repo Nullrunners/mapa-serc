@@ -14,6 +14,10 @@ import {
   csvRoute,
   csvwRoute,
   feedRoute,
+  gapsCsvRoute,
+  gapsOverviewRoute,
+  gapsRoute,
+  gapsSummaryRoute,
   geojsonRoute,
   healthRoute,
   importCommitRoute,
@@ -52,6 +56,7 @@ import {
   tableSchemaHandler,
   templateHandler,
 } from './handlers'
+import { gapsCsvHandler, gapsHandler, gapsOverviewHandler, gapsSummaryHandler } from './gaps/handlers'
 import { candidateDecisionHandler, candidatesHandler } from './radar/handlers'
 import { approveSourceHandler, importCommitHandler, importPreviewHandler, sourceCsvHandler } from './wizard'
 
@@ -104,6 +109,11 @@ export const endpoints: Endpoint[] = [
 
   live(candidatesRoute, candidatesHandler),
   live(candidateDecisionRoute, candidateDecisionHandler),
+
+  live(gapsSummaryRoute, gapsSummaryHandler),
+  live(gapsOverviewRoute, gapsOverviewHandler),
+  live(gapsCsvRoute, gapsCsvHandler),
+  live(gapsRoute, gapsHandler),
 
   live(jobRoute, jobHandler),
 ]

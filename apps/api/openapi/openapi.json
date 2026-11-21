@@ -1735,6 +1735,630 @@
           "decision"
         ]
       },
+      "GapsSummary": {
+        "type": "object",
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "description": "false while the national figures are being computed (a few seconds after a start or a new merge)"
+          },
+          "computedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tookMs": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "totals": {
+            "$ref": "#/components/schemas/GapsTotals"
+          },
+          "method": {
+            "$ref": "#/components/schemas/GapsMethod"
+          }
+        },
+        "required": [
+          "ready",
+          "computedAt",
+          "tookMs",
+          "totals",
+          "method"
+        ]
+      },
+      "GapsTotals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "residents": {
+            "type": "integer"
+          },
+          "seniors": {
+            "type": "integer",
+            "description": "Residents aged 65 or more"
+          },
+          "noDevice": {
+            "type": "integer",
+            "description": "Residents with no known device within reach at all"
+          },
+          "noNight": {
+            "type": "integer",
+            "description": "Residents with no device they can reach on Sunday at 3:00"
+          },
+          "coveredShare": {
+            "type": "number",
+            "description": "Share of resident-hours of the week with a device in reach (0–1)"
+          }
+        },
+        "required": [
+          "residents",
+          "seniors",
+          "noDevice",
+          "noNight",
+          "coveredShare"
+        ]
+      },
+      "GapsMethod": {
+        "type": "object",
+        "properties": {
+          "resolution": {
+            "type": "integer",
+            "description": "H3 resolution of the analysis"
+          },
+          "reachM": {
+            "type": "integer",
+            "description": "A device counts for a hexagon when it is at most this far from its centre"
+          },
+          "seniorWeight": {
+            "type": "number",
+            "description": "How many times a resident aged 65+ counts in the ranking"
+          },
+          "nightHour": {
+            "type": "string",
+            "example": "niedziela 3:00"
+          },
+          "assumedHours": {
+            "type": "string",
+            "description": "Hours assumed for a device indoors that gives none",
+            "example": "Mo-Fr 08:00-16:00"
+          },
+          "devices": {
+            "$ref": "#/components/schemas/GapsDeviceCounts"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "licence": {
+                  "type": "string"
+                },
+                "attribution": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "url",
+                "licence",
+                "attribution"
+              ]
+            }
+          },
+          "datasetRanAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "resolution",
+          "reachM",
+          "seniorWeight",
+          "nightHour",
+          "assumedHours",
+          "devices",
+          "sources",
+          "datasetRanAt"
+        ]
+      },
+      "GapsDeviceCounts": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "hours": {
+            "type": "integer",
+            "description": "Hours read from the record"
+          },
+          "outdoor": {
+            "type": "integer",
+            "description": "No hours, outside a building: counted as available around the clock"
+          },
+          "assumed": {
+            "type": "integer",
+            "description": "No hours, inside a building or unknown: office hours assumed"
+          },
+          "excluded": {
+            "type": "integer",
+            "description": "Private, withdrawn or out of service: not counted"
+          }
+        },
+        "required": [
+          "total",
+          "hours",
+          "outdoor",
+          "assumed",
+          "excluded"
+        ]
+      },
+      "GapsOverview": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "FeatureCollection"
+            ]
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "Feature"
+                  ]
+                },
+                "geometry": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "Polygon"
+                      ]
+                    },
+                    "coordinates": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "array",
+                          "prefixItems": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "coordinates"
+                  ]
+                },
+                "properties": {
+                  "type": "object",
+                  "properties": {
+                    "hex": {
+                      "type": "string"
+                    },
+                    "residents": {
+                      "type": "integer"
+                    },
+                    "noDevice": {
+                      "type": "integer"
+                    },
+                    "noNight": {
+                      "type": "integer"
+                    },
+                    "coveredShare": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "hex",
+                    "residents",
+                    "noDevice",
+                    "noNight",
+                    "coveredShare"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "geometry",
+                "properties"
+              ]
+            }
+          }
+        },
+        "required": [
+          "type",
+          "features"
+        ]
+      },
+      "GapsView": {
+        "type": "object",
+        "properties": {
+          "tooLarge": {
+            "type": "boolean",
+            "description": "The area holds more populated squares than one analysis may; zoom in"
+          },
+          "cells": {
+            "type": "integer"
+          },
+          "maxCells": {
+            "type": "integer"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/GapsTotals"
+          },
+          "hexes": {
+            "$ref": "#/components/schemas/GapsHexes"
+          },
+          "places": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GapsPlace"
+            }
+          },
+          "method": {
+            "$ref": "#/components/schemas/GapsMethod"
+          }
+        },
+        "required": [
+          "tooLarge",
+          "cells",
+          "maxCells",
+          "totals",
+          "hexes",
+          "places",
+          "method"
+        ]
+      },
+      "GapsHexes": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "FeatureCollection"
+            ]
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "Feature"
+                  ]
+                },
+                "geometry": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "Polygon"
+                      ]
+                    },
+                    "coordinates": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "array",
+                          "prefixItems": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "coordinates"
+                  ]
+                },
+                "properties": {
+                  "type": "object",
+                  "properties": {
+                    "hex": {
+                      "type": "string"
+                    },
+                    "residents": {
+                      "type": "number"
+                    },
+                    "coveredHours": {
+                      "type": "integer"
+                    },
+                    "noDevice": {
+                      "type": "boolean"
+                    },
+                    "noNight": {
+                      "type": "boolean"
+                    },
+                    "uncovered": {
+                      "type": "number",
+                      "description": "Residents × share of the week without a device in reach"
+                    }
+                  },
+                  "required": [
+                    "hex",
+                    "residents",
+                    "coveredHours",
+                    "noDevice",
+                    "noNight",
+                    "uncovered"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "geometry",
+                "properties"
+              ]
+            }
+          }
+        },
+        "required": [
+          "type",
+          "features"
+        ]
+      },
+      "GapsPlace": {
+        "type": "object",
+        "properties": {
+          "rank": {
+            "type": "integer"
+          },
+          "hex": {
+            "type": "string"
+          },
+          "lat": {
+            "type": "number"
+          },
+          "lon": {
+            "type": "number"
+          },
+          "gain": {
+            "type": "integer",
+            "description": "Weighted resident-hours without a device that this place removes"
+          },
+          "gained": {
+            "type": "object",
+            "properties": {
+              "residents": {
+                "type": "integer"
+              },
+              "seniors": {
+                "type": "integer"
+              },
+              "noDevice": {
+                "type": "integer"
+              },
+              "noNight": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "residents",
+              "seniors",
+              "noDevice",
+              "noNight"
+            ],
+            "description": "Residents in reach who gain round-the-clock access by this place (not counted again by later places)"
+          },
+          "inReach": {
+            "type": "object",
+            "properties": {
+              "residents": {
+                "type": "integer"
+              },
+              "seniors": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "residents",
+              "seniors"
+            ]
+          },
+          "coveredHoursNow": {
+            "type": "integer"
+          },
+          "nearby": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GapsNearbyDevice"
+            }
+          },
+          "nearestAllWeek": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "distanceM": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "distanceM"
+            ]
+          },
+          "commune": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "terc": {
+                "type": "string"
+              },
+              "gmina": {
+                "type": "string"
+              },
+              "powiat": {
+                "type": "string"
+              },
+              "wojewodztwo": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "terc",
+              "gmina",
+              "powiat",
+              "wojewodztwo"
+            ]
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Nearest address point within 100 m, if there is one"
+          },
+          "boundary": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Polygon"
+                ]
+              },
+              "coordinates": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "required": [
+              "type",
+              "coordinates"
+            ]
+          }
+        },
+        "required": [
+          "rank",
+          "hex",
+          "lat",
+          "lon",
+          "gain",
+          "gained",
+          "inReach",
+          "coveredHoursNow",
+          "nearby",
+          "nearestAllWeek",
+          "commune",
+          "address",
+          "boundary"
+        ]
+      },
+      "GapsNearbyDevice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "distanceM": {
+            "type": "integer"
+          },
+          "hours": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "hours",
+              "outdoor",
+              "assumed",
+              "excluded"
+            ],
+            "description": "Where the hours come from: the record, outdoors (around the clock), assumed office hours, or not counted"
+          },
+          "hoursPerWeek": {
+            "type": "integer"
+          },
+          "atNight": {
+            "type": "boolean"
+          },
+          "publication": {
+            "type": "string",
+            "enum": [
+              "official",
+              "community"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "distanceM",
+          "hours",
+          "basis",
+          "hoursPerWeek",
+          "atNight",
+          "publication"
+        ]
+      },
       "JobResult": {
         "type": "object",
         "properties": {
@@ -3067,6 +3691,228 @@
               "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/gaps/summary": {
+      "get": {
+        "operationId": "getGapsSummary",
+        "tags": [
+          "gaps"
+        ],
+        "summary": "National figures: residents with no defibrillator in reach, at all and at night, and how they were counted",
+        "responses": {
+          "200": {
+            "description": "National figures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GapsSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/gaps/overview.geojson": {
+      "get": {
+        "operationId": "getGapsOverview",
+        "tags": [
+          "gaps"
+        ],
+        "summary": "The country in large hexagons (H3 resolution 6) with residents and gaps, for the map",
+        "responses": {
+          "200": {
+            "description": "Large hexagons; empty while the national figures are being computed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GapsOverview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/gaps.csv": {
+      "get": {
+        "operationId": "downloadGapsCsv",
+        "tags": [
+          "gaps"
+        ],
+        "summary": "The recommended places of an area as CSV (ODbL 1.0: device positions come partly from OpenStreetMap)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?(,-?\\d+(\\.\\d+)?){3}$",
+              "description": "minLon,minLat,maxLon,maxLat – the area to analyse",
+              "example": "20.85,52.10,21.27,52.37"
+            },
+            "required": true,
+            "description": "minLon,minLat,maxLon,maxLat – the area to analyse",
+            "name": "bbox",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 10,
+              "description": "How many places to recommend"
+            },
+            "required": false,
+            "description": "How many places to recommend",
+            "name": "n",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One row per recommended place",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/gaps": {
+      "get": {
+        "operationId": "getGaps",
+        "tags": [
+          "gaps"
+        ],
+        "summary": "Gaps in one area: hexagons with the hours a defibrillator is in reach, and the best places for new ones",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?(,-?\\d+(\\.\\d+)?){3}$",
+              "description": "minLon,minLat,maxLon,maxLat – the area to analyse",
+              "example": "20.85,52.10,21.27,52.37"
+            },
+            "required": true,
+            "description": "minLon,minLat,maxLon,maxLat – the area to analyse",
+            "name": "bbox",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 10,
+              "description": "How many places to recommend"
+            },
+            "required": false,
+            "description": "How many places to recommend",
+            "name": "n",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The analysis of the area",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GapsView"
                 }
               }
             }

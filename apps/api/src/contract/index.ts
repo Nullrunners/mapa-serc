@@ -492,6 +492,173 @@ export const candidateDecisionRoute = createRoute({
   },
 })
 
+// ---------------------------------------------------------------------- gaps
+
+export const GapsTotals = z
+  .object({
+    residents: z.number().int(),
+    seniors: z.number().int().openapi({ description: 'Residents aged 65 or more' }),
+    noDevice: z.number().int().openapi({ description: 'Residents with no known device within reach at all' }),
+    noNight: z.number().int().openapi({ description: 'Residents with no device they can reach on Sunday at 3:00' }),
+    coveredShare: z.number().openapi({ description: 'Share of resident-hours of the week with a device in reach (0–1)' }),
+  })
+  .openapi('GapsTotals')
+
+export const GapsMethod = z
+  .object({
+    resolution: z.number().int().openapi({ description: 'H3 resolution of the analysis' }),
+    reachM: z.number().int().openapi({ description: 'A device counts for a hexagon when it is at most this far from its centre' }),
+    seniorWeight: z.number().openapi({ description: 'How many times a resident aged 65+ counts in the ranking' }),
+    nightHour: z.string().openapi({ example: 'niedziela 3:00' }),
+    assumedHours: z.string().openapi({ description: 'Hours assumed for a device indoors that gives none', example: 'Mo-Fr 08:00-16:00' }),
+    devices: z
+      .object({
+        total: z.number().int(),
+        hours: z.number().int().openapi({ description: 'Hours read from the record' }),
+        outdoor: z.number().int().openapi({ description: 'No hours, outside a building: counted as available around the clock' }),
+        assumed: z.number().int().openapi({ description: 'No hours, inside a building or unknown: office hours assumed' }),
+        excluded: z.number().int().openapi({ description: 'Private, withdrawn or out of service: not counted' }),
+      })
+      .openapi('GapsDeviceCounts'),
+    sources: z.array(z.object({ name: z.string(), url: z.string(), licence: z.string(), attribution: z.string() })),
+    datasetRanAt: z.string().nullable(),
+  })
+  .openapi('GapsMethod')
+
+export const GapsSummary = z
+  .object({
+    ready: z.boolean().openapi({ description: 'false while the national figures are being computed (a few seconds after a start or a new merge)' }),
+    computedAt: z.string().nullable(),
+    tookMs: z.number().int().nullable(),
+    totals: GapsTotals.nullable(),
+    method: GapsMethod,
+  })
+  .openapi('GapsSummary')
+
+const Polygon = z.object({ type: z.literal('Polygon'), coordinates: z.array(z.array(z.tuple([z.number(), z.number()]))) })
+
+export const GapsOverview = z
+  .object({
+    type: z.literal('FeatureCollection'),
+    features: z.array(
+      z.object({
+        type: z.literal('Feature'),
+        geometry: Polygon,
+        properties: z.object({ hex: z.string(), residents: z.number().int(), noDevice: z.number().int(), noNight: z.number().int(), coveredShare: z.number() }),
+      }),
+    ),
+  })
+  .openapi('GapsOverview')
+
+export const GapsQuery = z.object({
+  bbox: z
+    .string()
+    .regex(/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?){3}$/)
+    .openapi({ description: 'minLon,minLat,maxLon,maxLat – the area to analyse', example: '20.85,52.10,21.27,52.37' }),
+  n: z.coerce.number().int().min(1).max(20).default(10).openapi({ description: 'How many places to recommend' }),
+})
+
+export const GapsNearbyDevice = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    distanceM: z.number().int(),
+    hours: z.string().nullable(),
+    basis: z.enum(['hours', 'outdoor', 'assumed', 'excluded']).openapi({ description: 'Where the hours come from: the record, outdoors (around the clock), assumed office hours, or not counted' }),
+    hoursPerWeek: z.number().int(),
+    atNight: z.boolean(),
+    publication: z.enum(['official', 'community']),
+  })
+  .openapi('GapsNearbyDevice')
+
+export const GapsPlace = z
+  .object({
+    rank: z.number().int(),
+    hex: z.string(),
+    lat: z.number(),
+    lon: z.number(),
+    gain: z.number().int().openapi({ description: 'Weighted resident-hours without a device that this place removes' }),
+    gained: z
+      .object({ residents: z.number().int(), seniors: z.number().int(), noDevice: z.number().int(), noNight: z.number().int() })
+      .openapi({ description: 'Residents in reach who gain round-the-clock access by this place (not counted again by later places)' }),
+    inReach: z.object({ residents: z.number().int(), seniors: z.number().int() }),
+    coveredHoursNow: z.number().int(),
+    nearby: z.array(GapsNearbyDevice),
+    nearestAllWeek: z.object({ id: z.string(), name: z.string(), distanceM: z.number().int() }).nullable(),
+    commune: z.object({ terc: z.string(), gmina: z.string(), powiat: z.string(), wojewodztwo: z.string() }).nullable(),
+    address: z.string().nullable().openapi({ description: 'Nearest address point within 100 m, if there is one' }),
+    boundary: Polygon,
+  })
+  .openapi('GapsPlace')
+
+export const GapsView = z
+  .object({
+    tooLarge: z.boolean().openapi({ description: 'The area holds more populated squares than one analysis may; zoom in' }),
+    cells: z.number().int(),
+    maxCells: z.number().int(),
+    totals: GapsTotals,
+    hexes: z
+      .object({
+        type: z.literal('FeatureCollection'),
+        features: z.array(
+          z.object({
+            type: z.literal('Feature'),
+            geometry: Polygon,
+            properties: z.object({
+              hex: z.string(),
+              residents: z.number(),
+              coveredHours: z.number().int(),
+              noDevice: z.boolean(),
+              noNight: z.boolean(),
+              uncovered: z.number().openapi({ description: 'Residents × share of the week without a device in reach' }),
+            }),
+          }),
+        ),
+      })
+      .openapi('GapsHexes'),
+    places: z.array(GapsPlace),
+    method: GapsMethod,
+  })
+  .openapi('GapsView')
+
+export const gapsSummaryRoute = createRoute({
+  method: 'get',
+  path: '/v1/gaps/summary',
+  operationId: 'getGapsSummary',
+  tags: ['gaps'],
+  summary: 'National figures: residents with no defibrillator in reach, at all and at night, and how they were counted',
+  responses: { 200: json(GapsSummary, 'National figures'), ...problems },
+})
+
+export const gapsOverviewRoute = createRoute({
+  method: 'get',
+  path: '/v1/gaps/overview.geojson',
+  operationId: 'getGapsOverview',
+  tags: ['gaps'],
+  summary: 'The country in large hexagons (H3 resolution 6) with residents and gaps, for the map',
+  responses: { 200: json(GapsOverview, 'Large hexagons; empty while the national figures are being computed'), ...problems },
+})
+
+export const gapsRoute = createRoute({
+  method: 'get',
+  path: '/v1/gaps',
+  operationId: 'getGaps',
+  tags: ['gaps'],
+  summary: 'Gaps in one area: hexagons with the hours a defibrillator is in reach, and the best places for new ones',
+  request: { query: GapsQuery },
+  responses: { 200: json(GapsView, 'The analysis of the area'), ...problems },
+})
+
+export const gapsCsvRoute = createRoute({
+  method: 'get',
+  path: '/v1/gaps.csv',
+  operationId: 'downloadGapsCsv',
+  tags: ['gaps'],
+  summary: 'The recommended places of an area as CSV (ODbL 1.0: device positions come partly from OpenStreetMap)',
+  request: { query: GapsQuery },
+  responses: { 200: file('text/csv', 'One row per recommended place'), ...problems },
+})
+
 // --------------------------------------------------------------------- admin
 
 export const JobResult = z
