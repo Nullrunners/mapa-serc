@@ -10,6 +10,13 @@ const AedMap = dynamic(() => import("./aed-map"), { ssr: false, loading: () => <
 
 const ACCESS_LABEL: Record<string, string> = { publiczny: "dostęp publiczny", ograniczony: "dostęp ograniczony", prywatny: "tylko dla personelu" };
 
+/** The answer to "can I get to it right now?", in words, so that it does not depend on colour. */
+const AVAILABLE_NOW = {
+  yes: { label: "Dostępny teraz", tone: "text-ok" },
+  no: { label: "Teraz niedostępny", tone: "text-danger" },
+  unknown: { label: "Nie wiadomo, czy teraz dostępny: dane nie podają godzin", tone: "text-muted" },
+} as const;
+
 const distance = (metres: number) => (metres < 1000 ? `${metres} m` : `${(metres / 1000).toFixed(1).replace(".", ",")} km`);
 
 const address = (item: AedItem) => {
@@ -24,12 +31,13 @@ export default function Finder() {
   const [near, setNear] = useState<{ lat: number; lon: number } | null>(null);
   const [locating, setLocating] = useState<"idle" | "asking" | "denied">("idle");
   const [showCommunity, setShowCommunity] = useState(true);
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
 
   const layer = showCommunity ? "all" : "official";
-  const list = useLoad(`${layer}|${submitted}|${near?.lat},${near?.lon}`, async (signal) => {
+  const list = useLoad(`${layer}|${submitted}|${near?.lat},${near?.lon}|${onlyAvailable}`, async (signal) => {
     const { data, error } = await api.GET("/v1/aed", {
-      params: { query: { layer, q: submitted || undefined, near: near ? `${near.lat},${near.lon}` : undefined, limit: 20 } },
+      params: { query: { layer, q: submitted || undefined, near: near ? `${near.lat},${near.lon}` : undefined, availableNow: onlyAvailable ? "true" : undefined, limit: 20 } },
       signal,
     });
     if (error || !data) throw new Error("Nie udało się pobrać listy urządzeń. Spróbuj ponownie za chwilę.");
@@ -87,15 +95,23 @@ export default function Finder() {
         </div>
         {locating === "denied" && (
           <p role="alert" className="text-sm text-danger">
-            Przeglądarka nie udostępniła położenia. Wpisz miejscowość albo ulicę w polu wyszukiwania.
+            Nie udało się ustalić, gdzie jesteś. Wpisz miejscowość albo ulicę w polu wyszukiwania.
           </p>
         )}
 
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={showCommunity} onChange={(event) => setShowCommunity(event.target.checked)} className="mt-1 size-4" />
           <span>
-            Pokaż też urządzenia niepotwierdzone przez opiekuna
-            <span className="block text-muted">źródło: OpenStreetMap; nie wchodzą do zbioru w dane.gov.pl</span>
+            Pokaż też urządzenia, które nie zostały jeszcze potwierdzone
+            <span className="block text-muted">Pochodzą z OpenStreetMap, więc mogą być nieaktualne. Nie trafiają do oficjalnych danych na dane.gov.pl.</span>
+          </span>
+        </label>
+
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" checked={onlyAvailable} onChange={(event) => setOnlyAvailable(event.target.checked)} className="mt-1 size-4" />
+          <span>
+            Pokaż tylko dostępne teraz
+            <span className="block text-muted">Tylko urządzenia, o których wiemy, że w tej chwili można się do nich dostać.</span>
           </span>
         </label>
 
@@ -109,7 +125,7 @@ export default function Finder() {
           {list.state === "ready" && (
             <>
               <p className="text-sm text-muted">
-                {list.data.total === 0 ? "Brak urządzeń dla tych kryteriów." : `Znaleziono ${list.data.total}; pokazuję ${list.data.items.length}.`}
+                {list.data.total === 0 ? "Nic nie znaleźliśmy. Spróbuj innej nazwy albo miejscowości." : `Znaleziono: ${list.data.total}. Poniżej ${list.data.items.length} pierwszych.`}
               </p>
               <ol className="mt-2 divide-y divide-line border-y border-line">
                 {list.data.items.map((item) => (
@@ -120,10 +136,11 @@ export default function Finder() {
                     </div>
                     {address(item) && <p className="text-sm">{address(item)}</p>}
                     {item.record.opis_lokalizacji && <p className="text-sm text-muted">{item.record.opis_lokalizacji}</p>}
+                    <p className={`text-sm font-semibold ${AVAILABLE_NOW[item.availableNow].tone}`}>{AVAILABLE_NOW[item.availableNow].label}</p>
                     <p className="flex flex-wrap gap-x-3 text-sm text-muted">
                       {item.record.godziny_dostepnosci && <span>Godziny: {item.record.godziny_dostepnosci === "24/7" ? "całą dobę" : item.record.godziny_dostepnosci}</span>}
                       {item.record.dostep && <span>{ACCESS_LABEL[item.record.dostep] ?? item.record.dostep}</span>}
-                      {item.publication === "community" && <span className="font-semibold text-warn">niepotwierdzone (OpenStreetMap)</span>}
+                      {item.publication === "community" && <span className="font-semibold text-warn">jeszcze niepotwierdzone (OpenStreetMap)</span>}
                     </p>
                   </li>
                 ))}

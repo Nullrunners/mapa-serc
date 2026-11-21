@@ -7,8 +7,8 @@ export default function ProviderPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <h1 className="text-2xl font-bold">Zgłoś urządzenia do zbioru krajowego</h1>
-        <p className="max-w-3xl text-muted">Cztery krótkie kroki i potwierdzenie. Bez instalowania czegokolwiek i bez wiedzy technicznej.</p>
+        <h1 className="text-2xl font-bold">Zgłoś swoje defibrylatory</h1>
+        <p className="max-w-3xl text-muted">Masz listę urządzeń w urzędzie, szkole czy firmie? Wgraj ją, a my pomożemy resztę. Cztery krótkie kroki, nic nie trzeba instalować ani umieć programować.</p>
       </div>
       <Wizard />
     </div>

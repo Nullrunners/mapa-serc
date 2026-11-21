@@ -142,27 +142,31 @@ export default function Wizard() {
             Wybierz plik z listą defibrylatorów
           </h2>
           <p>
-            Może to być plik, który już masz: CSV albo GeoJSON, w dowolnym układzie kolumn. Nie musisz go wcześniej przerabiać. System sam rozpozna kolumny, a Ty je potwierdzisz. Arkusz z Excela zapisz najpierw jako
-            CSV (Plik → Zapisz jako → CSV).
+            Wystarczy plik, który już masz, w dowolnym układzie kolumn. Nie musisz go przerabiać: sami zgadniemy, co jest czym, a Ty tylko to potwierdzisz. Arkusz z Excela (.xlsx) możesz wgrać od razu,
+            bez zapisywania go w innym formacie.
           </p>
           <div>
             <label htmlFor="plik" className="block font-semibold">
               Plik z urządzeniami
             </label>
             <p id="plik-opis" className="text-sm text-muted">
-              CSV lub GeoJSON, do 5 MB.
+              Excel (.xlsx), CSV lub GeoJSON, do 5 MB.
             </p>
-            <input id="plik" type="file" accept=".csv,.txt,.json,.geojson,text/csv,application/json,application/geo+json" aria-describedby="plik-opis" disabled={busy} onChange={(event) => chooseFile(event.target.files?.[0])} className="mt-2 block w-full rounded border border-muted p-2 file:mr-3 file:rounded file:border-0 file:bg-gov file:px-4 file:py-2 file:font-semibold file:text-white" />
+            <input id="plik" type="file" accept=".xlsx,.csv,.txt,.json,.geojson,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/json,application/geo+json" aria-describedby="plik-opis" disabled={busy} onChange={(event) => chooseFile(event.target.files?.[0])} className="mt-2 block w-full rounded border border-muted p-2 file:mr-3 file:rounded file:border-0 file:bg-gov file:px-4 file:py-2 file:font-semibold file:text-white" />
           </div>
           {busy && <p className="text-muted">Sprawdzam plik…</p>}
           <p className="text-sm">
             Nie masz jeszcze listy?{" "}
+            <a href={`${API_URL}/dane/wzorzec.xlsx`} className="text-gov underline">
+              Pobierz szablon w Excelu
+            </a>{" "}
+            (wypełnij arkusz „Szablon”),{" "}
             <a href={`${API_URL}/dane/szablon.csv`} className="text-gov underline">
-              Pobierz szablon CSV
+              szablon CSV
             </a>{" "}
             albo zobacz{" "}
             <Link href="/wzorzec" className="text-gov underline">
-              opis pól wzorca
+              opis wszystkich pól
             </Link>
             .
           </p>
@@ -175,8 +179,8 @@ export default function Wizard() {
             Sprawdź, czy kolumny są dobrze rozpoznane
           </h2>
           <p className="max-w-3xl">
-            W pliku „{file?.name}” jest {preview.summary.rows} {preview.summary.rows === 1 ? "wiersz" : "wierszy"}. Przy każdej kolumnie widać, do którego pola wzorca ją przypisaliśmy i dlaczego. Zmień przypisanie, jeśli
-            się nie zgadza.
+            W pliku „{file?.name}” jest {preview.summary.rows} {preview.summary.rows === 1 ? "wiersz" : "wierszy"}. Przy każdej kolumnie pokazujemy, za co ją uznaliśmy i dlaczego. Jeśli się pomyliliśmy,
+            wybierz właściwą odpowiedź z listy.
           </p>
           {preview.fileFixes.length > 0 && (
             <ul className="max-w-3xl list-disc rounded border border-line bg-gov-light p-3 pl-8 text-sm">
@@ -191,7 +195,7 @@ export default function Wizard() {
                 <tr className="border-b-2 border-ink">
                   <th scope="col" className="py-2 pr-3">Kolumna w pliku</th>
                   <th scope="col" className="py-2 pr-3">Przykładowe wartości</th>
-                  <th scope="col" className="py-2 pr-3">Pole wzorca</th>
+                  <th scope="col" className="py-2 pr-3">Co to jest</th>
                   <th scope="col" className="py-2">Dlaczego</th>
                 </tr>
               </thead>
@@ -224,8 +228,8 @@ export default function Wizard() {
           </div>
           {(!hasName || !hasPosition) && (
             <p role="alert" className="max-w-3xl text-danger">
-              {!hasName ? "Wskaż kolumnę z nazwą miejsca. " : ""}
-              {!hasPosition ? "Wskaż kolumny ze współrzędnymi albo z adresem." : ""}
+              {!hasName ? "Wskaż kolumnę z nazwą miejsca, w którym stoi urządzenie." : ""}
+              {!hasPosition ? "Wskaż kolumny z adresem albo ze współrzędnymi GPS, żebyśmy wiedzieli, gdzie urządzenie jest." : ""}
             </p>
           )}
           <div className="flex gap-3">
@@ -242,14 +246,14 @@ export default function Wizard() {
       {step === 3 && preview && (
         <section className="space-y-4">
           <h2 ref={heading} tabIndex={-1} className="text-xl font-bold">
-            Zobacz, co poprawiliśmy i co wymaga uwagi
+            Zobacz, co poprawiliśmy i na co warto spojrzeć
           </h2>
           <dl className="grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-4">
             {[
-              ["Gotowe do zgłoszenia", preview.summary.ready],
-              ["Poprawione automatycznie", preview.summary.withFixes],
-              ["Już znane systemowi", preview.summary.duplicates],
-              ["Wymagają uzupełnienia", preview.summary.withErrors],
+              ["Gotowe do wysłania", preview.summary.ready],
+              ["Poprawione przez nas", preview.summary.withFixes],
+              ["Już mamy w bazie", preview.summary.duplicates],
+              ["Wymagają Twojej uwagi", preview.summary.withErrors],
             ].map(([label, value]) => (
               <div key={label} className="rounded border border-line p-3">
                 <dt className="text-sm text-muted">{label}</dt>
@@ -298,8 +302,8 @@ export default function Wizard() {
                             <li>
                               <span className="font-semibold text-gov">Już w systemie:</span>{" "}
                               {row.duplicateOf.publication === "official"
-                                ? `„${row.duplicateOf.nazwa}” jest w zbiorze urzędowym (${row.duplicateOf.distanceM} m od tego punktu). Twoje dane zaktualizują ten rekord zamiast tworzyć drugi.`
-                                : `to urządzenie było dotąd znane tylko z mapy społeczności (${row.duplicateOf.distanceM} m od tego punktu). Twoje zgłoszenie je potwierdzi.`}
+                                ? `„${row.duplicateOf.nazwa}” już jest w oficjalnych danych (${row.duplicateOf.distanceM} m stąd). Zaktualizujemy ten wpis, nie dodamy drugiego.`
+                                : `to urządzenie znaliśmy dotąd tylko z mapy społeczności (${row.duplicateOf.distanceM} m stąd). Twoje zgłoszenie je potwierdzi.`}
                             </li>
                           )}
                           {row.fixes.length + row.issues.length === 0 && !row.duplicateOf && <li className="text-muted">Bez uwag.</li>}
@@ -311,7 +315,7 @@ export default function Wizard() {
               </tbody>
             </table>
           </div>
-          {preview.summary.rows > preview.rows.length && <p className="text-sm text-muted">Pokazano pierwsze {preview.rows.length} wierszy; zgłoszenie obejmie wszystkie {preview.summary.rows}.</p>}
+          {preview.summary.rows > preview.rows.length && <p className="text-sm text-muted">Dla czytelności pokazujemy pierwsze {preview.rows.length} wierszy, ale wyślemy wszystkie ({preview.summary.rows}).</p>}
           <div className="flex gap-3">
             <button type="button" onClick={() => setStep(2)} className="rounded border-2 border-gov px-4 py-2 font-semibold text-gov">
               Wstecz
@@ -334,13 +338,13 @@ export default function Wizard() {
           <h2 ref={heading} tabIndex={-1} className="text-xl font-bold">
             Podpisz zgłoszenie
           </h2>
-          {invitation && <p className="rounded border border-gov bg-gov-light p-3 text-sm">Zgłaszasz dane na zaproszenie operatora zbioru. Po wysłaniu zostaną opublikowane od razu.</p>}
+          {invitation && <p className="rounded border border-gov bg-gov-light p-3 text-sm">Dostałeś(-aś) zaproszenie od administratora zbioru, więc po wysłaniu dane pojawią się od razu.</p>}
           <div>
             <label htmlFor="dostawca" className="block font-semibold">
               Nazwa instytucji
             </label>
             <p id="dostawca-opis" className="text-sm text-muted">
-              Pojawi się przy każdym rekordzie jako źródło danych, na przykład „Urząd Miasta Marki”.
+              Pokażemy ją przy każdym urządzeniu jako źródło danych, na przykład „Urząd Miasta Marki”.
             </p>
             <input id="dostawca" required minLength={2} maxLength={200} autoComplete="organization" aria-describedby="dostawca-opis" value={provider.name} onChange={(event) => setProvider({ ...provider, name: event.target.value })} className="mt-1 w-full rounded border border-muted px-3 py-2" />
           </div>
@@ -349,15 +353,15 @@ export default function Wizard() {
               Adres e-mail instytucji <span className="font-normal text-muted">(nieobowiązkowy)</span>
             </label>
             <p id="email-opis" className="text-sm text-muted">
-              Na ten adres trafi przypomnienie o potwierdzeniu danych. Nie jest publikowany.
+              Wyślemy tu przypomnienie, żeby potwierdzić, że dane są aktualne. Nie pokazujemy go publicznie.
             </p>
             <input id="email" type="email" autoComplete="email" aria-describedby="email-opis" value={provider.email} onChange={(event) => setProvider({ ...provider, email: event.target.value })} className="mt-1 w-full rounded border border-muted px-3 py-2" />
           </div>
           <fieldset>
             <legend className="font-semibold">Na jakich warunkach udostępniasz dane?</legend>
             {[
-              { value: "CC0 1.0" as const, label: "Bez żadnych warunków (CC0 1.0)", hint: "Zalecane dla danych publicznych: każdy może z nich korzystać bez ograniczeń." },
-              { value: "CC BY 4.0" as const, label: "Z obowiązkiem podania źródła (CC BY 4.0)", hint: "Korzystający musi wskazać Twoją instytucję jako źródło." },
+              { value: "CC0 1.0" as const, label: "Bez żadnych warunków (CC0 1.0)", hint: "Polecamy dla danych publicznych: każdy może z nich swobodnie korzystać." },
+              { value: "CC BY 4.0" as const, label: "Z obowiązkiem podania źródła (CC BY 4.0)", hint: "Kto użyje tych danych, musi podać Twoją instytucję jako źródło." },
             ].map((option) => (
               <label key={option.value} className="mt-2 flex items-start gap-2">
                 <input type="radio" name="licencja" value={option.value} checked={provider.licence === option.value} onChange={() => setProvider({ ...provider, licence: option.value })} className="mt-1 size-4" />
@@ -370,7 +374,7 @@ export default function Wizard() {
           </fieldset>
           <label className="flex items-start gap-2">
             <input type="checkbox" required checked={provider.confirmed} onChange={(event) => setProvider({ ...provider, confirmed: event.target.checked })} className="mt-1 size-4" />
-            <span>Potwierdzam, że mam prawo udostępnić te dane i że nie zawierają one danych osobowych (prywatnych telefonów ani imiennych adresów e-mail).</span>
+            <span>Potwierdzam, że mogę udostępnić te dane i że nie ma w nich danych prywatnych osób, takich jak numery telefonów komórkowych czy imienne adresy e-mail.</span>
           </label>
           <div className="flex gap-3">
             <button type="button" onClick={() => setStep(3)} className="rounded border-2 border-gov px-4 py-2 font-semibold text-gov">
@@ -386,27 +390,27 @@ export default function Wizard() {
       {step === 5 && result && (
         <section className="max-w-3xl space-y-4">
           <h2 ref={heading} tabIndex={-1} className="text-xl font-bold">
-            {result.status === "published" ? "Urządzenia są w zbiorze krajowym" : "Zgłoszenie przyjęte"}
+            {result.status === "published" ? "Dziękujemy, urządzenia są już w bazie" : "Dziękujemy, zgłoszenie przyjęte"}
           </h2>
           <p>
             {result.status === "published"
-              ? "Dane zostały opublikowane i przy najbliższym pobraniu trafią do portalu dane.gov.pl."
-              : "Dane czekają na zatwierdzenie przez operatora zbioru. Po zatwierdzeniu trafią do zbioru krajowego i do portalu dane.gov.pl."}
+              ? "Dane są już widoczne na mapie, a przy najbliższej aktualizacji pojawią się też na portalu dane.gov.pl."
+              : "Administrator zbioru musi je jeszcze zatwierdzić. Potem zobaczysz je na mapie i na portalu dane.gov.pl."}
           </p>
           <ul className="list-disc space-y-1 pl-6">
             <li>Nowe urządzenia: {result.added}</li>
-            <li>Połączone z urządzeniami już obecnymi w zbiorze: {result.merged}</li>
-            {result.incomplete > 0 && <li>Do uzupełnienia (brak położenia lub nazwy): {result.incomplete}</li>}
+            <li>Urządzenia, które już znaliśmy i połączyliśmy z Twoimi danymi: {result.merged}</li>
+            {result.incomplete > 0 && <li>Do uzupełnienia (brakuje miejsca na mapie albo nazwy): {result.incomplete}</li>}
           </ul>
           <p>
             <a href={result.files.csv} className="font-semibold text-gov underline">
-              Pobierz swoje dane w układzie wzorca (CSV)
+              Pobierz swoje uporządkowane dane (CSV)
             </a>
-            . Ten plik możesz też udostępnić w zbiorze swojej instytucji w dane.gov.pl.
+            . Możesz je też wgrać na stronę swojej instytucji w dane.gov.pl.
           </p>
           <p>
             <Link href="/jakosc" className="text-gov underline">
-              Zobacz raport jakości swojego pliku
+              Zobacz, co sprawdziliśmy w Twoim pliku
             </Link>
           </p>
         </section>

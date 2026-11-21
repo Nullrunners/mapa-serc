@@ -7,15 +7,15 @@ const openSans = Open_Sans({ variable: "--font-open-sans", subsets: ["latin", "l
 
 export const metadata: Metadata = {
   title: { default: "AED Hub – defibrylatory w jednym zbiorze", template: "%s – AED Hub" },
-  description: "Ogólnopolski, otwarty zbiór danych o defibrylatorach AED dla portalu dane.gov.pl: zgłoś urządzenie, pobierz dane, znajdź najbliższy defibrylator.",
+  description: "Znajdź najbliższy defibrylator AED, zgłoś własny albo pobierz otwarte dane o wszystkich urządzeniach w Polsce.",
 };
 
 const NAV = [
   { href: "/", label: "Znajdź AED" },
   { href: "/dostawca", label: "Zgłoś urządzenia" },
   { href: "/radar", label: "Radar AED" },
-  { href: "/jakosc", label: "Źródła i jakość" },
-  { href: "/wzorzec", label: "Wzorzec danych" },
+  { href: "/jakosc", label: "Skąd te dane" },
+  { href: "/wzorzec", label: "Dla dostawców danych" },
 ];
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -53,8 +53,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               W nagłym wypadku dzwoń pod <strong className="text-ink">112</strong>. Dyspozytor wskaże najbliższy defibrylator i poprowadzi przez pierwszą pomoc.
             </p>
             <p>
-              Dane urzędowe: dostawcy wskazani przy każdym rekordzie (CC0 1.0 lub CC BY 4.0). Warstwa „niepotwierdzone”: © autorzy OpenStreetMap (ODbL). Mapa podkładowa: OpenFreeMap © OpenMapTiles, dane ©
-              OpenStreetMap. Prototyp z HackNation 2026.
+              Dane urzędowe pochodzą od instytucji wymienionych przy każdym urządzeniu i są otwarte (licencja CC0 1.0 lub CC BY 4.0). Urządzenia oznaczone jako niepotwierdzone pochodzą z OpenStreetMap, © autorzy
+              OpenStreetMap (ODbL). Mapa: OpenFreeMap © OpenMapTiles, dane © OpenStreetMap. Prototyp zrobiony na HackNation 2026.
             </p>
           </div>
         </footer>

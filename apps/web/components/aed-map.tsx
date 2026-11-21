@@ -2,7 +2,7 @@
 
 import { Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { API_URL } from "@/lib/api/client";
 
 // maplibre-gl 6 looks for its worker next to its own module (import.meta.url). Once Turbopack bundles it
@@ -17,6 +17,15 @@ const LAYERS = [
   { id: "official", color: "#0052a5", label: "urzędowe" },
   { id: "community", color: "#6b7280", label: "niepotwierdzone" },
 ] as const;
+
+/** MapLibre needs WebGL2. Without it the constructor throws, and an uncaught error here would take the list down too. */
+function canDrawMap(): boolean {
+  try {
+    return document.createElement("canvas").getContext("webgl2") !== null;
+  } catch {
+    return false;
+  }
+}
 
 export interface AedMapProps {
   /** Show the unconfirmed OpenStreetMap layer. */
@@ -38,9 +47,19 @@ export default function AedMap({ showCommunity, focus, onSelect }: AedMapProps) 
     selectRef.current = onSelect;
   }, [onSelect]);
 
+  const [drawable, setDrawable] = useState(canDrawMap);
+
   useEffect(() => {
-    if (!container.current) return;
-    const map = new MapLibreMap({ container: container.current, style: STYLE, bounds: POLAND, fitBoundsOptions: { padding: 16 } });
+    if (!drawable || !container.current) return;
+    let map: MapLibreMap;
+    try {
+      map = new MapLibreMap({ container: container.current, style: STYLE, bounds: POLAND, fitBoundsOptions: { padding: 16 } });
+    } catch {
+      // The browser reported WebGL2 and still refused a context (blocked driver, too many open maps).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDrawable(false);
+      return;
+    }
     mapRef.current = map;
     map.addControl(new NavigationControl({ showCompass: false }), "top-right");
 
@@ -92,7 +111,7 @@ export default function AedMap({ showCommunity, focus, onSelect }: AedMapProps) 
       mapRef.current = null;
       map.remove();
     };
-  }, []);
+  }, [drawable]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -109,6 +128,14 @@ export default function AedMap({ showCommunity, focus, onSelect }: AedMapProps) 
   useEffect(() => {
     if (focus) mapRef.current?.flyTo({ center: [focus.lon, focus.lat], zoom: 14 });
   }, [focus]);
+
+  if (!drawable) {
+    return (
+      <div className="flex h-full min-h-[420px] w-full items-center justify-center rounded border border-line bg-gov-light p-6 text-center">
+        <p className="max-w-sm">Ta przeglądarka nie potrafi wyświetlić mapy. Lista urządzeń działa bez niej: wpisz miejscowość albo ulicę w wyszukiwarce.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-full min-h-[420px] w-full overflow-hidden rounded border border-line">
