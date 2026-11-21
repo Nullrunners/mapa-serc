@@ -13,6 +13,8 @@ setWorkerUrl(new URL("../node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs", 
 export const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 /** Poland as the map first shows it. */
 export const POLAND: [number, number, number, number] = [14.1, 49.0, 24.2, 54.9];
+/** How far the map can be moved: Poland and about 80 km around it, no further. */
+const POLAND_LIMIT: [number, number, number, number] = [12.9, 48.3, 25.4, 55.5];
 
 export type SourceData = Parameters<GeoJSONSource["setData"]>[0];
 export const EMPTY: SourceData = { type: "FeatureCollection", features: [] };
@@ -37,17 +39,19 @@ export function canDrawMap(): boolean {
 }
 
 /**
- * A map of Poland with our style and Polish labels on its buttons, or null when the browser refuses WebGL (blocked
- * driver, too many open maps). The full-screen button takes `frame` there, so the legend drawn over the map goes with it.
+ * A map of Poland that cannot be moved away from it, with our style, Polish names and Polish labels on its buttons,
+ * or null when the browser refuses WebGL (blocked driver, too many open maps). The full-screen button takes `frame`
+ * there, so the legend drawn over the map goes with it.
  */
 export function createMap(container: HTMLElement, frame: HTMLElement | null): MapLibreMap | null {
   let map: MapLibreMap;
   try {
-    map = new MapLibreMap({ container, style: MAP_STYLE, bounds: POLAND, fitBoundsOptions: { padding: 16 }, locale: LOCALE });
+    map = new MapLibreMap({ container, style: MAP_STYLE, bounds: POLAND, fitBoundsOptions: { padding: 16 }, maxBounds: POLAND_LIMIT, locale: LOCALE });
   } catch {
     return null;
   }
   ignoreMissingStyleIcons(map);
+  map.once("style.load", () => namePlacesInPolish(map));
   map.addControl(new NavigationControl({ showCompass: false }), "top-right");
   map.addControl(new FullscreenControl(frame ? { container: frame } : {}), "top-right");
   return map;
@@ -62,6 +66,24 @@ function ignoreMissingStyleIcons(map: MapLibreMap): void {
   map.setMissingStyleImageResolver((id) => {
     if (!map.hasImage(id)) map.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) });
   });
+}
+
+/** The style prefers English names ("Warsaw", "Poland"); a Polish site says "Warszawa", "Polska" and "Niemcy". */
+function namePlacesInPolish(map: MapLibreMap): void {
+  for (const layer of map.getStyle().layers) {
+    if (layer.type !== "symbol" || !JSON.stringify(map.getLayoutProperty(layer.id, "text-field") ?? "").includes("name_en")) continue;
+    map.setLayoutProperty(layer.id, "text-field", ["coalesce", ["get", "name:pl"], ["get", "name"]]);
+  }
+}
+
+/**
+ * A white veil over everything outside Poland, so the eye stays on the country the data is about. It lies above the
+ * base map (its labels too) and under all our layers, which are added after it. The outline is Natural Earth 1:10m
+ * (public domain) simplified to about 200 m, so close to the border the veil thins out.
+ */
+function dimOutsidePoland(map: MapLibreMap): void {
+  map.addSource("poza-polska", { type: "geojson", data: new URL("/poza-polska.geojson", window.location.origin).href });
+  map.addLayer({ id: "poza-polska", type: "fill", source: "poza-polska", paint: { "fill-color": "#ffffff", "fill-opacity": ["interpolate", ["linear"], ["zoom"], 5, 0.7, 10, 0.55, 14, 0.35] } });
 }
 
 /**
@@ -85,7 +107,10 @@ export function useMapLibre(onLoad: (map: MapLibreMap) => void) {
       return;
     }
     map.current = created;
-    created.on("load", () => load.current(created));
+    created.on("load", () => {
+      dimOutsidePoland(created);
+      load.current(created);
+    });
     return () => {
       map.current = null;
       created.remove();
