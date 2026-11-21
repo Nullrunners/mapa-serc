@@ -1,0 +1,21 @@
+{
+  "name": "aed-hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AED Hub: one nationwide open dataset of AED defibrillators for dane.gov.pl (HackNation 2026, Misja AED)",
+  "packageManager": "pnpm@11.1.2",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev:api": "pnpm --filter @aed/api dev",
+    "dev:web": "pnpm --filter @aed/web dev",
+    "check": "pnpm -r check",
+    "test": "pnpm -r test",
+    "contract": "pnpm --filter @aed/api contract",
+    "job": "pnpm --filter @aed/api job",
+    "smoke": "pnpm --filter @aed/api smoke",
+    "tunnel": "pnpm --filter @aed/api tunnel"
+  }
+}

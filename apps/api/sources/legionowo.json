@@ -1,0 +1,25 @@
+{
+  "id": "dane-gov-pl-2625221",
+  "kind": "official",
+  "name": "Urząd Miasta Legionowo",
+  "attribution": "Urząd Miasta Legionowo (dane.gov.pl, zbiór 40593)",
+  "licence": "CC0 1.0",
+  "url": "https://api.dane.gov.pl/resources/2625221/file",
+  "landingPage": "https://dane.gov.pl/pl/dataset/40593",
+  "format": "csv",
+  "fixture": "legionowo.csv",
+  "mapping": {
+    "nazwa": "nazwa",
+    "cecha_ulicy": "cecha_ulicy",
+    "nazwa_ulicy": "nazwa_ulicy",
+    "nr_budynku": "nr_budynku",
+    "nr_lokalu": "nr_lokalu",
+    "kod_pocztowy": "kod_pocztowy",
+    "miejscowosc": "miejscowosc",
+    "kod_terc": "kod_terc",
+    "kod_simc": "kod_simc",
+    "szerokosc_geograficzna": "szerokosc_geograficzna",
+    "dlugosc_geograficzna": "dlugosc_geograficzna"
+  },
+  "defaults": { "kod_terc": "1408011" }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@aed/schema",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Wzorzec danych AED: field catalogue and everything generated from it",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

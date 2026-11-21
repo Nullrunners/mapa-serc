@@ -1,0 +1,14 @@
+# The database and downloaded sources live on a volume, never in the image.
+data
+
+**/node_modules
+**/.next
+.git
+.direnv
+
+# Secrets stay on the host.
+.env
+.env.*
+!.env.example
+
+*.log

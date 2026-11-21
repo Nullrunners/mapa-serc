@@ -1,0 +1,26 @@
+{
+  "id": "dane-gov-pl-62093",
+  "kind": "official",
+  "name": "Urząd Miejski w Przemyślu",
+  "attribution": "Urząd Miejski w Przemyślu (dane.gov.pl, zbiór 4581)",
+  "licence": "CC0 1.0",
+  "url": "https://api.dane.gov.pl/resources/62093/file",
+  "landingPage": "https://dane.gov.pl/pl/dataset/4581",
+  "format": "geojson",
+  "fixture": "przemysl.geojson",
+  "keyColumn": "id",
+  "mapping": {
+    "@lat": "szerokosc_geograficzna",
+    "@lon": "dlugosc_geograficzna",
+    "name": "nazwa",
+    "city": "miejscowosc",
+    "street": "nazwa_ulicy",
+    "home_number": "nr_budynku",
+    "postcode": "kod_pocztowy",
+    "phone": "telefon_kontaktowy",
+    "email": "email_kontaktowy"
+  },
+  "extract": [{ "from": "name", "to": "id_w_zrodle", "pattern": "AED\\s*(\\d+)" }],
+  "strip": [{ "column": "name", "pattern": "^Defibrylator\\s*\\(AED\\s*\\d+\\)\\s*(?:[-–]\\s*|w\\s+)?" }],
+  "defaults": { "miejscowosc": "Przemyśl", "kod_terc": "1862011" }
+}

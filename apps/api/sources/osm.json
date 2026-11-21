@@ -1,0 +1,33 @@
+{
+  "id": "osm-pl",
+  "kind": "osm",
+  "name": "OpenStreetMap",
+  "attribution": "© autorzy OpenStreetMap (openaedmap.org)",
+  "licence": "ODbL 1.0",
+  "url": "https://openaedmap.org/api/v1/countries/PL.geojson",
+  "landingPage": "https://openaedmap.org/",
+  "format": "geojson",
+  "snapshot": "osm/PL.geojson",
+  "keyColumn": "@osm_id",
+  "fallbackName": ["operator", "description", "defibrillator:location:pl", "defibrillator:location"],
+  "mapping": {
+    "@lat": "szerokosc_geograficzna",
+    "@lon": "dlugosc_geograficzna",
+    "name": "nazwa",
+    "addr:street": "nazwa_ulicy",
+    "addr:housenumber": "nr_budynku",
+    "addr:postcode": "kod_pocztowy",
+    "addr:city": "miejscowosc",
+    "defibrillator:location": "opis_lokalizacji",
+    "defibrillator:location:pl": "opis_lokalizacji",
+    "indoor": "wewnatrz_budynku",
+    "level": "pietro",
+    "access": "dostep",
+    "opening_hours": "godziny_dostepnosci",
+    "operator": "podmiot_odpowiedzialny",
+    "phone": "telefon_kontaktowy",
+    "check_date": "data_weryfikacji",
+    "manufacturer": "producent",
+    "model": "model"
+  }
+}

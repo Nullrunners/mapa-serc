@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Working database and large source snapshots: rebuilt by `pnpm job fetch` + `pnpm job pipeline`
+data/
+
+# Secrets (LLM key, Warsaw API key, admin token)
+.env
+.env.*
+!.env.example
+
+.direnv/
+*.log
+.DS_Store
