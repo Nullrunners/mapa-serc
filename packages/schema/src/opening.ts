@@ -81,26 +81,65 @@ function warsawTime(at: Date): { day: number; minute: number } {
   return { day: WEEKDAYS.indexOf(parts.weekday ?? ''), minute: Number(parts.hour) * 60 + Number(parts.minute) }
 }
 
+/** All rules of a value, or null when any part of it is not understood. */
+function parseRules(text: string, prepare: (part: string) => string | null = (part) => part): Rule[] | null {
+  const rules: Rule[] = []
+  for (const raw of text.split(';')) {
+    if (raw.trim() === '') continue
+    const part = prepare(raw)
+    if (part === null) continue
+    const rule = parseRule(part)
+    if (!rule) return null
+    rules.push(rule)
+  }
+  return rules.length > 0 ? rules : null
+}
+
+/** Whether the rules open the device on `day` (0 = Monday) at `minute` past midnight. */
+function openAt(rules: Rule[], day: number, minute: number): boolean {
+  /** The last rule that names a day decides that day. */
+  const rangesOn = (weekday: number) => rules.findLast((rule) => rule.days.has(weekday))?.ranges ?? []
+  const today = rangesOn(day).some(([from, to]) => from <= minute && minute < to)
+  const sinceYesterday = rangesOn((day + 6) % 7).some(([, to]) => minute + DAY_MINUTES < to)
+  return today || sinceYesterday
+}
+
 /** Whether the hours in `godziny_dostepnosci` cover the moment `at`. */
 export function availabilityAt(hours: string | null | undefined, at: Date): Availability {
   const text = hours?.trim()
   if (!text) return 'unknown'
   if (text === '24/7') return 'open'
-  const rules: Rule[] = []
-  for (const part of text.split(';')) {
-    if (part.trim() === '') continue
-    const rule = parseRule(part)
-    if (!rule) return 'unknown'
-    rules.push(rule)
-  }
+  const rules = parseRules(text)
   const { day, minute } = warsawTime(at)
-  if (rules.length === 0 || day < 0) return 'unknown'
+  if (!rules || day < 0) return 'unknown'
+  return openAt(rules, day, minute) ? 'open' : 'closed'
+}
 
-  /** The last rule that names a day decides that day. */
-  const rangesOn = (weekday: number) => rules.findLast((rule) => rule.days.has(weekday))?.ranges ?? []
-  const today = rangesOn(day).some(([from, to]) => from <= minute && minute < to)
-  const sinceYesterday = rangesOn((day + 6) % 7).some(([, to]) => minute + DAY_MINUTES < to)
-  return today || sinceYesterday ? 'open' : 'closed'
+export const WEEK_HOURS = 168
+
+/**
+ * Drops public and school holidays from a rule ("Sa-Su, PH off" → "Sa-Su off"): an ordinary week has none, so they
+ * do not change how many hours of it a device can be reached. A rule about holidays only disappears.
+ */
+function withoutHolidays(part: string): string | null {
+  const tokens = part.trim().replace(/\s*,\s*/g, ',').split(/\s+/)
+  const days = tokens[0]?.split(',').filter((day) => day !== 'PH' && day !== 'SH')
+  if (!days || days.length === 0) return null
+  return [days.join(','), ...tokens.slice(1)].join(' ')
+}
+
+/**
+ * For each of the 168 hours of an ordinary week (index 0 = Monday 00:00–01:00, Warsaw time), whether the hours
+ * open the device in the middle of that hour. Null when the value is missing or not understood.
+ * Used to measure how much of the week a device really covers, not to tell anyone a door is open now.
+ */
+export function weeklyHours(hours: string | null | undefined): boolean[] | null {
+  const text = hours?.trim()
+  if (!text) return null
+  if (text === '24/7') return Array.from({ length: WEEK_HOURS }, () => true)
+  const rules = parseRules(text, withoutHolidays)
+  if (!rules) return null
+  return Array.from({ length: WEEK_HOURS }, (_, hour) => openAt(rules, Math.floor(hour / 24), (hour % 24) * 60 + 30))
 }
 
 export type ReachableNow = 'yes' | 'no' | 'unknown'
