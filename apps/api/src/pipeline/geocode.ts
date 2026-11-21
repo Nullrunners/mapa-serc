@@ -130,8 +130,14 @@ export async function enrich(records: NormalizedRecord[], geo: Geo, options: { g
           if (found) {
             input.szerokosc_geograficzna = round(found.lat)
             input.dlugosc_geograficzna = round(found.lon)
-            if (!input.kod_pocztowy && found.postcode) input.kod_pocztowy = found.postcode
-            if (!input.kod_simc && /^\d{7}$/.test(found.simc)) input.kod_simc = found.simc
+            if (!input.kod_pocztowy && found.postcode) {
+              input.kod_pocztowy = found.postcode
+              record.fixes.push({ code: 'postcode_from_register', field: 'kod_pocztowy', message: 'Kod pocztowy uzupełniono z państwowego rejestru adresów.', after: found.postcode })
+            }
+            if (!input.kod_simc && /^\d{7}$/.test(found.simc)) {
+              input.kod_simc = found.simc
+              record.fixes.push({ code: 'simc_from_register', field: 'kod_simc', message: 'Kod SIMC miejscowości uzupełniono z państwowego rejestru adresów.', after: found.simc })
+            }
             record.fixes.push({
               code: 'geocoded_from_address',
               field: 'szerokosc_geograficzna',
@@ -156,7 +162,10 @@ export async function enrich(records: NormalizedRecord[], geo: Geo, options: { g
           record.fixes.push({ code: 'terc_from_coordinates', field: 'kod_terc', message: 'Kod TERC gminy ustalono z położenia.', before: input.kod_terc ?? undefined, after: commune.terc })
           input.kod_terc = commune.terc
         }
-        if (!input.miejscowosc) input.miejscowosc = communeName(commune.gmina)
+        if (!input.miejscowosc) {
+          input.miejscowosc = communeName(commune.gmina)
+          record.fixes.push({ code: 'locality_from_commune', field: 'miejscowosc', message: 'Miejscowość przyjęto z nazwy gminy, w której leży punkt.', after: input.miejscowosc })
+        }
       } catch {
         // Offline or the register is down: keep what the source gave us.
       }

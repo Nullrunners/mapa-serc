@@ -96,7 +96,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Every source of the national dataset with its quality report */
+        /** Every source of the national dataset with its quality report and data scope; known sources that are not merged in */
         get: operations["listSources"];
         put?: never;
         post?: never;
@@ -225,6 +225,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/dane/wzorzec.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The data pattern as an Excel workbook: field table, dictionaries, example row and an empty template */
+        get: operations["downloadPatternXlsx"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/dane/szablon.csv": {
         parameters: {
             query?: never;
@@ -251,6 +268,23 @@ export interface paths {
         };
         /** Unconfirmed devices known only from OpenStreetMap (ODbL) – not part of the dataset for dane.gov.pl */
         get: operations["downloadCommunity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dane/zakres-zrodel.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Data scope of every source against the pattern: one row per source and field */
+        get: operations["downloadSourceScope"];
         put?: never;
         post?: never;
         delete?: never;
@@ -441,6 +475,11 @@ export interface components {
             quality: number;
             /** @description Odległość od punktu z parametru `near`, w metrach */
             distanceM: number | null;
+            /**
+             * @description Czy przechodzień dostanie się do urządzenia w chwili zapytania: no = poza godzinami dostępności, wycofane, czasowo niedostępne albo tylko dla personelu; unknown = rekord nie podaje godzin dostępności albo podaje je w zapisie, którego system nie rozumie.
+             * @enum {string}
+             */
+            availableNow: "yes" | "no" | "unknown";
             record: components["schemas"]["AedRecord"];
         };
         /**
@@ -703,6 +742,7 @@ export interface components {
         };
         SourceList: {
             items: components["schemas"]["SourceReport"][];
+            notIncluded: components["schemas"]["KnownSource"][];
         };
         /** @description Raport jakości dla dostawcy: co odczytano, co poprawiono, czego nie udało się naprawić. */
         SourceReport: {
@@ -741,6 +781,8 @@ export interface components {
                 /** @enum {string} */
                 severity: "error" | "warning";
             }[];
+            /** @description Zakres danych źródła względem wzorca: jedna pozycja na każde pole, które źródło może dostarczyć */
+            coverage: components["schemas"]["FieldCoverage"][];
         };
         /** @description Poprawka, którą system wprowadził sam. */
         Fix: {
@@ -749,6 +791,33 @@ export interface components {
             message: string;
             before?: string;
             after?: string;
+        };
+        FieldCoverage: {
+            /**
+             * @description Nazwa pola wzorca
+             * @example godziny_dostepnosci
+             */
+            field: string;
+            /** @description Wiersze, w których wartość daje samo źródło */
+            provided: number;
+            /** @description Wiersze, w których wartość uzupełnił system z rejestrów państwowych (TERYT, adresy) */
+            added: number;
+            /** @description Wartość jest stała dla całego źródła (np. miejscowość w pliku jednej gminy), a nie kolumną pliku */
+            constant: boolean;
+        };
+        /** @description Źródło danych o AED, które znamy, ale którego nie włączamy do zbioru krajowego. */
+        KnownSource: {
+            id: string;
+            name: string;
+            url: string;
+            /** @description null, gdy źródło nie podaje licencji */
+            licence: string | null;
+            /** @description Liczba urządzeń według samego źródła; null, gdy nieznana */
+            devices: number | null;
+            /** @description Co wiadomo o zakresie danych źródła */
+            scope: string;
+            /** @description Dlaczego źródło nie jest włączone do zbioru */
+            reason: string;
         };
         SchemaResponse: {
             name: string;
@@ -779,7 +848,7 @@ export interface components {
             /** @description true while this endpoint answers with sample data */
             stub: boolean;
             /** @enum {string} */
-            format: "csv" | "geojson";
+            format: "csv" | "geojson" | "xlsx";
             fileFixes: components["schemas"]["Fix"][];
             columns: {
                 header: string;
@@ -825,7 +894,7 @@ export interface components {
         ImportRequest: {
             /** @example aed-marki.csv */
             fileName: string;
-            /** @description The file, base64-encoded (CSV or GeoJSON, up to 5 MB) */
+            /** @description The file, base64-encoded (CSV, XLSX or GeoJSON, up to 5 MB) */
             contentBase64: string;
             /** @description Column header → target. Omit to let the system propose one; send the corrected proposal back to preview again. */
             mapping?: {
@@ -982,6 +1051,8 @@ export interface operations {
                 terc?: string;
                 /** @description Text to find in the name, street or locality */
                 q?: string;
+                /** @description true = only devices a passer-by can reach right now (see `availableNow` of a device) */
+                availableNow?: "true" | "false";
                 limit?: number;
                 offset?: number | null;
             };
@@ -1451,6 +1522,44 @@ export interface operations {
             };
         };
     };
+    downloadPatternXlsx: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The data pattern as an Excel workbook: field table, dictionaries, example row and an empty template */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     downloadTemplate: {
         parameters: {
             query?: never;
@@ -1505,6 +1614,44 @@ export interface operations {
                 };
                 content: {
                     "application/geo+json": string;
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    downloadSourceScope: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Data scope of every source against the pattern: one row per source and field */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
                 };
             };
             /** @description The request does not match the contract */

@@ -19,7 +19,8 @@ export interface SourceDef {
   url: string
   /** Human page of the dataset. */
   landingPage?: string
-  format: 'csv' | 'geojson'
+  /** `xlsx` occurs only for files uploaded through the wizard, whose rows are kept in the database. */
+  format: 'csv' | 'geojson' | 'xlsx'
   /** File name of the frozen copy in test/fixtures/sources, used by tests and when the network is down. */
   fixture?: string
   /** Path of the downloaded copy under DATA_DIR/raw; defaults to "<id>.<format>". */
@@ -54,6 +55,7 @@ export type FixCode =
   | 'encoding_windows_1250'
   | 'bom_removed'
   | 'whole_line_quoted'
+  | 'sheet_selected'
   | 'header_trimmed'
   | 'coordinates_swapped'
   | 'decimal_comma'
@@ -67,6 +69,9 @@ export type FixCode =
   | 'whitespace'
   | 'terc_from_coordinates'
   | 'geocoded_from_address'
+  | 'postcode_from_register'
+  | 'simc_from_register'
+  | 'locality_from_commune'
 
 export type IssueCode =
   | 'coordinates_missing'

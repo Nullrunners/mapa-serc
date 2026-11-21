@@ -4,6 +4,7 @@
  * No database in here: the caller passes what was stored and persists what comes back.
  */
 import type { AedRecord } from '@aed/schema'
+import { sourceCoverage, type FieldCoverage } from './coverage'
 import { cluster, type DedupItem } from './dedup'
 import { enrich, type Geo } from './geocode'
 import { memberKey, mergeCluster, type MergedAed } from './merge'
@@ -67,6 +68,8 @@ export interface SourceReport {
   fileFixes: Fix[]
   fixes: ReportLine<FixCode>[]
   issues: (ReportLine<IssueCode> & { severity: Issue['severity'] })[]
+  /** The source's data scope against the pattern: one entry per field a source can deliver. */
+  coverage: FieldCoverage[]
 }
 
 export interface ReviewPair {
@@ -122,6 +125,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
       fileFixes,
       fixes: [],
       issues: [],
+      coverage: [],
     })
 
   for (const def of input.defs) {
@@ -188,6 +192,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
     line.fixes = tally(own.flatMap((record) => record.fixes), () => ({}))
     const severity = new Map(own.flatMap((record) => record.issues).map((issue) => [issue.code, issue.severity]))
     line.issues = tally(own.flatMap((record) => record.issues), (code) => ({ severity: severity.get(code)! }))
+    line.coverage = sourceCoverage(sources.get(line.id)!, own)
   }
 
   return {

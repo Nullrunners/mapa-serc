@@ -31,10 +31,10 @@ export default function Sources() {
     <div className="space-y-8">
       <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          ["W zbiorze dla dane.gov.pl", stats.official],
-          ["Niepotwierdzone (OpenStreetMap)", stats.community],
+          ["Urządzenia w oficjalnych danych", stats.official],
+          ["Jeszcze niepotwierdzone (OpenStreetMap)", stats.community],
           ["Czekają na uzupełnienie", stats.incomplete],
-          ["Gminy z danymi urzędowymi", `${stats.communesWithOfficial} z ${stats.communesTotal}`],
+          ["Gminy, które mają dane", `${stats.communesWithOfficial} z ${stats.communesTotal}`],
         ].map(([label, value]) => (
           <div key={label} className="rounded border border-line p-4">
             <dt className="text-sm text-muted">{label}</dt>
@@ -44,12 +44,12 @@ export default function Sources() {
       </dl>
 
       <p>
-        Pliki zbioru krajowego:{" "}
+        Pobierz całą bazę w jednym pliku:{" "}
         {[
           ["CSV", "/dane/aed.csv"],
           ["GeoJSON", "/dane/aed.geojson"],
           ["JSON-LD", "/dane/aed.jsonld"],
-          ["plik XML dla harvestera dane.gov.pl", "/feeds/dane-gov-pl.xml"],
+          ["plik XML dla portalu dane.gov.pl", "/feeds/dane-gov-pl.xml"],
         ].map(([label, href], index) => (
           <span key={href}>
             {index > 0 && ", "}
@@ -79,7 +79,7 @@ export default function Sources() {
               )}
             </p>
             <p className="mt-2">
-              Wiersze w pliku: <strong>{source.rows.toLocaleString("pl-PL")}</strong>. W zbiorze urzędowym: <strong>{source.official.toLocaleString("pl-PL")}</strong>
+              Wierszy w pliku: <strong>{source.rows.toLocaleString("pl-PL")}</strong>. W oficjalnych danych: <strong>{source.official.toLocaleString("pl-PL")}</strong>
               {source.community > 0 && (
                 <>
                   , niepotwierdzone: <strong>{source.community.toLocaleString("pl-PL")}</strong>
@@ -99,7 +99,7 @@ export default function Sources() {
             )}
             {source.fileFixes.length + source.fixes.length > 0 && (
               <>
-                <h3 className="mt-3 font-semibold text-ok">Poprawione automatycznie</h3>
+                <h3 className="mt-3 font-semibold text-ok">Poprawione przez nas</h3>
                 <ul className="list-disc pl-6 text-sm">
                   {source.fileFixes.map((fix) => (
                     <li key={fix.code}>{fix.message}</li>
@@ -114,7 +114,7 @@ export default function Sources() {
             )}
             {source.issues.length > 0 && (
               <>
-                <h3 className="mt-3 font-semibold text-warn">Do sprawdzenia przez dostawcę</h3>
+                <h3 className="mt-3 font-semibold text-warn">Do sprawdzenia przez dostawcę danych</h3>
                 <ul className="list-disc pl-6 text-sm">
                   {source.issues.map((line) => (
                     <li key={line.code}>

@@ -14,6 +14,7 @@
     "check": "pnpm -r check",
     "test": "pnpm -r test",
     "contract": "pnpm --filter @aed/api contract",
+    "pattern": "pnpm --filter @aed/api pattern",
     "job": "pnpm --filter @aed/api job",
     "smoke": "pnpm --filter @aed/api smoke",
     "tunnel": "pnpm --filter @aed/api tunnel"

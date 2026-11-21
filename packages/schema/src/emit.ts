@@ -51,8 +51,29 @@ export function tableSchema() {
   }
 }
 
-const REQUIREMENT_LABEL = { required: 'wymagane', recommended: 'zalecane', optional: 'opcjonalne' } as const
-const TYPE_LABEL = { string: 'tekst', number: 'liczba', boolean: 'true / false', date: 'data RRRR-MM-DD' } as const
+export const REQUIREMENT_LABEL = { required: 'wymagane', recommended: 'zalecane', optional: 'opcjonalne' } as const
+export const TYPE_LABEL = { string: 'tekst', number: 'liczba', boolean: 'true / false', date: 'data RRRR-MM-DD' } as const
+
+/** The rules every file made to the pattern follows; printed in the documentation and in the workbook. */
+export const FILE_RULES = [
+  'Plik CSV zgodny z RFC 4180, kodowanie UTF-8, separator przecinek.',
+  'Jeden wiersz nagłówka z nazwami kolumn dokładnie jak we wzorcu.',
+  'Jeden wiersz to jedno urządzenie.',
+  'Liczby z kropką dziesiętną, daty w zapisie RRRR-MM-DD (ISO 8601), wartości logiczne true albo false.',
+  'Puste pole oznacza brak danych.',
+] as const
+
+/** Limits of a field in words, for the documentation: length, range, format. */
+export function constraintText(field: FieldDef): string {
+  const parts: string[] = []
+  if (field.type === 'date') parts.push('data w zapisie RRRR-MM-DD')
+  if (field.type === 'boolean') parts.push('true albo false')
+  if (field.type === 'number') parts.push('liczba z kropką dziesiętną')
+  if (field.minimum !== undefined && field.maximum !== undefined) parts.push(`od ${field.minimum} do ${field.maximum}`)
+  if (field.maxLength !== undefined) parts.push(`najwyżej ${field.maxLength} znaków`)
+  if (field.pattern) parts.push(`wyrażenie regularne: ${field.pattern}`)
+  return parts.join('; ')
+}
 
 /** Field documentation as Markdown: the human-readable "wzorcowy zakres danych". */
 export function fieldDocsMarkdown(): string {

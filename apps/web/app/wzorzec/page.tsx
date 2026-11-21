@@ -8,10 +8,11 @@ const REQUIREMENT = { required: "wymagane", recommended: "zalecane", optional: "
 const TYPE = { string: "tekst", number: "liczba", boolean: "true / false", date: "data RRRR-MM-DD" } as const;
 
 const DOWNLOADS = [
+  { href: "/dane/wzorzec.xlsx", label: "Wzorzec danych w Excelu (XLSX): opis pól, słowniki, przykład i pusty szablon do wypełnienia" },
   { href: "/dane/szablon.csv", label: "Szablon CSV z przykładowym wierszem" },
-  { href: "/dane/schema.json", label: "Table Schema (JSON) – do walidacji automatycznej" },
-  { href: "/dane/wzorzec.md", label: "Opis pól (Markdown)" },
-  { href: "/dane/aed.csv-metadata.json", label: "Metadane CSVW pliku krajowego" },
+  { href: "/dane/schema.json", label: "Schemat w JSON – dla programistów, do automatycznego sprawdzania plików" },
+  { href: "/dane/wzorzec.md", label: "Opis wszystkich pól jako zwykły tekst" },
+  { href: "/dane/aed.csv-metadata.json", label: "Opis kolumn pliku krajowego (CSVW) – dla programistów" },
 ];
 
 /** Rendered from the same field catalogue that generates the CSV, the Table Schema and the API contract. */
@@ -22,8 +23,8 @@ export default function PatternPage() {
       <div className="space-y-2">
         <h1 className="text-2xl font-bold">Wzorzec danych: lokalizacje defibrylatorów AED</h1>
         <p className="max-w-3xl text-muted">
-          Wersja {SCHEMA_VERSION}. Jednolity zakres danych, w którym każdy dostawca udostępnia informacje o defibrylatorach. Plik CSV zgodny z RFC 4180: kodowanie UTF-8, separator przecinek, jeden wiersz nagłówka,
-          liczby z kropką dziesiętną, daty w ISO 8601, puste pole oznacza brak danych.
+          Wersja {SCHEMA_VERSION}. To lista informacji, które prosimy podać o każdym defibrylatorze, żeby dane z różnych miejsc dało się połączyć. Plik zapisz jako CSV w UTF-8, z przecinkami między kolumnami i
+          nagłówkiem w pierwszym wierszu. Liczby zapisuj z kropką, daty jako RRRR-MM-DD, a pole bez danych zostaw puste.
         </p>
       </div>
 

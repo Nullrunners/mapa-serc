@@ -1,5 +1,6 @@
 /** The national dataset as files: CSV (RFC 4180), GeoJSON and JSON-LD. Pure functions. */
-import { csvHeader, type AedRecord } from '@aed/schema'
+import { csvHeader, fieldByName, type AedRecord } from '@aed/schema'
+import type { FieldCoverage } from '../pipeline/coverage'
 
 const NEEDS_QUOTES = /[",\r\n]|^\s|\s$/
 /** A cell a spreadsheet would run as a formula. Plain signed numbers and phone numbers are harmless. */
@@ -22,6 +23,35 @@ export function toCsv(records: readonly AedRecord[]): string {
   const header = csvHeader()
   const lines = [header.join(',')]
   for (const record of records) lines.push(header.map((name) => csvCell(record[name as keyof AedRecord])).join(','))
+  return lines.join('\r\n') + '\r\n'
+}
+
+const SCOPE_HEADER = [
+  'zrodlo_id',
+  'zrodlo',
+  'licencja',
+  'liczba_wierszy',
+  'pole',
+  'wymagalnosc',
+  'wiersze_z_wartoscia_ze_zrodla',
+  'wiersze_uzupelnione_z_rejestrow',
+  'udzial_ze_zrodla',
+  'stala_dla_zrodla',
+] as const
+
+/**
+ * The data scope of every source against the pattern, one row per source and field: how many of the source's
+ * rows carry a value of their own, and how many the system completed from public registers.
+ */
+export function toScopeCsv(sources: readonly { id: string; attribution: string; licence: string; rows: number; coverage: readonly FieldCoverage[] }[]): string {
+  const lines = [SCOPE_HEADER.join(',')]
+  for (const source of sources) {
+    for (const entry of source.coverage) {
+      const share = source.rows > 0 ? Math.round((entry.provided / source.rows) * 10_000) / 10_000 : 0
+      const cells = [source.id, source.attribution, source.licence, source.rows, entry.field, fieldByName(entry.field)?.requirement ?? '', entry.provided, entry.added, share, entry.constant]
+      lines.push(cells.map(csvCell).join(','))
+    }
+  }
   return lines.join('\r\n') + '\r\n'
 }
 

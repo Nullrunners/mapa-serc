@@ -11,6 +11,7 @@
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm test",
     "contract": "tsx scripts/export-openapi.ts",
+    "pattern": "tsx scripts/export-pattern.ts",
     "smoke": "tsx scripts/smoke.ts",
     "job": "tsx --env-file-if-exists=../../.env scripts/job.ts",
     "tunnel": "tsx --env-file-if-exists=../../.env scripts/tunnel.ts"
@@ -21,6 +22,7 @@
     "@hono/node-server": "^2.1.8",
     "@hono/zod-openapi": "^1.6.3",
     "@scalar/hono-api-reference": "^0.12.20",
+    "exceljs": "^4.4.0",
     "hono": "^4.13.18",
     "tsx": "^4.23.15",
     "zod": "^4.6.7"

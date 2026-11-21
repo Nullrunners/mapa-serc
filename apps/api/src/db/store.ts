@@ -50,7 +50,11 @@ export class Store {
         issues: parse(row.issues),
       })),
     )
-    this.reports = (await this.db.all<{ report: string | null }>('SELECT report FROM sources WHERE report IS NOT NULL')).map((row) => parse<SourceReport>(row.report))
+    // A report written before the data scope existed has no `coverage`; the next pipeline run fills it.
+    this.reports = (await this.db.all<{ report: string | null }>('SELECT report FROM sources WHERE report IS NOT NULL')).map((row) => {
+      const report = parse<SourceReport>(row.report)
+      return { ...report, coverage: report.coverage ?? [] }
+    })
     this.reviews = (await this.db.all<{ id: string; a: string; b: string; score: number; distance_m: number }>('SELECT id, a, b, score, distance_m FROM review_pairs WHERE decision IS NULL')).map(
       (row) => ({ id: row.id, a: parse(row.a), b: parse(row.b), score: Number(row.score), distanceM: Number(row.distance_m) }),
     )
