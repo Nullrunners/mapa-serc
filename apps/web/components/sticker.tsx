@@ -1,6 +1,7 @@
 "use client";
 
 import { api, type AedItem } from "@/lib/api/client";
+import NfcWrite from "@/components/nfc-write";
 import StickerFace from "@/components/sticker-face";
 import { passportHref } from "@/lib/passport-text";
 import { useLoad } from "@/lib/use-load";
@@ -45,14 +46,14 @@ export default function Sticker({ id }: { id: string }) {
         <StickerFace id={id} aed={loaded.state === "ready" ? loaded.data : null} />
       </div>
 
-      <div className="max-w-2xl space-y-1 text-sm text-muted print:hidden">
-        {url.state === "ready" && (
+      {url.state === "ready" && (
+        <div className="max-w-2xl space-y-4 text-sm text-muted print:hidden">
           <p>
             Adres w kodzie: <span className="break-all font-mono">{url.data}</span>
           </p>
-        )}
-        <p>Ten sam adres możesz zapisać na naklejce NFC. Wtedy wystarczy przyłożyć telefon do naklejki, żeby otworzyć paszport.</p>
-      </div>
+          <NfcWrite url={url.data} />
+        </div>
+      )}
     </div>
   );
 }
