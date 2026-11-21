@@ -2,7 +2,7 @@
 import type { RouteHandler } from '@hono/zod-openapi'
 import { reachableNow } from '@aed/schema'
 import type { Context } from 'hono'
-import { now, today } from '../config'
+import { config, now, today } from '../config'
 import { getContext } from '../context'
 import type {
   adminOwnerLinkRoute,
@@ -29,11 +29,18 @@ async function device(id: string): Promise<{ store: Store; aed: MergedAed }> {
   return { store, aed }
 }
 
-/** Who is asking, for the report limits. Behind the deployment's proxy the first forwarded address is the client. */
-function client(c: Context): string {
-  const forwarded = c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
+/**
+ * Who is asking, for the report limits. Our proxy appends the address it saw to X-Forwarded-For, so the entry
+ * TRUSTED_PROXY_HOPS from the end is the client; earlier entries come from the client itself and prove nothing.
+ */
+export function client(c: Context): string {
   const socket = (c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming?.socket?.remoteAddress
-  return forwarded || c.req.header('x-real-ip') || socket || 'unknown'
+  const forwarded = (c.req.header('x-forwarded-for') ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+  if (config.trustedProxyHops > 0 && forwarded.length > 0) return forwarded[Math.max(0, forwarded.length - config.trustedProxyHops)]!
+  return socket || 'unknown'
 }
 
 export const passportHandler: RouteHandler<typeof passportRoute> = async (c) => {

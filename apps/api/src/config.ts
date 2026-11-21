@@ -33,6 +33,12 @@ export const config = {
   mail: { smtpUrl: env.SMTP_URL ?? '', from: env.MAIL_FROM ?? 'AED Hub <no-reply@aed-hub.local>' },
   /** SMS through SMSAPI.pl. Empty token: messages are only logged. SMSAPI_TEST=1 asks SMSAPI not to deliver them. */
   sms: { token: env.SMSAPI_TOKEN ?? '', from: env.SMS_FROM ?? '', test: env.SMSAPI_TEST === '1' || env.SMSAPI_TEST === 'true' },
+  /**
+   * Proxies in front of the API that append the address they saw to X-Forwarded-For (Coolify's proxy: 1). The
+   * client is the entry this many places from the end; whatever comes before it the client could have typed.
+   * 0 = ignore the header and use the address of the connection.
+   */
+  trustedProxyHops: Math.max(0, Number(env.TRUSTED_PROXY_HOPS || 1) || 0),
   /** OFFLINE=1: never call the registers; answer only from what is cached (tests, no network). */
   offline: env.OFFLINE === '1' || env.OFFLINE === 'true',
   /** Fixed "today" (YYYY-MM-DD) for reproducible tests. */

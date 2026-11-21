@@ -132,7 +132,10 @@ export interface ReportSummary {
   /** Last "it is here" from a passer-by. */
   lastOk: string | null
   okCount: number
-  /** Problems reported after the last confirmation by the keeper and after the last "it is here". */
+  /**
+   * Problems reported after the last confirmation by the keeper and after the last "it is here". `count` is the
+   * number of people who reported it (one person counts once a day), not of clicks.
+   */
   problems: { kind: ReportKind; count: number; lastAt: string }[]
 }
 
@@ -144,18 +147,18 @@ export function summariseReports(reports: readonly FieldReport[], confirmedAt: s
   const lastOk = oks.reduce<string | null>((latest, report) => (latest === null || report.at > latest ? report.at : latest), null)
   // A confirmation is a date; a problem reported later that same day still counts.
   const settled = [lastOk, confirmedAt ? `${confirmedAt}T00:00:00.000Z` : null].filter((value): value is string => value !== null).sort().at(-1) ?? ''
-  const open = new Map<ReportKind, { count: number; lastAt: string }>()
+  const open = new Map<ReportKind, { people: Set<string>; lastAt: string }>()
   for (const report of recent) {
     if (report.kind === 'ok' || report.at <= settled) continue
-    const entry = open.get(report.kind) ?? { count: 0, lastAt: report.at }
-    entry.count++
+    const entry = open.get(report.kind) ?? { people: new Set<string>(), lastAt: report.at }
+    entry.people.add(report.clientHash)
     if (report.at > entry.lastAt) entry.lastAt = report.at
     open.set(report.kind, entry)
   }
   return {
     lastOk,
     okCount: oks.length,
-    problems: [...open].map(([kind, entry]) => ({ kind, ...entry })).sort((a, b) => b.lastAt.localeCompare(a.lastAt)),
+    problems: [...open].map(([kind, entry]) => ({ kind, count: entry.people.size, lastAt: entry.lastAt })).sort((a, b) => b.lastAt.localeCompare(a.lastAt)),
   }
 }
 

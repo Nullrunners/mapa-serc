@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { api } from "@/lib/api/client";
 import { addressLine, date, title } from "@/lib/aed-text";
-import { REPORT_TEXT, dateTime, expiryText, type OwnerView } from "@/lib/passport-text";
+import { REPORT_TEXT, dateTime, expiryText, reportedBy, type OwnerView } from "@/lib/passport-text";
 import { useLoad } from "@/lib/use-load";
 
 const STATUS_CHOICES = [
@@ -140,7 +140,7 @@ export default function OwnerPanel() {
               {card.reports.problems.map((problem) => (
                 <li key={problem.kind}>
                   {REPORT_TEXT[problem.kind]}
-                  {problem.count > 1 ? ` (${problem.count} razy)` : ""}, ostatnio {dateTime(problem.lastAt)}
+                  {reportedBy(problem.count)}, ostatnio {dateTime(problem.lastAt)}
                 </li>
               ))}
             </ul>

@@ -889,7 +889,8 @@
                       "$ref": "#/components/schemas/ReportKind"
                     },
                     "count": {
-                      "type": "integer"
+                      "type": "integer",
+                      "description": "Ile osób to zgłosiło (jedna osoba liczy się raz dziennie)"
                     },
                     "lastAt": {
                       "type": "string"

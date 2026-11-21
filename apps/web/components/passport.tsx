@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { api, type AedItem } from "@/lib/api/client";
 import { ACCESS_LABEL, AVAILABLE_NOW, STATUS_WARNING, addressLine, date, hours, title } from "@/lib/aed-text";
-import { PROBLEMS, REPORT_BUTTON, REPORT_TEXT, dateTime, expiryText, type PassportPublic, type ReportKind } from "@/lib/passport-text";
+import { PROBLEMS, REPORT_BUTTON, REPORT_TEXT, dateTime, expiryText, reportedBy, type PassportPublic, type ReportKind } from "@/lib/passport-text";
 import { useLoad } from "@/lib/use-load";
 
 /**
@@ -78,7 +78,7 @@ function Card({ item, passport, onPassport }: { item: AedItem; passport: Passpor
           {passport.reports.problems.map((problem) => (
             <li key={problem.kind} className="font-semibold text-danger">
               Zgłoszono: {REPORT_TEXT[problem.kind]}
-              {problem.count > 1 ? ` (${problem.count} razy)` : ""}, ostatnio {dateTime(problem.lastAt)}. Opiekun dostał wiadomość.
+              {reportedBy(problem.count)}, ostatnio {dateTime(problem.lastAt)}. Opiekun dostał wiadomość.
             </li>
           ))}
           {items.map((entry) => {
@@ -123,7 +123,7 @@ function Report({ id, onPassport }: { id: string; onPassport: (passport: Passpor
     if (!data) return setMessage({ text: "Nie udało się wysłać zgłoszenia. Spróbuj ponownie za chwilę.", tone: "text-danger" });
     onPassport(data.passport);
     if (data.outcome === "duplicate") return setMessage({ text: "Twoje zgłoszenie z ostatniej godziny już mamy. Dziękujemy!", tone: "text-ok" });
-    if (data.outcome === "limit") return setMessage({ text: "Dziś wysłano z tego urządzenia już wiele zgłoszeń. Spróbuj jutro.", tone: "text-warn" });
+    if (data.outcome === "limit") return setMessage({ text: "Na dziś przyjęliśmy już wiele zgłoszeń o tym urządzeniu albo od Ciebie. Spróbuj jutro.", tone: "text-warn" });
     setMessage(
       kind === "ok"
         ? { text: "Dziękujemy! Dzięki Tobie wiadomo, że ten defibrylator jest gotowy do użycia.", tone: "text-ok" }

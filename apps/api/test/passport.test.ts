@@ -5,6 +5,7 @@ import { getContext } from '../src/context'
 import { supplyFor } from '../src/gaps/state'
 import { normalisePhone } from '../src/passport/handlers'
 import { dueWindow, expiryState, maskEmail, summariseReports, type FieldReport } from '../src/passport/model'
+import { notWorking, REPORTS_PER_DEVICE_DAY } from '../src/passport/service'
 import { signInvitation, verifyInvitation } from '../src/radar/links'
 
 const app = createApp()
@@ -39,6 +40,13 @@ describe('passport model', () => {
     expect(summariseReports(reports, null, '2026-11-21T12:00:00.000Z').problems.map((problem) => problem.kind)).toEqual(['locked'])
     expect(summariseReports(reports, '2026-11-16', '2026-11-21T12:00:00.000Z').problems).toEqual([])
     expect(summariseReports(reports, null, '2026-11-21T12:00:00.000Z').lastOk).toBe('2026-11-12T10:00:00.000Z')
+  })
+
+  it('counts the people who reported a problem, not their clicks', () => {
+    const by = (hash: string, at: string): FieldReport => ({ id: `${hash}${at}`, aedId: 'x', kind: 'missing', note: null, at, clientHash: hash })
+    const now = '2026-11-21T12:00:00.000Z'
+    expect(summariseReports([by('a', '2026-11-20T08:00:00.000Z'), by('a', '2026-11-20T10:00:00.000Z')], null, now).problems[0]!.count).toBe(1)
+    expect(summariseReports([by('a', '2026-11-20T08:00:00.000Z'), by('b', '2026-11-20T10:00:00.000Z')], null, now).problems[0]).toMatchObject({ count: 2, lastAt: '2026-11-20T10:00:00.000Z' })
   })
 
   it('normalises phone numbers and masks addresses', () => {
@@ -139,6 +147,40 @@ describe('keeper of a device', () => {
     const fresh = (await (await post(`/admin/aed/${id}/owner-link`, { rotate: true }, OPERATOR)).json()) as any
     expect((await get('/v1/owner/passport', owner())).status).toBe(401)
     expect((await get('/v1/owner/passport', { 'X-Owner-Token': new URL(fresh.ownerUrl).searchParams.get('t')! })).status).toBe(200)
+  })
+})
+
+describe('reports from passers-by', () => {
+  let other = ''
+  const report = async (kind: string, forwardedFor: string) => ((await (await post(`/v1/aed/${other}/reports`, { kind }, { 'X-Forwarded-For': forwardedFor })).json()) as any).outcome
+
+  beforeAll(async () => {
+    const { store } = await getContext()
+    const broken = notWorking(store, '2026-11-21', '2026-11-21T12:00:00.000Z')
+    other = store.aeds.find((aed) => aed.publication === 'official' && aed.id !== id && !store.passports.get(aed.id) && store.passports.reportsOf(aed.id).length === 0 && !broken.has(aed.id))!.id
+  })
+
+  it('leaves a device out of the gap analysis only when two different people report it missing', async () => {
+    const { store } = await getContext()
+    const missing = (clientHash: string, at: string) => store.passports.report({ aedId: other, kind: 'missing', note: null, at, clientHash })
+    const broken = () => notWorking(store, '2026-11-21', '2026-11-21T12:00:00.000Z').has(other)
+    await missing('same-person', '2026-11-21T08:00:00.000Z')
+    await missing('same-person', '2026-11-21T10:00:00.000Z')
+    expect(broken()).toBe(false)
+    await missing('someone-else', '2026-11-21T11:00:00.000Z')
+    expect(broken()).toBe(true)
+  })
+
+  it('trusts only the address our proxy added, not what the client wrote before it', async () => {
+    expect(await report('ok', '203.0.113.1, 10.2.0.1')).toBe('accepted')
+    expect(await report('ok', '198.51.100.7, 10.2.0.1')).toBe('duplicate')
+  })
+
+  it('takes at most 20 reports a day for one device, whoever sends them', async () => {
+    const { store } = await getContext()
+    const sent = store.passports.reportsOf(other).filter((entry) => entry.at.startsWith('2026-11-21')).length
+    for (let index = sent; index < REPORTS_PER_DEVICE_DAY; index++) expect(await report('ok', `10.3.0.${index}`)).toBe('accepted')
+    expect(await report('ok', '10.3.1.1')).toBe('limit')
   })
 })
 

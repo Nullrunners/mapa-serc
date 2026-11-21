@@ -941,6 +941,7 @@ export interface components {
                 /** @description Problemy zgłoszone po ostatnim potwierdzeniu */
                 problems: {
                     kind: components["schemas"]["ReportKind"];
+                    /** @description Ile osób to zgłosiło (jedna osoba liczy się raz dziennie) */
                     count: number;
                     lastAt: string;
                 }[];

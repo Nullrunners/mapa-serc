@@ -25,6 +25,12 @@ export const REPORT_TEXT: Record<ReportKind, string> = {
 
 export const PROBLEMS: ReportKind[] = ["locked", "missing", "battery_alarm", "damaged"];
 
+/** 2–4, 22–24, 32–34…: the numbers Polish follows with "osoby" rather than "osób". */
+const few = (count: number) => count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20);
+
+/** " (zgłosiły 3 osoby)", " (zgłosiło 5 osób)" after a reported problem; nothing when one person reported it. */
+export const reportedBy = (count: number) => (count > 1 ? ` (${few(count) ? "zgłosiły" : "zgłosiło"} ${count} ${few(count) ? "osoby" : "osób"})` : "");
+
 /** "2026-11-21T14:03:00Z" → "21.11.2026, 15:03" in Polish time. */
 export const dateTime = (value: string) =>
   new Intl.DateTimeFormat("pl-PL", { timeZone: "Europe/Warsaw", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));

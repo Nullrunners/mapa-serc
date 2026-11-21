@@ -64,7 +64,7 @@ export function publicPassport(store: Store, aed: MergedAed, nowIso: string, tod
 
 /**
  * Devices that should not count as protection: electrodes or battery past their date (from the keeper or the
- * source), or reported missing or damaged by two passers-by in the last week with no confirmation since.
+ * source), or reported missing or damaged by two different passers-by in the last week with no confirmation since.
  */
 export function notWorking(store: Store, today: string, nowIso: string): Set<string> {
   const ids = new Set<string>()
@@ -84,12 +84,20 @@ export const clientHash = (client: string, today: string) => createHash('sha256'
 
 export type ReportOutcome = 'accepted' | 'duplicate' | 'limit'
 
-/** A passer-by's report. One per device per hour and 30 a day from one person; problems go to the keeper at once. */
+/** Reports a day one person may send, over all devices, and one device may receive from everybody together. */
+export const REPORTS_PER_CLIENT_DAY = 30
+export const REPORTS_PER_DEVICE_DAY = 20
+
+/**
+ * A passer-by's report. One per device per hour from one person, 30 a day from one person and 20 a day for one
+ * device, so flooding one device from many addresses stops early too. Problems go to the keeper at once.
+ */
 export async function fieldReport(store: Store, aed: MergedAed, kind: ReportKind, note: string | null, client: string, nowIso: string, today: string): Promise<ReportOutcome> {
   const hash = clientHash(client, today)
-  const own = store.passports.reportsOf(aed.id).filter((report) => report.clientHash === hash)
-  if (own.some((report) => Date.parse(nowIso) - Date.parse(report.at) < HOUR_MS)) return 'duplicate'
-  if (store.passports.reportsByClientOn(hash, today) >= 30) return 'limit'
+  const reports = store.passports.reportsOf(aed.id)
+  if (reports.some((report) => report.clientHash === hash && Date.parse(nowIso) - Date.parse(report.at) < HOUR_MS)) return 'duplicate'
+  if (store.passports.reportsByClientOn(hash, today) >= REPORTS_PER_CLIENT_DAY) return 'limit'
+  if (reports.filter((report) => report.at.startsWith(today)).length >= REPORTS_PER_DEVICE_DAY) return 'limit'
   await store.passports.report({ aedId: aed.id, kind, note, at: nowIso, clientHash: hash })
   if ((PROBLEM_KINDS as readonly string[]).includes(kind)) await notifyProblem(store, aed, kind, note, nowIso)
   return 'accepted'

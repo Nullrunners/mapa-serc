@@ -547,7 +547,9 @@ export const PassportPublic = z
     reports: z.object({
       lastOk: z.string().nullable().openapi({ description: 'Ostatnie „jest na miejscu” od przechodnia (30 dni)' }),
       okCount: z.number().int(),
-      problems: z.array(z.object({ kind: ReportKind, count: z.number().int(), lastAt: z.string() })).openapi({ description: 'Problemy zgłoszone po ostatnim potwierdzeniu' }),
+      problems: z
+        .array(z.object({ kind: ReportKind, count: z.number().int().openapi({ description: 'Ile osób to zgłosiło (jedna osoba liczy się raz dziennie)' }), lastAt: z.string() }))
+        .openapi({ description: 'Problemy zgłoszone po ostatnim potwierdzeniu' }),
     }),
     keeperEmail: z.string().nullable().openapi({ description: 'Zamaskowany adres opiekuna, na który można wysłać link do zarządzania' }),
     passportUrl: z.string(),
