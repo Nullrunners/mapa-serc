@@ -497,6 +497,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/gaps/hexes.geojson": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Small hexagons (H3 resolution 9) of the part of the map in view, without recommendations, for a close-up map */
+        get: operations["getGapsNear"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/gaps/commune": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The commune at a point with its boundary (from the state register ULDK), to analyse it as a whole */
+        get: operations["getGapsCommune"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/gaps/localities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Towns and villages of a name with their communes (from the state address register), to pick a commune by name */
+        get: operations["getGapsLocalities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/gaps.csv": {
         parameters: {
             query?: never;
@@ -521,7 +572,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Gaps in one area: hexagons with the hours a defibrillator is in reach, and the best places for new ones */
+        /** Gaps in one area (a box, a drawn shape or a commune): hexagons with the hours a defibrillator is in reach, and the best places for new ones */
         get: operations["getGaps"];
         put?: never;
         post?: never;
@@ -1434,7 +1485,62 @@ export interface components {
                     noDevice: number;
                     noNight: number;
                     coveredShare: number;
+                    /** @description Residents × share of the week without a device in reach, the same measure as the small hexagons */
+                    uncovered: number;
                 };
+            }[];
+        };
+        GapsNear: {
+            /** @enum {string} */
+            type: "FeatureCollection";
+            features: components["schemas"]["GapsHexFeature"][];
+            /** @description Too much of the map is in view for small hexagons; no features then */
+            tooLarge: boolean;
+        };
+        GapsHexFeature: {
+            /** @enum {string} */
+            type: "Feature";
+            geometry: {
+                /** @enum {string} */
+                type: "Polygon";
+                /** @description Rings of [lon, lat] pairs */
+                coordinates: number[][][];
+            };
+            properties: {
+                hex: string;
+                residents: number;
+                coveredHours: number;
+                noDevice: boolean;
+                noNight: boolean;
+                /** @description Residents × share of the week without a device in reach */
+                uncovered: number;
+            };
+        };
+        GapsCommune: {
+            terc: string;
+            /** @example Legionowo (miasto) */
+            gmina: string;
+            powiat: string;
+            wojewodztwo: string;
+            km2: number;
+            /** @description minLon,minLat,maxLon,maxLat */
+            bbox: number[];
+            /** @description Simplified to about 30 m */
+            boundary: {
+                /** @enum {string} */
+                type: "MultiPolygon";
+                /** @description Polygons of rings of [lon, lat] pairs; the first ring of each its outline */
+                coordinates: number[][][][];
+            };
+        };
+        GapsLocalities: {
+            items: {
+                name: string;
+                gmina: string;
+                powiat: string;
+                wojewodztwo: string;
+                lat: number;
+                lon: number;
             }[];
         };
         GapsView: {
@@ -1442,6 +1548,8 @@ export interface components {
             tooLarge: boolean;
             cells: number;
             maxCells: number;
+            /** @description Size of the analysed area in square kilometres */
+            km2: number;
             totals: components["schemas"]["GapsTotals"];
             hexes: components["schemas"]["GapsHexes"];
             places: components["schemas"]["GapsPlace"][];
@@ -1450,25 +1558,7 @@ export interface components {
         GapsHexes: {
             /** @enum {string} */
             type: "FeatureCollection";
-            features: {
-                /** @enum {string} */
-                type: "Feature";
-                geometry: {
-                    /** @enum {string} */
-                    type: "Polygon";
-                    /** @description Rings of [lon, lat] pairs */
-                    coordinates: number[][][];
-                };
-                properties: {
-                    hex: string;
-                    residents: number;
-                    coveredHours: number;
-                    noDevice: boolean;
-                    noNight: boolean;
-                    /** @description Residents × share of the week without a device in reach */
-                    uncovered: number;
-                };
-            }[];
+            features: components["schemas"]["GapsHexFeature"][];
         };
         GapsPlace: {
             rank: number;
@@ -2905,7 +2995,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Large hexagons; empty while the national figures are being computed */
+            /** @description Large hexagons; the first request after a start waits until the national figures are computed */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2934,13 +3024,11 @@ export interface operations {
             };
         };
     };
-    downloadGapsCsv: {
+    getGapsNear: {
         parameters: {
             query: {
-                /** @description minLon,minLat,maxLon,maxLat – the area to analyse */
+                /** @description The part of the map in view: minLon,minLat,maxLon,maxLat */
                 bbox: string;
-                /** @description How many places to recommend */
-                n?: number;
             };
             header?: never;
             path?: never;
@@ -2948,13 +3036,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description One row per recommended place */
+            /** @description Small hexagons, or none with tooLarge when the view holds too many */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": string;
+                    "application/json": components["schemas"]["GapsNear"];
                 };
             };
             /** @description The request does not match the contract */
@@ -2977,11 +3065,198 @@ export interface operations {
             };
         };
     };
-    getGaps: {
+    getGapsCommune: {
         parameters: {
             query: {
-                /** @description minLon,minLat,maxLon,maxLat – the area to analyse */
-                bbox: string;
+                /** @description lon,lat of any point in the commune */
+                at: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The commune and its boundary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GapsCommune"];
+                };
+            };
+            /** @description No commune at that point, or the boundary of that TERC has not been looked up yet */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The state register of boundaries or addresses did not answer */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getGapsLocalities: {
+        parameters: {
+            query: {
+                /** @description Name of a town or village */
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description At most ten places, the seats of communes first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GapsLocalities"];
+                };
+            };
+            /** @description No commune at that point, or the boundary of that TERC has not been looked up yet */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The state register of boundaries or addresses did not answer */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    downloadGapsCsv: {
+        parameters: {
+            query?: {
+                /** @description A box to analyse: minLon,minLat,maxLon,maxLat */
+                bbox?: string;
+                /** @description A shape drawn on the map: 3–100 corners as lon,lat joined by ";" */
+                area?: string;
+                /** @description A whole commune by its TERC code; look it up with /v1/gaps/commune first, which fetches its boundary */
+                terc?: string;
+                /** @description How many places to recommend */
+                n?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One row per recommended place */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description No commune at that point, or the boundary of that TERC has not been looked up yet */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The state register of boundaries or addresses did not answer */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getGaps: {
+        parameters: {
+            query?: {
+                /** @description A box to analyse: minLon,minLat,maxLon,maxLat */
+                bbox?: string;
+                /** @description A shape drawn on the map: 3–100 corners as lon,lat joined by ";" */
+                area?: string;
+                /** @description A whole commune by its TERC code; look it up with /v1/gaps/commune first, which fetches its boundary */
+                terc?: string;
                 /** @description How many places to recommend */
                 n?: number;
             };
@@ -3000,6 +3275,15 @@ export interface operations {
                     "application/json": components["schemas"]["GapsView"];
                 };
             };
+            /** @description No commune at that point, or the boundary of that TERC has not been looked up yet */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description The request does not match the contract */
             422: {
                 headers: {
@@ -3011,6 +3295,15 @@ export interface operations {
             };
             /** @description Unexpected error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The state register of boundaries or addresses did not answer */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

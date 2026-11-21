@@ -36,7 +36,7 @@ export default function GapReport({ place, method, csvHref, onClose }: GapReport
   };
 
   return (
-    <section aria-labelledby="raport-naglowek" className="space-y-6">
+    <section aria-labelledby="raport-naglowek" className="max-w-3xl space-y-6">
       <BackButton onClick={onClose}>Wróć do listy miejsc</BackButton>
 
       <div className="space-y-1">
@@ -60,14 +60,14 @@ export default function GapReport({ place, method, csvHref, onClose }: GapReport
       <Stats
         className="grid-cols-2"
         items={[
-          { label: `Mieszkańcy w promieniu ${method.reachM} m`, value: people(place.inReach.residents) },
+          { label: `Mieszkańcy w promieniu ${method.reachM} m`, value: people(place.inReach.residents) },
           { label: "W tym w wieku 65+", value: people(place.inReach.seniors) },
           { label: "Dziś bez żadnego AED w pobliżu", value: people(place.gained.noDevice) },
           { label: "Dziś bez AED dostępnego w nocy", value: people(place.gained.noNight) },
         ]}
       />
       <p className="text-sm">
-        Teraz w tym miejscu: <strong>{coverageNow(place.coveredHoursNow)}</strong>.{" "}
+        Teraz w tym miejscu: <strong>{coverageNow(place.coveredHoursNow, method.reachM)}</strong>.{" "}
         {place.nearestAllWeek ? `Najbliższy dostępny całą dobę: ${distance(place.nearestAllWeek.distanceM)}.` : "W okolicy nie znamy żadnego defibrylatora dostępnego całą dobę."}
       </p>
 

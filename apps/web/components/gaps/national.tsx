@@ -2,10 +2,10 @@ import type { GapsTotals } from "@/lib/api/client";
 import { people, share } from "@/lib/gaps-text";
 
 /** Residents, and how many of them have no device in reach at all and none at night, as rows of figures. */
-export function Totals({ totals }: { totals: GapsTotals }) {
+export function Totals({ totals, reachM }: { totals: GapsTotals; reachM: number }) {
   const rows = [
     { label: "Mieszkańcy", value: people(totals.residents), note: "" },
-    { label: "Bez AED w promieniu 400 m", value: people(totals.noDevice), note: share(totals.noDevice, totals.residents) },
+    { label: `Bez AED w promieniu ${reachM} m`, value: people(totals.noDevice), note: share(totals.noDevice, totals.residents) },
     { label: "Bez AED dostępnego w nocy", value: people(totals.noNight), note: share(totals.noNight, totals.residents) },
   ];
   return (

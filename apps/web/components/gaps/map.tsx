@@ -2,48 +2,89 @@
 
 import type { ExpressionSpecification, Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { useEffect, useRef, useState, type RefObject } from "react";
-import { MapFrame, MapLegend, MapUnavailable } from "@/components/map-frame";
-import { API_URL, type GapsPlace, type GapsView } from "@/lib/api/client";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { MapFrame, MapUnavailable } from "@/components/map-frame";
+import { API_URL, type GapsHexes, type GapsPlace } from "@/lib/api/client";
 import { count } from "@/lib/format";
+import { outsideOf, type Area, type Ring } from "@/lib/gaps-area";
 import { EMPTY, pointerOver, setData, useMapLibre, whenLoaded, type SourceData } from "@/lib/maplibre";
-import { AREA_STEPS, DETAIL_ZOOM, HEX_STEPS, SCALE, type MapView } from "./shared";
+import { startDraw, type Drawn } from "./draw";
+import { AREA_STEPS, FAINT, HEX_STEPS, SCALE, type MapView, type Tool } from "./shared";
 
-const ramp = (property: ExpressionSpecification, steps: readonly number[]): ExpressionSpecification =>
-  ["step", property, "rgba(0,0,0,0)", steps[0]!, SCALE[0], steps[1]!, SCALE[1], steps[2]!, SCALE[2], steps[3]!, SCALE[3], steps[4]!, SCALE[4]] as ExpressionSpecification;
+/** Nobody without a device: no colour. Fewer than the first step: a faint tint. Then the scale. */
+const ramp = (steps: readonly number[]): ExpressionSpecification =>
+  ["step", ["get", "uncovered"], "rgba(0,0,0,0)", 0.5, FAINT, steps[0]!, SCALE[0], steps[1]!, SCALE[1], steps[2]!, SCALE[2], steps[3]!, SCALE[3], steps[4]!, SCALE[4]] as ExpressionSpecification;
+
+const FIT = { padding: 24, duration: 0 };
 
 export interface GapsMapProps {
-  hexes: GapsView["hexes"] | null;
+  /** The country in large hexagons; off where small ones fill the view. */
+  overview: boolean;
+  /** Small hexagons: of the analysed area, or of the close-up in view. */
+  hexes: GapsHexes | null;
+  area: Area | null;
   places: GapsPlace[];
   selected: number | null;
   onSelect: (rank: number) => void;
   onView: (view: MapView) => void;
-  /** Fit the map to this box whenever `seq` changes. */
-  fitTo: { bbox: [number, number, number, number]; seq: number } | null;
+  tool: Tool;
+  onDrawn: (drawn: Drawn) => void;
+  onToolCancel: () => void;
+  /** Drawn over the map, and full screen with it: the selection tools. */
+  children?: ReactNode;
 }
 
-type Handlers = RefObject<Pick<GapsMapProps, "onSelect" | "onView">>;
+/** What the layers, added once, need to know of the component as it is now. */
+interface Live {
+  props: GapsMapProps;
+  /** The map is to keep the area in view (after a resize too) until the person moves it. */
+  follow: boolean;
+}
 
-/** The country in large hexagons, the analysed area in small ones, known devices and the numbered places. */
-function addLayers(map: MapLibreMap, handlers: Handlers, setZoom: (zoom: number) => void) {
+/**
+ * From the bottom: large and small hexagons and the veil outside the analysed area, all under the street names; the
+ * names; then the outline of the area, the shape being drawn, known devices and the numbered places on top.
+ */
+function addLayers(map: MapLibreMap, live: RefObject<Live>) {
+  // North stays up: a rectangle on the screen is then a rectangle on the map.
+  map.dragRotate.disable();
+  map.touchZoomRotate.disableRotation();
+  map.keyboard.disableRotation();
+
   const report = () => {
     const bounds = map.getBounds();
     const round = (value: number) => Number(value.toFixed(4));
-    setZoom(map.getZoom());
-    handlers.current.onView({ bbox: [round(bounds.getWest()), round(bounds.getSouth()), round(bounds.getEast()), round(bounds.getNorth())], zoom: map.getZoom() });
+    live.current.props.onView({ bbox: [round(bounds.getWest()), round(bounds.getSouth()), round(bounds.getEast()), round(bounds.getNorth())], zoom: map.getZoom() });
   };
   map.on("moveend", report);
+  map.on("movestart", (event) => {
+    if (event.originalEvent) live.current.follow = false;
+  });
+  // The panel grows when an area is analysed and the map gets narrower: keep the area in view.
+  map.on("resize", () => {
+    const { area } = live.current.props;
+    if (live.current.follow && area) map.fitBounds(area.bbox, FIT);
+  });
 
-  // Put the hexagons under the street names of the base map, so the map stays readable.
   const firstLabel = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
 
   map.addSource("overview", { type: "geojson", data: `${API_URL}/v1/gaps/overview.geojson` });
-  map.addLayer({ id: "overview-fill", type: "fill", source: "overview", maxzoom: DETAIL_ZOOM, paint: { "fill-color": ramp(["get", "noNight"], AREA_STEPS), "fill-opacity": 0.65 } }, firstLabel);
+  map.addLayer({ id: "overview-fill", type: "fill", source: "overview", paint: { "fill-color": ramp(AREA_STEPS), "fill-opacity": ["interpolate", ["linear"], ["zoom"], 9, 0.65, 14, 0.4] } }, firstLabel);
 
   map.addSource("hexes", { type: "geojson", data: EMPTY });
   // Lighter when zoomed in, so streets and buildings stay readable under the colour.
-  map.addLayer({ id: "hexes-fill", type: "fill", source: "hexes", paint: { "fill-color": ramp(["get", "uncovered"], HEX_STEPS), "fill-opacity": ["interpolate", ["linear"], ["zoom"], 12, 0.6, 16, 0.3] } }, firstLabel);
-  map.addLayer({ id: "hexes-line", type: "line", source: "hexes", minzoom: 13, paint: { "line-color": "#ffffff", "line-width": 0.5, "line-opacity": 0.6 } }, firstLabel);
+  map.addLayer({ id: "hexes-fill", type: "fill", source: "hexes", paint: { "fill-color": ramp(HEX_STEPS), "fill-opacity": ["interpolate", ["linear"], ["zoom"], 12, 0.6, 16, 0.35] } }, firstLabel);
+  map.addLayer({ id: "hexes-line", type: "line", source: "hexes", minzoom: 13, paint: { "line-color": "#7b8591", "line-width": 0.5, "line-opacity": 0.35 } }, firstLabel);
+
+  map.addSource("outside", { type: "geojson", data: EMPTY });
+  map.addLayer({ id: "outside-fill", type: "fill", source: "outside", paint: { "fill-color": "#ffffff", "fill-opacity": 0.65 } }, firstLabel);
+
+  map.addSource("area", { type: "geojson", data: EMPTY });
+  map.addLayer({ id: "area-line", type: "line", source: "area", paint: { "line-color": "#1b1b1b", "line-width": 2 } });
+
+  map.addSource("draft", { type: "geojson", data: EMPTY });
+  map.addLayer({ id: "draft-fill", type: "fill", source: "draft", paint: { "fill-color": "#0052a5", "fill-opacity": 0.12 } });
+  map.addLayer({ id: "draft-line", type: "line", source: "draft", paint: { "line-color": "#0052a5", "line-width": 2, "line-dasharray": [2, 1] } });
 
   map.addSource("aed", { type: "geojson", data: `${API_URL}/v1/aed.geojson?layer=all` });
   map.addLayer({ id: "aed-points", type: "circle", source: "aed", minzoom: 11, paint: { "circle-color": "#0052a5", "circle-radius": 4, "circle-stroke-width": 1.5, "circle-stroke-color": "#ffffff" } });
@@ -62,26 +103,55 @@ function addLayers(map: MapLibreMap, handlers: Handlers, setZoom: (zoom: number)
   });
   map.on("click", "places-circle", (event) => {
     const rank = event.features?.[0]?.properties?.rank as number | undefined;
-    if (rank !== undefined) handlers.current.onSelect(rank);
+    if (rank !== undefined) live.current.props.onSelect(rank);
   });
   pointerOver(map, ["places-circle"]);
   report();
 }
 
-/** The map of gaps. Everything on it is also in the panel next to it: the numbers, the places and their reports. */
-export default function GapsMap({ hexes, places, selected, onSelect, onView, fitTo }: GapsMapProps) {
-  const handlers = useRef({ onSelect, onView });
-  useEffect(() => {
-    handlers.current = { onSelect, onView };
-  }, [onSelect, onView]);
-  const [zoom, setZoom] = useState(5);
+const polygon = (ring: Ring): SourceData => ({ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [ring] } });
 
-  const { frame, container, map: mapRef, drawable } = useMapLibre((map) => addLayers(map, handlers, setZoom));
+/** The map of gaps. Everything on it is also in the panel next to it: the numbers, the places and their reports. */
+export default function GapsMap(props: GapsMapProps) {
+  const { overview, hexes, area, places, selected, tool, children } = props;
+  const live = useRef<Live>({ props, follow: false });
+  useEffect(() => {
+    live.current.props = props;
+  });
+
+  const { frame, container, map: mapRef, drawable } = useMapLibre((map) => addLayers(map, live));
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map) whenLoaded(map, "overview", () => map.setLayoutProperty("overview-fill", "visibility", overview ? "visible" : "none"));
+  }, [mapRef, overview]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (map) whenLoaded(map, "hexes", () => setData(map, "hexes", (hexes ?? EMPTY) as SourceData));
   }, [mapRef, hexes]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    whenLoaded(map, "area", () => {
+      setData(map, "area", area ? { type: "Feature", properties: {}, geometry: { type: "MultiPolygon", coordinates: area.outline } } : EMPTY);
+      setData(map, "outside", area ? outsideOf(area.outline) : EMPTY);
+      live.current.follow = area !== null;
+      if (area) map.fitBounds(area.bbox, FIT);
+    });
+  }, [mapRef, area]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || tool === "move") return;
+    const stop = startDraw(map, tool, {
+      onDraft: (ring) => setData(map, "draft", ring ? polygon(ring) : EMPTY),
+      onDone: (drawn) => live.current.props.onDrawn(drawn),
+      onCancel: () => live.current.props.onToolCancel(),
+    });
+    return stop;
+  }, [mapRef, tool]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -99,33 +169,42 @@ export default function GapsMap({ hexes, places, selected, onSelect, onView, fit
     const place = places.find((candidate) => candidate.rank === selected);
     whenLoaded(map, "selected", () => {
       setData(map, "selected", place ? { type: "Feature", properties: {}, geometry: place.boundary } : EMPTY);
-      if (place) map.flyTo({ center: [place.lon, place.lat], zoom: Math.max(map.getZoom(), 15) });
+      if (!place) return;
+      live.current.follow = false;
+      map.flyTo({ center: [place.lon, place.lat], zoom: Math.max(map.getZoom(), 15) });
     });
   }, [mapRef, selected, places]);
 
-  useEffect(() => {
-    if (fitTo) mapRef.current?.fitBounds(fitTo.bbox, { padding: 8, duration: 800 });
-  }, [mapRef, fitTo]);
+  if (!drawable)
+    return <MapUnavailable>Ta przeglądarka nie potrafi wyświetlić mapy. Wybierz miasto z listy obok albo znajdź gminę po nazwie: liczby i miejsca na nowe defibrylatory pokażemy bez mapy.</MapUnavailable>;
 
-  if (!drawable) return <MapUnavailable>Ta przeglądarka nie potrafi wyświetlić mapy. Wybierz miasto z listy obok: liczby i miejsca na nowe defibrylatory pokażemy bez mapy.</MapUnavailable>;
-
-  const detail = zoom >= DETAIL_ZOOM;
-  const steps = detail ? HEX_STEPS : AREA_STEPS;
+  const steps = overview ? AREA_STEPS : HEX_STEPS;
   return (
-    <MapFrame frameRef={frame} containerRef={container} label="Mapa luk w dostępie do defibrylatorów. Te same liczby i miejsca są na liście obok.">
-      <MapLegend>
-        <p className="mb-1 font-semibold">{detail ? "Mieszkańcy bez AED w pobliżu, z uwzględnieniem godzin" : "Mieszkańcy bez AED dostępnego w nocy"}</p>
-        <ul className="flex flex-wrap gap-x-2 gap-y-0.5">
-          {SCALE.map((color, index) => (
-            <li key={color} className="flex items-center gap-1">
-              <span aria-hidden className="inline-block size-3 rounded-sm border border-line" style={{ background: color }} />
-              {index < SCALE.length - 1 ? `${count(steps[index]!)}–${count(steps[index + 1]!)}` : `${count(steps[index]!)}+`}
+    <MapFrame frameRef={frame} containerRef={container} label="Mapa luk w dostępie do defibrylatorów. Te same liczby i miejsca są w panelu obok.">
+      {/* Top left: the tools, then the legend. The zoom buttons take the top right and the credits the bottom, which
+          MapLibre keeps unfolded on a narrow map until it is dragged by hand. */}
+      <div className="@container pointer-events-none absolute top-2 right-12 left-2 flex flex-col items-start gap-1.5">
+        {children}
+        <div role="group" aria-label="Legenda mapy" className="pointer-events-auto max-w-xs rounded-md bg-white/95 px-2.5 py-1.5 text-xs shadow-sm">
+          <p className="mb-1 font-semibold">Mieszkańcy bez AED w pobliżu</p>
+          <ul className="flex flex-wrap gap-x-2 gap-y-0.5">
+            <li className="flex items-center gap-1">
+              <span aria-hidden className="inline-block size-3 rounded-sm border border-line" style={{ background: FAINT }} />
+              poniżej {count(steps[0])}
             </li>
-          ))}
-        </ul>
-        {/* On a phone the map has half the screen; the note would cover too much of it. */}
-        <p className="mt-1 hidden text-muted md:block">{detail ? "Sześciokąt ma ok. 0,1 km². Niebieskie kropki to znane defibrylatory." : "Sześciokąt ma ok. 36 km². Przybliż, żeby zobaczyć ulice."}</p>
-      </MapLegend>
+            {SCALE.map((color, index) => (
+              <li key={color} className="flex items-center gap-1">
+                <span aria-hidden className="inline-block size-3 rounded-sm border border-line" style={{ background: color }} />
+                {index < SCALE.length - 1 ? `${count(steps[index]!)}–${count(steps[index + 1]!)}` : `${count(steps[index]!)}+`}
+              </li>
+            ))}
+          </ul>
+          {/* On a phone the map has a part of the screen only; the note would cover too much of it. */}
+          <p className="mt-1 hidden text-muted md:block">
+            {overview ? "Sześciokąt ma ok. 36 km². Przybliż, a pokażemy małe sześciokąty." : "Sześciokąt ma ok. 0,1 km², liczymy też godziny otwarcia. Bez koloru: wszyscy mają AED w pobliżu."}
+          </p>
+        </div>
+      </div>
     </MapFrame>
   );
 }
