@@ -151,6 +151,35 @@ describe('keeper of a device', () => {
     expect(supplyFor(store).points.find((point) => point.id === id)?.basis).not.toBe('excluded')
   })
 
+  it('stops counting the device in the gap analysis as soon as the keeper marks it withdrawn', async () => {
+    const { store } = await getContext()
+    const basis = () => supplyFor(store).points.find((point) => point.id === id)?.basis
+    const covered = () => supplyFor(store).coverage.size
+    expect(basis()).not.toBe('excluded')
+    const before = { key: supplyFor(store).key, covered: covered() }
+
+    expect((await post('/v1/owner/passport', { status: 'wycofany' }, owner())).status).toBe(200)
+    expect(basis()).toBe('excluded')
+    expect(supplyFor(store).key).not.toBe(before.key)
+    expect(covered()).toBeLessThanOrEqual(before.covered)
+
+    expect((await post('/v1/owner/passport', { status: 'czynny' }, owner())).status).toBe(200)
+    expect(basis()).not.toBe('excluded')
+    // The same devices at the same hours as before: the figures counted for them still hold.
+    expect(supplyFor(store).key).toBe(before.key)
+  })
+
+  it('keeps the gap figures when a change moves no device and no opening hour', async () => {
+    const { store } = await getContext()
+    const before = supplyFor(store)
+    expect((await post('/v1/owner/passport', { notifyPhone: '600 100 201', batteryExp: '2027-01-31' }, owner())).status).toBe(200)
+    expect((await post('/admin/jobs/pipeline', {}, OPERATOR)).status).toBe(200)
+    const after = supplyFor(store)
+    expect(after.key).toBe(before.key)
+    expect(after.coverage).toBe(before.coverage)
+    expect(after.points.find((point) => point.id === id)?.basis).not.toBe('excluded')
+  })
+
   it('loses access when the operator revokes the links', async () => {
     const fresh = (await (await post(`/admin/aed/${id}/owner-link`, { rotate: true }, OPERATOR)).json()) as any
     expect((await get('/v1/owner/passport', owner())).status).toBe(401)

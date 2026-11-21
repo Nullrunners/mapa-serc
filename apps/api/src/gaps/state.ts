@@ -1,6 +1,7 @@
 /**
- * What the gap endpoints answer from. Supply is rebuilt when the dataset changes (keyed by the pipeline run);
- * the national overview is computed once per dataset in the background, so no request waits for the whole country.
+ * What the gap endpoints answer from. Supply follows the dataset: a merge, a keeper's edit, an expired battery.
+ * The national overview is computed in the background once per set of devices that count, so no request waits
+ * for the whole country, and a change that moved no device does not start the count again.
  */
 import { createHash } from 'node:crypto'
 import { now, today } from '../config'
@@ -11,28 +12,50 @@ import { distanceM } from '../pipeline/normalize'
 import { buildCoverage, hexesOfCell, hexState, nationalOverview, type Coverage, type HexState, type Overview, TotalsBuilder, type Totals } from './engine'
 import { recommend, type Placement } from './greedy'
 import { cellCentre, populationCells, type GridCell } from './population'
-import { basisCounts, hasHour, NIGHT_HOUR, supplyPoints, type HoursBasis, type SupplyPoint } from './supply'
+import { basisCounts, hasHour, MASK_WORDS, NIGHT_HOUR, supplyPoints, type HoursBasis, type SupplyPoint } from './supply'
 import { cellToLatLng } from 'h3-js'
 import { WEEK_HOURS } from '@aed/schema'
 import { inArea, inShape, kmToEdge, type Area, type Bbox } from './area'
 
 export interface Supply {
+  /**
+   * Names what the figures are counted from: where the devices that count are, and at which hours of the week.
+   * A change that moves none of that (a new phone number, a merge that brought nothing new) leaves it as it was.
+   */
   key: string
   points: SupplyPoint[]
   coverage: Coverage
   counts: Record<HoursBasis, number>
 }
 
-let supplyCache: Supply | null = null
-/** Rebuilt when the dataset changes or a device stops (or starts again) counting as working. */
-export function supplyFor(store: Store): Supply {
-  const broken = notWorking(store, today(), now())
-  const key = `${store.ranAt ?? 'none'}|${createHash('sha1').update([...broken].sort().join(',')).digest('hex').slice(0, 12)}`
-  if (supplyCache?.key !== key) {
-    const points = supplyPoints(store.aeds, broken)
-    supplyCache = { key, points, coverage: buildCoverage(points), counts: basisCounts(points) }
+/** Position and hours of every device that counts, as one number: 40 bytes a device, in the order of the dataset. */
+function coverageKey(points: readonly SupplyPoint[]): string {
+  const counted = points.filter((point) => point.hoursPerWeek > 0)
+  const bytes = Buffer.alloc(counted.length * (16 + MASK_WORDS * 4))
+  let at = 0
+  for (const point of counted) {
+    at = bytes.writeDoubleLE(point.lat, at)
+    at = bytes.writeDoubleLE(point.lon, at)
+    for (const word of point.mask) at = bytes.writeUInt32LE(word, at)
   }
-  return supplyCache
+  return createHash('sha1').update(bytes).digest('hex').slice(0, 16)
+}
+
+let supplyCache: { store: Store; revision: number; broken: string; supply: Supply } | null = null
+/**
+ * Looked at again whenever a device changes (a merge, a keeper's edit) or stops (or starts again) counting as
+ * working. The coverage, which takes the longest, is built again only when a device moved or its hours changed.
+ */
+export function supplyFor(store: Store): Supply {
+  const notWorkingNow = notWorking(store, today(), now())
+  const broken = [...notWorkingNow].sort().join(',')
+  if (supplyCache?.store !== store || supplyCache.revision !== store.revision || supplyCache.broken !== broken) {
+    const points = supplyPoints(store.aeds, notWorkingNow)
+    const key = coverageKey(points)
+    const coverage = supplyCache?.supply.key === key ? supplyCache.supply.coverage : buildCoverage(points)
+    supplyCache = { store, revision: store.revision, broken, supply: { key, points, coverage, counts: basisCounts(points) } }
+  }
+  return supplyCache.supply
 }
 
 export type TimedOverview = Overview & { tookMs: number; computedAt: string }
