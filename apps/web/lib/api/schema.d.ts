@@ -1318,7 +1318,7 @@ export interface components {
             outdoor: number;
             /** @description No hours, inside a building or unknown: office hours assumed */
             assumed: number;
-            /** @description Private, withdrawn or out of service: not counted */
+            /** @description Not counted: private, withdrawn, out of service, expired electrodes or battery, or reported missing */
             excluded: number;
         };
         GapsOverview: {

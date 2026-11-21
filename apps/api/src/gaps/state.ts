@@ -2,7 +2,10 @@
  * What the gap endpoints answer from. Supply is rebuilt when the dataset changes (keyed by the pipeline run);
  * the national overview is computed once per dataset in the background, so no request waits for the whole country.
  */
+import { createHash } from 'node:crypto'
+import { now, today } from '../config'
 import type { Store } from '../db/store'
+import { notWorking } from '../passport/service'
 import type { Geo } from '../pipeline/geocode'
 import { distanceM } from '../pipeline/normalize'
 import { buildCoverage, hexesOfCell, hexState, nationalOverview, type Coverage, type HexState, type Overview, TotalsBuilder, type Totals } from './engine'
@@ -20,10 +23,12 @@ export interface Supply {
 }
 
 let supplyCache: Supply | null = null
+/** Rebuilt when the dataset changes or a device stops (or starts again) counting as working. */
 export function supplyFor(store: Store): Supply {
-  const key = store.ranAt ?? 'none'
+  const broken = notWorking(store, today(), now())
+  const key = `${store.ranAt ?? 'none'}|${createHash('sha1').update([...broken].sort().join(',')).digest('hex').slice(0, 12)}`
   if (supplyCache?.key !== key) {
-    const points = supplyPoints(store.aeds)
+    const points = supplyPoints(store.aeds, broken)
     supplyCache = { key, points, coverage: buildCoverage(points), counts: basisCounts(points) }
   }
   return supplyCache

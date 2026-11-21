@@ -2,6 +2,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { createApp } from '../src/app'
 import { getContext } from '../src/context'
+import { supplyFor } from '../src/gaps/state'
 import { normalisePhone } from '../src/passport/handlers'
 import { dueWindow, expiryState, maskEmail, summariseReports, type FieldReport } from '../src/passport/model'
 import { signInvitation, verifyInvitation } from '../src/radar/links'
@@ -125,6 +126,13 @@ describe('keeper of a device', () => {
 
     const ok = (await (await post(`/v1/aed/${id}/reports`, { kind: 'ok' }, from('10.0.0.2'))).json()) as any
     expect(ok.passport.reports).toMatchObject({ okCount: 1, problems: [] })
+  })
+
+  it('stops counting the device in the gap analysis while electrodes are past their date', async () => {
+    const { store } = await getContext()
+    expect(supplyFor(store).points.find((point) => point.id === id)?.basis).toBe('excluded')
+    await post('/v1/owner/passport', { electrodesChildExp: '2027-11-01' }, owner())
+    expect(supplyFor(store).points.find((point) => point.id === id)?.basis).not.toBe('excluded')
   })
 
   it('loses access when the operator revokes the links', async () => {

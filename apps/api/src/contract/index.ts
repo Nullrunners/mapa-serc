@@ -732,7 +732,7 @@ export const GapsMethod = z
         hours: z.number().int().openapi({ description: 'Hours read from the record' }),
         outdoor: z.number().int().openapi({ description: 'No hours, outside a building: counted as available around the clock' }),
         assumed: z.number().int().openapi({ description: 'No hours, inside a building or unknown: office hours assumed' }),
-        excluded: z.number().int().openapi({ description: 'Private, withdrawn or out of service: not counted' }),
+        excluded: z.number().int().openapi({ description: 'Not counted: private, withdrawn, out of service, expired electrodes or battery, or reported missing' }),
       })
       .openapi('GapsDeviceCounts'),
     sources: z.array(z.object({ name: z.string(), url: z.string(), licence: z.string(), attribution: z.string() })),

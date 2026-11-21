@@ -62,6 +62,23 @@ export function publicPassport(store: Store, aed: MergedAed, nowIso: string, tod
   }
 }
 
+/**
+ * Devices that should not count as protection: electrodes or battery past their date (from the keeper or the
+ * source), or reported missing or damaged by two passers-by in the last week with no confirmation since.
+ */
+export function notWorking(store: Store, today: string, nowIso: string): Set<string> {
+  const ids = new Set<string>()
+  for (const aed of store.aeds) {
+    const passport = store.passports.get(aed.id)
+    if (ITEMS.some((item) => expiryState(itemDate(item, passport, aed.record), today).state === 'expired')) ids.add(aed.id)
+    const reports = store.passports.reportsOf(aed.id)
+    if (reports.length === 0) continue
+    const open = summariseReports(reports, passport?.confirmedAt ?? null, nowIso, 7).problems
+    if (open.some((problem) => (problem.kind === 'missing' || problem.kind === 'damaged') && problem.count >= 2)) ids.add(aed.id)
+  }
+  return ids
+}
+
 /** Same person, same device, same day → same hash; the address itself is never stored. */
 export const clientHash = (client: string, today: string) => createHash('sha256').update(`${config.linkSecret}|${today}|${client}`).digest('hex').slice(0, 32)
 

@@ -76,15 +76,18 @@ export function classify(record: Pick<MergedAed['record'], 'status' | 'dostep' |
   return { basis: 'assumed', mask: ASSUMED }
 }
 
-/** Official and OpenStreetMap devices with a position; pending and incomplete records are left out. */
-export function supplyPoints(aeds: readonly MergedAed[]): SupplyPoint[] {
+/**
+ * Official and OpenStreetMap devices with a position; pending and incomplete records are left out.
+ * Devices in `notWorking` (expired electrodes or battery, reported missing) are kept but not counted.
+ */
+export function supplyPoints(aeds: readonly MergedAed[], notWorking: ReadonlySet<string> = new Set()): SupplyPoint[] {
   const points: SupplyPoint[] = []
   for (const aed of aeds) {
     if (aed.publication !== 'official' && aed.publication !== 'community') continue
     const lat = aed.record.szerokosc_geograficzna
     const lon = aed.record.dlugosc_geograficzna
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue
-    const { basis, mask } = classify(aed.record)
+    const { basis, mask } = notWorking.has(aed.id) ? { basis: 'excluded' as const, mask: emptyMask() } : classify(aed.record)
     points.push({
       id: aed.id,
       lat,

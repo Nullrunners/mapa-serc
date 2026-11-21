@@ -63,8 +63,8 @@ function Method({ method }: { method: GapsMethod }) {
         </p>
         <p>
           Godziny dostępności znamy dla {devices.hours.toLocaleString("pl-PL")} z {devices.total.toLocaleString("pl-PL")} urządzeń. Dla {devices.outdoor.toLocaleString("pl-PL")} stojących na zewnątrz bez
-          podanych godzin przyjmujemy całą dobę, a dla {devices.assumed.toLocaleString("pl-PL")} pozostałych dni robocze 8–16. {devices.excluded.toLocaleString("pl-PL")} urządzeń tylko dla personelu nie
-          liczymy. Dlatego liczba osób „bez żadnego AED” nie zależy od tych założeń, a liczba „bez AED w nocy” trochę tak.
+          podanych godzin przyjmujemy całą dobę, a dla {devices.assumed.toLocaleString("pl-PL")} pozostałych dni robocze 8–16. {devices.excluded.toLocaleString("pl-PL")} urządzeń nie
+          liczymy: są tylko dla personelu, wycofane, mają przeterminowane elektrody lub baterię albo przechodnie zgłosili, że ich nie ma. Dlatego liczba osób „bez żadnego AED” nie zależy od tych założeń, a liczba „bez AED w nocy” trochę tak.
         </p>
         <p>
           Wyniki są tak dobre jak dane: nie znamy każdego defibrylatora w Polsce, a część urządzeń pochodzi z OpenStreetMap i nie jest potwierdzona. Jeśli znasz defibrylator, którego brakuje,{" "}
