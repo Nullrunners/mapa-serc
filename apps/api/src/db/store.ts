@@ -2,7 +2,7 @@
  * Application state: the national dataset in memory (requests are answered from here) and its copy in DuckDB
  * (so a restart continues where it stopped). Everything that changes state goes through this file.
  */
-import type { AedRecord } from '@aed/schema'
+import { FIELD_NAMES, type AedRecord } from '@aed/schema'
 import { communeName, type Commune, type GeoCache } from '../pipeline/geocode'
 import { memberKey, qualityScore, type MergedAed } from '../pipeline/merge'
 import { applyOverride, passportOverride } from '../passport/model'
@@ -50,7 +50,7 @@ export class Store {
         id: String(row.id),
         publication: row.publication as MergedAed['publication'],
         quality: Number(row.quality),
-        record: parse<AedRecord>(row.record),
+        record: withAllFields(parse<AedRecord>(row.record)),
         provenance: parse(row.provenance),
         sources: parse(row.sources),
         issues: parse(row.issues),
@@ -269,6 +269,12 @@ export class Store {
     const rows = await this.db.all<Record<string, string>>('SELECT logged_at, actor, entity, entity_id, action, detail FROM change_log WHERE entity_id = ? ORDER BY logged_at DESC', [entityId])
     return rows.map((row) => ({ at: row.logged_at!, actor: row.actor!, entity: row.entity!, entityId: row.entity_id!, action: row.action!, detail: parse(row.detail) }))
   }
+}
+
+/** A record saved before a field joined the pattern lacks it; the contract wants every field, null when unknown. */
+function withAllFields(record: AedRecord): AedRecord {
+  for (const field of FIELD_NAMES) if (record[field] === undefined) (record as Record<string, unknown>)[field] = null
+  return record
 }
 
 const recordRow = (record: NormalizedRecord): Param[] => [record.sourceId, record.sourceKey, json(record.input), json(record.raw), json(record.fixes), json(record.issues)]
