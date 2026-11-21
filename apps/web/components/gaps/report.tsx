@@ -36,7 +36,7 @@ export default function GapReport({ place, method, csvHref, onClose }: GapReport
   };
 
   return (
-    <section aria-labelledby="raport-naglowek" className="max-w-3xl space-y-6">
+    <section aria-labelledby="raport-naglowek" className="space-y-6">
       <BackButton onClick={onClose}>Wróć do listy miejsc</BackButton>
 
       <div className="space-y-1">

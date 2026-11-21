@@ -98,7 +98,7 @@ export default function Gaps({ title, lead }: { title: string; lead: string }) {
     <GapsScreen
       title={title}
       lead={lead}
-      wide={area !== null}
+      layout={report ? "place" : area ? "area" : "pick"}
       view={report ? `miejsce-${place.rank}` : area ? areaKey(area) : "wybor"}
       map={
         <GapsMap

@@ -33,7 +33,7 @@ export function Dashboard({ area, analysis, poland, csvHref, onClear, onRetry, o
   const about = [area.detail, counted ? `ok. ${km2(counted.km2)}` : null].filter(Boolean).join(" · ");
 
   return (
-    <section aria-labelledby="obszar-naglowek" className="max-w-6xl space-y-6">
+    <section aria-labelledby="obszar-naglowek" className="space-y-6">
       <div className="space-y-1">
         <BackButton onClick={onClear}>Wybierz inny obszar</BackButton>
         <h2 id="obszar-naglowek" ref={headingRef} tabIndex={-1} className="text-xl leading-snug font-bold text-balance">
