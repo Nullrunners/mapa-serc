@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type Candidate } from "@/lib/api/client";
 import { count } from "@/lib/format";
 import { useLoad } from "@/lib/use-load";
@@ -14,10 +14,15 @@ const KINDS = [
 const KIND_LABEL: Record<string, string> = { osm_gap: "mapa społeczności", procurement: "zakup publiczny", web: "strona urzędu" };
 const STATUS_LABEL: Record<string, string> = { new: "nowa", invited: "wysłano prośbę o potwierdzenie", confirmed: "potwierdzona przez opiekuna", rejected: "odrzucona" };
 
-/** Leads for devices the official data does not know yet, with the operator's decision on each. */
-export default function Candidates() {
+const TOKEN_KEY = "admin-token";
+
+/**
+ * Leads for devices the official data does not know yet. Anyone can browse them;
+ * with `admin` the operator also enters their token and decides on each one.
+ */
+export default function Candidates({ admin = false }: { admin?: boolean }) {
   const [kind, setKind] = useState<(typeof KINDS)[number]["value"]>("");
-  const [token, setToken] = useState("");
+  const tokenField = useRef<HTMLInputElement>(null);
   const [version, setVersion] = useState(0);
   const [links, setLinks] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -28,8 +33,23 @@ export default function Candidates() {
     return data;
   });
 
+  // The operator types the token once per browser session, not on every visit to the panel.
+  useEffect(() => {
+    if (!tokenField.current) return;
+    try {
+      tokenField.current.value = sessionStorage.getItem(TOKEN_KEY) ?? "";
+    } catch {}
+  }, [admin]);
+
+  function rememberToken(value: string) {
+    try {
+      sessionStorage.setItem(TOKEN_KEY, value);
+    } catch {}
+  }
+
   async function decide(candidate: Candidate, decision: "invite" | "reject") {
     setError(null);
+    const token = tokenField.current?.value ?? "";
     const { data, response } = await api
       .POST("/v1/candidates/{id}/decision", { params: { path: { id: candidate.id } }, body: { decision }, headers: { Authorization: `Bearer ${token}` } })
       .catch(() => ({ data: undefined, response: undefined }));
@@ -52,15 +72,14 @@ export default function Candidates() {
             ))}
           </div>
         </fieldset>
-        <div className="space-y-1">
-          <label htmlFor="token" className="label text-sm">
-            Token administratora
-          </label>
-          <input id="token" type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} aria-describedby="token-opis" className="field w-64 py-1.5" />
-          <p id="token-opis" className="text-xs text-muted">
-            Tylko do decyzji. Przeglądać może każdy.
-          </p>
-        </div>
+        {admin && (
+          <div className="space-y-1">
+            <label htmlFor="token" className="label text-sm">
+              Token administratora
+            </label>
+            <input id="token" type="password" autoComplete="off" ref={tokenField} onChange={(event) => rememberToken(event.target.value)} className="field w-64 py-1.5" />
+          </div>
+        )}
       </div>
 
       {error && (
@@ -74,7 +93,9 @@ export default function Candidates() {
           {result.state === "loading" && "Wczytuję…"}
           {result.state === "ready" &&
             (result.data.total === 0
-              ? "Brak wskazówek. Uruchom zadanie „radar”."
+              ? admin
+                ? "Brak wskazówek. Uruchom zadanie „radar”."
+                : "Brak wskazówek."
               : `Wskazówki: ${count(result.data.total)}${result.data.total > result.data.items.length ? ` (widać ${result.data.items.length} najważniejszych)` : ""}`)}
         </p>
         {result.state === "error" && (
@@ -85,7 +106,7 @@ export default function Candidates() {
         {result.state === "ready" && (
           <ul className="space-y-3">
             {result.data.items.map((candidate) => (
-              <Lead key={candidate.id} candidate={candidate} link={links[candidate.id]} onDecide={(decision) => decide(candidate, decision)} />
+              <Lead key={candidate.id} candidate={candidate} link={links[candidate.id]} onDecide={admin ? (decision) => decide(candidate, decision) : undefined} />
             ))}
           </ul>
         )}
@@ -94,9 +115,10 @@ export default function Candidates() {
   );
 }
 
-function Lead({ candidate, link, onDecide }: { candidate: Candidate; link?: string; onDecide: (decision: "invite" | "reject") => void }) {
+/** One lead. Without `onDecide` it is read-only: no decision buttons. */
+function Lead({ candidate, link, onDecide }: { candidate: Candidate; link?: string; onDecide?: (decision: "invite" | "reject") => void }) {
   const meta = [KIND_LABEL[candidate.kind] ?? candidate.kind, candidate.locality, candidate.evidence.date].filter(Boolean);
-  const open = candidate.status === "new" || candidate.status === "invited";
+  const open = onDecide !== undefined && (candidate.status === "new" || candidate.status === "invited");
   return (
     <li className="card space-y-2">
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
