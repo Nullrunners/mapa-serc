@@ -26,6 +26,16 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-claude-haiku-5-5}
       WARSAW_API_KEY: ${WARSAW_API_KEY:-}
+      # Optional: messages to device keepers (passport links, expiry reminders, problem reports). Without them every
+      # message is only written to the outbox (GET /admin/outbox). SMTP_URL e.g. smtps://user:password@smtp.example.com:465
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      # SMSAPI.pl token; SMS_FROM is a sender name registered there; SMSAPI_TEST=1 = accepted but not delivered.
+      SMSAPI_TOKEN: ${SMSAPI_TOKEN:-}
+      SMS_FROM: ${SMS_FROM:-}
+      SMSAPI_TEST: ${SMSAPI_TEST:-}
+      # Coolify's proxy appends the client address to X-Forwarded-For; the passport's report limits read it there.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
     volumes:
       # aed.duckdb (submissions, change log, register cache) and downloaded source copies. Survives redeploys.
       - data:/data

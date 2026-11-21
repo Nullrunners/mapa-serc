@@ -135,6 +135,14 @@ XSD harvestera i przykładowy plik XML w `apps/api/test/fixtures/harvester/` poc
 
 [compose.yaml](compose.yaml) opisuje obie usługi dla Coolify (zasób typu Docker Compose). Wymagane zmienne: `PUBLIC_API_URL`, `PUBLIC_WEB_URL`, `ADMIN_TOKEN`, `LINK_SECRET`. Obrazy nie były jeszcze budowane – na komputerze, na którym powstał kod, nie ma Dockera.
 
+Zmienne nieobowiązkowe:
+
+- `SMTP_URL` i `MAIL_FROM` – wysyłka e-maili do opiekunów urządzeń (naklejki i linki do paszportów, przypomnienia o terminach, zgłoszenia przechodniów)
+- `SMSAPI_TOKEN`, `SMS_FROM` i `SMSAPI_TEST` – te same wiadomości SMS-em przez SMSAPI.pl; `SMSAPI_TEST=1` sprawdza wysyłkę bez dostarczania i bez kosztów
+- `TRUSTED_PROXY_HOPS` (domyślnie 1) – liczba serwerów pośredniczących przed API; limity zgłoszeń przechodniów biorą adres klienta z nagłówka `X-Forwarded-For`, z tego miejsca od końca
+
+Bez zmiennych SMTP i SMSAPI wiadomości trafiają tylko do dziennika (`GET /admin/outbox`).
+
 ## Kod przygotowany przed startem
 
 Regulamin dopuszcza wcześniej przygotowany kod pod warunkiem wskazania go:

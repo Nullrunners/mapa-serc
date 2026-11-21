@@ -30,7 +30,8 @@ export const config = {
   llm: { apiKey: env.ANTHROPIC_API_KEY ?? '', model: env.LLM_MODEL ?? 'claude-haiku-5-5' },
   warsawApiKey: env.WARSAW_API_KEY ?? '',
   /** Email to device keepers (passport reminders, owner links). Empty SMTP_URL: messages are only logged in the outbox. */
-  mail: { smtpUrl: env.SMTP_URL ?? '', from: env.MAIL_FROM ?? 'AED Hub <no-reply@aed-hub.local>' },
+  // `||`, not `??`: compose passes an unset variable as an empty string, and an empty sender is not a default.
+  mail: { smtpUrl: env.SMTP_URL ?? '', from: env.MAIL_FROM || 'AED Hub <no-reply@aed-hub.local>' },
   /** SMS through SMSAPI.pl. Empty token: messages are only logged. SMSAPI_TEST=1 asks SMSAPI not to deliver them. */
   sms: { token: env.SMSAPI_TOKEN ?? '', from: env.SMS_FROM ?? '', test: env.SMSAPI_TEST === '1' || env.SMSAPI_TEST === 'true' },
   /**
