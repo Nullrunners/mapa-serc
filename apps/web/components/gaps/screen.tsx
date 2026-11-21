@@ -7,7 +7,7 @@ export interface GapsScreenProps {
   title: string;
   lead: string;
   /**
-   * An area is analysed: the panel with the conclusions takes about two thirds of the width and the map the rest
+   * An area is analysed: the panel with the conclusions takes a bit more than half of the width and the map the rest
    * (on a phone the map a third of the height). Otherwise the map is large, to look around and draw on.
    */
   wide: boolean;
@@ -47,7 +47,7 @@ export function GapsScreen({ title, lead, wide, view, map, children }: GapsScree
       </div>
       <section
         aria-label="Mapa"
-        className={`relative order-first shrink-0 border-b border-line md:order-none md:border-b-0 print:hidden ${wide ? "min-h-48 basis-1/3 md:w-2/5 md:min-w-72 md:flex-none md:basis-auto lg:w-1/3" : "basis-1/2 md:flex-1 md:basis-auto"}`}
+        className={`relative order-first shrink-0 border-b border-line md:order-none md:border-b-0 print:hidden ${wide ? "min-h-48 basis-1/3 md:w-2/5 md:min-w-72 md:flex-none md:basis-auto xl:w-[45%]" : "basis-1/2 md:flex-1 md:basis-auto"}`}
       >
         {map}
       </section>
