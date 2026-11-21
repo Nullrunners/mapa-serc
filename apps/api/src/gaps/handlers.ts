@@ -41,7 +41,7 @@ export const gapsSummaryHandler: RouteHandler<typeof gapsSummaryRoute> = async (
     ready: overview !== null,
     computedAt: overview?.computedAt ?? null,
     tookMs: overview?.tookMs ?? null,
-    totals: overview?.totals ?? null,
+    totals: overview?.totals ?? { residents: 0, seniors: 0, noDevice: 0, noNight: 0, coveredShare: 0 },
     method: method(store),
   })
 }

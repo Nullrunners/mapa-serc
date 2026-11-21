@@ -530,12 +530,12 @@ export const GapsSummary = z
     ready: z.boolean().openapi({ description: 'false while the national figures are being computed (a few seconds after a start or a new merge)' }),
     computedAt: z.string().nullable(),
     tookMs: z.number().int().nullable(),
-    totals: GapsTotals.nullable(),
+    totals: GapsTotals,
     method: GapsMethod,
   })
   .openapi('GapsSummary')
 
-const Polygon = z.object({ type: z.literal('Polygon'), coordinates: z.array(z.array(z.tuple([z.number(), z.number()]))) })
+const Polygon = z.object({ type: z.literal('Polygon'), coordinates: z.array(z.array(z.array(z.number()))).openapi({ description: 'Rings of [lon, lat] pairs' }) })
 
 export const GapsOverview = z
   .object({

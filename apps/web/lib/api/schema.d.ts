@@ -1061,7 +1061,7 @@ export interface components {
             noNight: number;
             /** @description Share of resident-hours of the week with a device in reach (0–1) */
             coveredShare: number;
-        } | null;
+        };
         GapsMethod: {
             /** @description H3 resolution of the analysis */
             resolution: number;
@@ -1105,10 +1105,8 @@ export interface components {
                 geometry: {
                     /** @enum {string} */
                     type: "Polygon";
-                    coordinates: [
-                        number,
-                        number
-                    ][][];
+                    /** @description Rings of [lon, lat] pairs */
+                    coordinates: number[][][];
                 };
                 properties: {
                     hex: string;
@@ -1138,10 +1136,8 @@ export interface components {
                 geometry: {
                     /** @enum {string} */
                     type: "Polygon";
-                    coordinates: [
-                        number,
-                        number
-                    ][][];
+                    /** @description Rings of [lon, lat] pairs */
+                    coordinates: number[][][];
                 };
                 properties: {
                     hex: string;
@@ -1190,10 +1186,8 @@ export interface components {
             boundary: {
                 /** @enum {string} */
                 type: "Polygon";
-                coordinates: [
-                    number,
-                    number
-                ][][];
+                /** @description Rings of [lon, lat] pairs */
+                coordinates: number[][][];
             };
         };
         GapsNearbyDevice: {
