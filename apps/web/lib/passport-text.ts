@@ -10,8 +10,8 @@ export const REPORT_BUTTON: Record<ReportKind, string> = {
   ok: "Jest na miejscu, zielona dioda miga",
   locked: "Szafka jest zamknięta",
   missing: "Nie ma urządzenia",
-  battery_alarm: "Urządzenie piszczy albo pokazuje alarm baterii",
-  damaged: "Urządzenie albo szafka są uszkodzone",
+  battery_alarm: "Piszczy albo pokazuje alarm baterii",
+  damaged: "Urządzenie albo szafka jest uszkodzona",
 };
 
 /** The same, as a finished sentence about what someone reported. */

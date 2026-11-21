@@ -33,12 +33,12 @@ export default function PassportNote({ publication, passport }: { publication: A
     ...expired.map((entry) => ({ key: entry.item, text: `${partName(entry)}: ${expiryText(entry).text}.`, tone: "danger" as const })),
   ];
   if (byKeeper) lines.push({ key: "keeper", text: `Opiekun potwierdził sprawność: ${date(byKeeper)}.`, tone: good });
-  if (lastOk) lines.push({ key: "ok", text: `Ostatnio ktoś sprawdził, że jest na miejscu: ${dateTime(lastOk)}.`, tone: good });
+  if (lastOk) lines.push({ key: "ok", text: `Ktoś potwierdził, że jest na miejscu: ${dateTime(lastOk)}.`, tone: good });
   if (publication === "community") {
     lines.push(
       byKeeper || lastOk
-        ? { key: "source", text: "Dane pochodzą z OpenStreetMap i nikt z instytucji ich jeszcze nie potwierdził.", tone: "warn" }
-        : { key: "source", text: "To urządzenie nie zostało jeszcze potwierdzone. Pochodzi z OpenStreetMap, więc informacje mogą być nieaktualne.", tone: "warn", strong: true },
+        ? { key: "source", text: "Dane z OpenStreetMap, bez potwierdzenia instytucji.", tone: "warn" }
+        : { key: "source", text: "Niepotwierdzone (z OpenStreetMap), może być nieaktualne.", tone: "warn", strong: true },
     );
   }
 

@@ -24,10 +24,7 @@ export default function Sticker({ id }: { id: string }) {
       <PrintSetup page="size: 100mm 100mm; margin: 0;" />
 
       <div className="max-w-2xl space-y-4 print:hidden">
-        <PageHeader
-          title="Naklejka na defibrylator"
-          lead="Wydrukuj naklejkę i przyklej ją na szafce albo obok urządzenia. Kto zeskanuje kod telefonem, zobaczy paszport urządzenia i jednym kliknięciem potwierdzi, że defibrylator jest na miejscu, albo zgłosi problem. Zgłoszenie trafi do Ciebie."
-        />
+        <PageHeader title="Naklejka na defibrylator" lead="Przyklej przy urządzeniu. Po zeskanowaniu każdy potwierdzi, że jest na miejscu, albo zgłosi Ci problem." />
         <button type="button" onClick={() => window.print()} className="btn btn-primary">
           Drukuj naklejkę
         </button>

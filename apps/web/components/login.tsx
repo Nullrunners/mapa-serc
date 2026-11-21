@@ -33,17 +33,14 @@ export default function Login() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <PageHeader
-        title="Zaloguj się przez mObywatel"
-        lead="Po zalogowaniu wejdziesz do panelu opiekuna bez szukania linku w poczcie. Przy potwierdzeniu sprawności będzie też widać, że zrobiła to zalogowana osoba."
-      />
+      <PageHeader title="Zaloguj się przez mObywatel" lead="Wejdziesz do panelu opiekuna bez linku z e-maila." />
       <div aria-live="polite">
         <LoadStatus of={loaded} />
       </div>
 
       {loaded.state === "ready" && loaded.data.mode === "off" && (
         <div className="space-y-3">
-          <p>W tym serwisie logowanie przez mObywatel nie jest włączone. Do panelu opiekuna wejdziesz linkiem, który wysyłamy e-mailem ze strony urządzenia.</p>
+          <p>Logowanie jest tu wyłączone. Do panelu wejdziesz linkiem z e-maila.</p>
           <Link href="/" className="link">
             Znajdź swoje urządzenie na mapie
           </Link>
@@ -54,10 +51,7 @@ export default function Login() {
         <>
           <div className="space-y-2 rounded-lg border-2 border-warn p-4">
             <p className="font-semibold">To logowanie pokazowe.</p>
-            <p className="text-sm">
-              W działającym serwisie otworzy się tu strona login.gov.pl, a Ty potwierdzisz logowanie w aplikacji mObywatel. Tutaj wybierasz jedną z przykładowych osób. Każdy może wybrać tę samą, więc
-              to logowanie niczego nie chroni.
-            </p>
+            <p className="text-sm">Prawdziwe przejdzie przez login.gov.pl. Tu wybierasz przykładową osobę, więc niczego ono nie chroni.</p>
           </div>
           <ul className="space-y-2">
             {loaded.data.people.map((person) => (
@@ -69,7 +63,7 @@ export default function Login() {
             ))}
           </ul>
           <LiveMessage message={message} />
-          <p className="hint">Zapisujemy tylko imię i pierwszą literę nazwiska, żeby inni opiekunowie tego samego urządzenia wiedzieli, kto je sprawdzał.</p>
+          <p className="hint">Zapisujemy tylko imię i inicjał nazwiska.</p>
         </>
       )}
     </div>

@@ -48,7 +48,7 @@ export default function KeeperHome() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <PageHeader title="Panel opiekuna" lead="Tu zajmujesz się swoimi defibrylatorami: wpisujesz terminy ważności elektrod i baterii i potwierdzasz, że urządzenie działa." />
+      <PageHeader title="Panel opiekuna" lead="Terminy elektrod i baterii oraz przeglądy Twoich defibrylatorów." />
       <div aria-live="polite">
         <LoadStatus of={loaded} />
       </div>
@@ -60,9 +60,7 @@ export default function KeeperHome() {
               Zaloguj się przez mObywatel
             </Link>
           )}
-          <p className="text-sm">
-            Pierwszy raz? Otwórz link, który wysłaliśmy na adres Twojej instytucji. Nie masz go? Zeskanuj kod QR z naklejki przy urządzeniu albo znajdź je na mapie i na jego stronie poproś o nowy link.
-          </p>
+          <p className="text-sm">Pierwszy raz? Otwórz link z e-maila. Nie masz go? Znajdź urządzenie na mapie i poproś o nowy.</p>
         </div>
       )}
 
@@ -70,10 +68,7 @@ export default function KeeperHome() {
         <>
           <KeeperBar name={account.name} onLogout={() => setLoggedOut(true)} />
           {account.devices.length === 0 ? (
-            <p>
-              Przy Twoim koncie nie ma jeszcze żadnego urządzenia. Otwórz link, który wysłaliśmy na adres Twojej instytucji, i w panelu urządzenia kliknij „Dodaj do mojego konta”. Potem wejdziesz już
-              bez linku.
-            </p>
+            <p>Nie masz jeszcze urządzeń. Otwórz link z e-maila i kliknij „Dodaj do mojego konta”.</p>
           ) : (
             <section aria-labelledby="moje-naglowek" className="space-y-2">
               <h2 id="moje-naglowek" className="text-lg font-bold">
@@ -84,7 +79,7 @@ export default function KeeperHome() {
                   <Device key={device.id} device={device} onRemove={() => remove(device.id)} />
                 ))}
               </ul>
-              <p className="hint">Urządzenie usunięte z konta zostaje w bazie. Wrócisz do niego linkiem z wiadomości od nas.</p>
+              <p className="hint">Usunięcie z konta nie usuwa urządzenia z mapy.</p>
             </section>
           )}
         </>

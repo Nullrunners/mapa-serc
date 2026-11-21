@@ -13,15 +13,15 @@ import { loadAccount, loadLoginOptions, loginHref, readSession, sessionHeader } 
 import { useLoad } from "@/lib/use-load";
 
 const STATUS_CHOICES = [
-  { value: "", label: "bez zmian (tak, jak podaje źródło danych)" },
+  { value: "", label: "bez zmian" },
   { value: "czynny", label: "na miejscu i sprawne" },
-  { value: "czasowo_niedostepny", label: "chwilowo niedostępne, np. serwis albo remont" },
+  { value: "czasowo_niedostepny", label: "chwilowo niedostępne (serwis, remont)" },
   { value: "wycofany", label: "usunięte z tej lokalizacji" },
 ] as const;
 
 const DELIVERY: Record<OwnerView["messages"][number]["status"], string> = {
   sent: "wysłano",
-  logged: "zapisano (wysyłka w tym serwisie jest wyłączona)",
+  logged: "zapisano, wysyłka wyłączona",
   failed: "nie udało się wysłać",
 };
 
@@ -101,9 +101,9 @@ function DevicePanel({ token, id, connect }: { token: string | null; id: string 
     setMessage(null);
     const data = await addToAccount();
     setBusy(false);
-    if (!data) return setMessage({ text: "Nie udało się dodać urządzenia do konta. Zaloguj się jeszcze raz i spróbuj ponownie.", tone: "danger" });
+    if (!data) return setMessage({ text: "Nie udało się dodać do konta. Zaloguj się jeszcze raz.", tone: "danger" });
     setView(data);
-    setMessage({ text: "Gotowe. Od teraz wejdziesz do panelu tego urządzenia po zalogowaniu, bez linku.", tone: "ok" });
+    setMessage({ text: "Gotowe. Teraz wystarczy logowanie.", tone: "ok" });
   }
 
   /** With an owner link the person stays in the panel, only without a name; without one there is nothing to stay in. */
@@ -120,7 +120,7 @@ function DevicePanel({ token, id, connect }: { token: string | null; id: string 
     setBusy(false);
     if (!data) return setMessage({ text: problemMessage(problem, "Nie udało się zapisać potwierdzenia."), tone: "danger" });
     setView(data);
-    setMessage({ text: `Dziękujemy! W otwartym zbiorze danych urządzenie jest od teraz oznaczone jako sprawne i sprawdzone ${date(data.passport.confirmedAt ?? "")}.`, tone: "ok" });
+    setMessage({ text: `Dziękujemy! Urządzenie oznaczone jako sprawne (${date(data.passport.confirmedAt ?? "")}).`, tone: "ok" });
   }
 
   async function save(event: FormEvent) {
@@ -145,7 +145,7 @@ function DevicePanel({ token, id, connect }: { token: string | null; id: string 
     if (!data) return setMessage({ text: problemMessage(problem, "Nie udało się zapisać zmian."), tone: "danger" });
     setView(data);
     setForm(formOf(data));
-    setMessage({ text: "Zapisaliśmy zmiany. Przypomnimy o wymianie 30 i 7 dni przed terminem.", tone: "ok" });
+    setMessage({ text: "Zapisano. Przypomnimy 30 i 7 dni przed terminem.", tone: "ok" });
   }
 
   if (loaded.state === "ready" && loaded.data.refused) {
@@ -197,7 +197,7 @@ function DevicePanel({ token, id, connect }: { token: string | null; id: string 
         </KeeperBar>
       )}
       <div className="space-y-1">
-        <p className="text-sm font-semibold tracking-wide text-gov uppercase">Paszport defibrylatora: panel opiekuna</p>
+        <p className="text-sm font-semibold tracking-wide text-gov uppercase">Panel opiekuna</p>
         <h1 className="text-2xl font-bold text-balance">{title(view.aed)}</h1>
         {addressLine(view.aed) && <p>{addressLine(view.aed)}</p>}
       </div>
@@ -206,7 +206,7 @@ function DevicePanel({ token, id, connect }: { token: string | null; id: string 
         <h2 id="potwierdz-naglowek" className="text-lg font-bold">
           Potwierdź, że urządzenie działa
         </h2>
-        <p className="text-sm">Kliknij po przeglądzie: urządzenie jest na miejscu, zielona dioda miga, a elektrody i bateria są ważne.</p>
+        <p className="text-sm">Po przeglądzie: jest na miejscu, dioda miga, elektrody i bateria są ważne.</p>
         <p className="text-sm text-muted">
           {card.confirmedAt
             ? `Ostatnie potwierdzenie: ${date(card.confirmedAt)}${card.confirmedByKeeper ? "" : " (według źródła danych)"}${view.passport.confirmedBy ? `, ${view.passport.confirmedBy} po zalogowaniu przez mObywatel` : ""}.`
@@ -214,12 +214,12 @@ function DevicePanel({ token, id, connect }: { token: string | null; id: string 
         </p>
         {expired.length > 0 && (
           <p className="text-sm font-semibold text-danger">
-            Minął termin: {expired.map((item) => `${item.label} (${date(item.date ?? "")})`).join(", ")}. Po wymianie wpisz niżej nową datę, a dopiero potem potwierdź sprawność.
+            Minął termin: {expired.map((item) => `${item.label} (${date(item.date ?? "")})`).join(", ")}. Po wymianie wpisz niżej nową datę.
           </p>
         )}
         {card.reports.problems.length > 0 && (
           <div className="space-y-1 text-sm">
-            <p className="font-semibold text-danger">Przechodnie zgłosili problem. Sprawdź urządzenie, zanim potwierdzisz sprawność:</p>
+            <p className="font-semibold text-danger">Zgłoszone problemy. Sprawdź je przed potwierdzeniem:</p>
             <ul className="list-disc pl-6">
               {card.reports.problems.map((problem) => (
                 <li key={problem.kind}>
@@ -243,7 +243,7 @@ function DevicePanel({ token, id, connect }: { token: string | null; id: string 
       <form onSubmit={save} className="space-y-8">
         <fieldset className="space-y-3">
           <legend className="text-lg font-bold">Terminy ważności</legend>
-          <p className="hint">Daty znajdziesz na opakowaniu elektrod i na baterii. Przypomnimy o wymianie 30 i 7 dni wcześniej.</p>
+          <p className="hint">Daty są na opakowaniu elektrod i na baterii.</p>
           {card.items.map((item) => {
             const key = EXPIRY_FIELD[item.item];
             const expiry = expiryText(item);
@@ -274,7 +274,7 @@ function DevicePanel({ token, id, connect }: { token: string | null; id: string 
         <fieldset className="space-y-3">
           <legend className="text-lg font-bold">Gdzie wysyłać przypomnienia</legend>
           <p className="hint">
-            Tych danych nie publikujemy. Bez adresu e-mail napiszemy na adres podany w danych urządzenia{view.aed.record.email_kontaktowy ? ` (${view.aed.record.email_kontaktowy})` : ""}.
+            Nie publikujemy ich.{view.aed.record.email_kontaktowy ? ` Bez e-maila piszemy na ${view.aed.record.email_kontaktowy}.` : ""}
           </p>
           <div className={ROW}>
             <label htmlFor="notifyEmail" className="label">
@@ -301,17 +301,17 @@ function DevicePanel({ token, id, connect }: { token: string | null; id: string 
             Wejście bez linku
           </h2>
           {view.viewer?.linked ? (
-            <p className="text-sm">To urządzenie jest przy Twoim koncie. Do panelu wejdziesz po zalogowaniu przez mObywatel, na przykład ze strony urządzenia po zeskanowaniu naklejki.</p>
+            <p className="text-sm">Urządzenie jest przy Twoim koncie. Wystarczy logowanie przez mObywatel.</p>
           ) : view.viewer ? (
             <>
-              <p className="text-sm">Dodaj to urządzenie do swojego konta, a następnym razem wejdziesz do panelu po zalogowaniu, bez szukania linku w poczcie.</p>
+              <p className="text-sm">Dodaj je do konta, a następnym razem wejdziesz bez linku.</p>
               <button type="button" disabled={busy} onClick={connectAccount} className="btn btn-secondary">
                 Dodaj do mojego konta
               </button>
             </>
           ) : (
             <>
-              <p className="text-sm">Zaloguj się przez mObywatel, a zapiszemy to urządzenie przy Twoim koncie. Następnym razem wejdziesz do panelu bez szukania linku w poczcie.</p>
+              <p className="text-sm">Zaloguj się, a następnym razem wejdziesz bez linku.</p>
               <Link href={loginHref(`/opiekun?t=${encodeURIComponent(token ?? "")}&polacz=1`)} className="btn btn-secondary">
                 Zaloguj się przez mObywatel
               </Link>
@@ -325,7 +325,7 @@ function DevicePanel({ token, id, connect }: { token: string | null; id: string 
         <h2 id="naklejka-naglowek" className="text-lg font-bold">
           Naklejka z kodem QR
         </h2>
-        <p className="text-sm">Przyklej ją przy urządzeniu. Kto ją zeskanuje, może potwierdzić, że defibrylator jest na miejscu, albo zgłosić Ci problem.</p>
+        <p className="text-sm">Przyklej przy urządzeniu. Przechodnie zgłoszą przez nią problem.</p>
         <div className="flex flex-wrap gap-2 pt-1">
           <Link href={`/aed/${view.aed.id}/naklejka`} className="btn btn-secondary btn-sm">
             Wydrukuj naklejkę

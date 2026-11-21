@@ -33,16 +33,16 @@ export default function NfcWrite({ url }: { url: string }) {
     const timer = setTimeout(() => controller.abort(), WAIT_MS);
     try {
       await new Reader().write({ records: [{ recordType: "url", data: url }] }, { signal: controller.signal });
-      setMessage({ text: "Zapisane. Przyłóż telefon do naklejki jeszcze raz i sprawdź, czy otwiera się paszport.", tone: "ok" });
+      setMessage({ text: "Zapisane. Przyłóż telefon jeszcze raz, żeby sprawdzić.", tone: "ok" });
     } catch (error) {
       const name = error instanceof DOMException ? error.name : "";
       setMessage({
         text:
           name === "NotAllowedError"
-            ? "Telefon nie pozwolił na zapis. Zezwól tej stronie na używanie NFC i spróbuj jeszcze raz."
+            ? "Brak zgody na NFC. Zezwól tej stronie i spróbuj jeszcze raz."
             : name === "AbortError"
-              ? "Nie wykryliśmy naklejki przez 30 sekund. Spróbuj jeszcze raz."
-              : "Nie udało się zapisać naklejki. Sprawdź, czy NFC w telefonie jest włączone i czy naklejka nie jest zablokowana przed zapisem.",
+              ? "Nie wykryto naklejki. Spróbuj jeszcze raz."
+              : "Nie udało się zapisać. Sprawdź, czy NFC jest włączone, a naklejka niezablokowana.",
         tone: "danger",
       });
     } finally {
@@ -54,9 +54,9 @@ export default function NfcWrite({ url }: { url: string }) {
   async function copy() {
     try {
       await navigator.clipboard.writeText(url);
-      setMessage({ text: "Skopiowaliśmy adres. Wklej go w aplikacji do zapisywania naklejek NFC.", tone: "ok" });
+      setMessage({ text: "Skopiowano. Wklej adres w aplikacji NFC.", tone: "ok" });
     } catch {
-      setMessage({ text: "Nie udało się skopiować. Zaznacz adres powyżej i skopiuj go ręcznie.", tone: "danger" });
+      setMessage({ text: "Nie udało się skopiować. Zaznacz adres powyżej.", tone: "danger" });
     }
   }
 
@@ -65,8 +65,8 @@ export default function NfcWrite({ url }: { url: string }) {
       <h2 id="nfc-naglowek" className="text-base font-bold">
         Naklejka NFC
       </h2>
-      <p className="text-muted">Ten sam adres możesz zapisać na naklejce NFC. Wtedy wystarczy przyłożyć telefon do naklejki, żeby otworzyć paszport.</p>
-      {!canWrite && <p className="text-muted">Zapis prosto z tej strony działa w przeglądarce Chrome na telefonie z Androidem. Na innym urządzeniu skopiuj adres i zapisz go w aplikacji do naklejek NFC.</p>}
+      <p className="text-muted">Zapisz adres na naklejce NFC: wtedy wystarczy przyłożyć telefon.</p>
+      {!canWrite && <p className="text-muted">Zapis stąd działa w Chrome na Androidzie. Gdzie indziej skopiuj adres do aplikacji NFC.</p>}
       <div className="flex flex-wrap gap-2">
         {canWrite && (
           <button type="button" disabled={busy} onClick={write} className="btn btn-primary">

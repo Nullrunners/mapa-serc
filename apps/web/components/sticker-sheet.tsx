@@ -35,17 +35,14 @@ export default function StickerSheet() {
       <PrintSetup page="size: A4; margin: 4mm;" />
 
       <div className="max-w-2xl space-y-4 print:hidden">
-        <PageHeader
-          title="Naklejki na defibrylatory"
-          lead="Na jednej kartce A4 mieszczą się cztery naklejki. Wydrukuj je w skali 100%, wytnij wzdłuż przerywanych linii i przyklej każdą przy swoim urządzeniu. Sprawdź nazwę pod kodem, żeby nie pomylić naklejek."
-        />
+        <PageHeader title="Naklejki na defibrylatory" lead="Cztery na kartce A4. Drukuj w skali 100%, wytnij po liniach i sprawdź nazwę pod kodem." />
         <button type="button" onClick={() => window.print()} className="btn btn-primary">
           Drukuj naklejki ({devices.length})
         </button>
         {unknown > 0 && <p className="text-warn">Nie znamy {unknown === 1 ? "jednego urządzenia" : `${unknown} urządzeń`} z tego linku, więc pominęliśmy ich naklejki.</p>}
         {cut > 0 && (
           <p className="text-warn">
-            Jeden arkusz mieści najwyżej {STICKERS_PER_SHEET} naklejek. Pozostałe {cut} wydrukujesz z kolejnego linku.
+            Najwyżej {STICKERS_PER_SHEET} naklejek naraz. Pozostałe {cut} wydrukujesz z kolejnego linku.
           </p>
         )}
       </div>

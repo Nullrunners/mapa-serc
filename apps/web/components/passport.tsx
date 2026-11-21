@@ -19,7 +19,7 @@ export default function Passport({ id }: { id: string }) {
   const [passport, setPassport] = useState<PassportPublic | null>(null);
   const loaded = useLoad(id, async (signal) => {
     const [one, card] = await Promise.all([api.GET("/v1/aed/{id}", { params: { path: { id } }, signal }), api.GET("/v1/aed/{id}/passport", { params: { path: { id } }, signal })]);
-    if (one.response.status === 404) throw new Error("Nie znamy defibrylatora o tym numerze. Sprawdź, czy adres z naklejki przepisał się w całości.");
+    if (one.response.status === 404) throw new Error("Nie znamy defibrylatora o tym numerze. Sprawdź adres z naklejki.");
     if (!one.data || !card.data) throw new Error("Nie udało się wczytać informacji o urządzeniu. Spróbuj ponownie za chwilę.");
     return { item: one.data as AedItem, passport: card.data };
   });
@@ -75,13 +75,13 @@ function Card({ item, passport, onPassport }: { item: AedItem; passport: Passpor
           <li>
             {passport.confirmedAt
               ? `Opiekun ${passport.confirmedByKeeper ? "potwierdził" : "zgłosił"} sprawność: ${date(passport.confirmedAt)}${confirmedHow(passport)}`
-              : "Opiekun jeszcze nie potwierdził sprawności w paszporcie."}
+              : "Brak potwierdzenia od opiekuna."}
           </li>
-          {passport.reports.lastOk && <li>Ostatnio ktoś sprawdził, że jest na miejscu: {dateTime(passport.reports.lastOk)}</li>}
+          {passport.reports.lastOk && <li>Ktoś potwierdził, że jest na miejscu: {dateTime(passport.reports.lastOk)}</li>}
           {passport.reports.problems.map((problem) => (
             <li key={problem.kind} className="font-semibold text-danger">
               Zgłoszono: {REPORT_TEXT[problem.kind]}
-              {reportedBy(problem.count)}, ostatnio {dateTime(problem.lastAt)}. Opiekun dostał wiadomość.
+              {reportedBy(problem.count)}, ostatnio {dateTime(problem.lastAt)}. Opiekun powiadomiony.
             </li>
           ))}
           {passport.items
@@ -95,11 +95,11 @@ function Card({ item, passport, onPassport }: { item: AedItem; passport: Passpor
               );
             })}
         </ul>
-        {item.publication === "community" && <p className="text-sm text-warn">Dane tego urządzenia pochodzą z OpenStreetMap i nikt z instytucji ich jeszcze nie potwierdził.</p>}
+        {item.publication === "community" && <p className="text-sm text-warn">Dane z OpenStreetMap, bez potwierdzenia instytucji.</p>}
       </section>
 
       <ExternalLink href={googleDirections(null, { lat: record.szerokosc_geograficzna, lon: record.dlugosc_geograficzna })} className="link inline-block font-semibold">
-        Pokaż drogę w Mapach Google
+        Trasa w Mapach Google
       </ExternalLink>
 
       <Keeper id={item.id} passport={passport} />
@@ -118,21 +118,17 @@ function Report({ id, onPassport }: { id: string; onPassport: (passport: Passpor
     const { data } = await api.POST("/v1/aed/{id}/reports", { params: { path: { id } }, body: { kind } }).catch(() => ({ data: undefined }));
     setBusy(false);
     setOpen(false);
-    if (!data) return setMessage({ text: "Nie udało się wysłać zgłoszenia. Spróbuj ponownie za chwilę.", tone: "danger" });
+    if (!data) return setMessage({ text: "Nie udało się wysłać. Spróbuj za chwilę.", tone: "danger" });
     onPassport(data.passport);
-    if (data.outcome === "duplicate") return setMessage({ text: "Twoje zgłoszenie z ostatniej godziny już mamy. Dziękujemy!", tone: "ok" });
-    if (data.outcome === "limit") return setMessage({ text: "Na dziś przyjęliśmy już wiele zgłoszeń o tym urządzeniu albo od Ciebie. Spróbuj jutro.", tone: "warn" });
-    setMessage(
-      kind === "ok"
-        ? { text: "Dziękujemy! Dzięki Tobie wiadomo, że ten defibrylator jest gotowy do użycia.", tone: "ok" }
-        : { text: "Dziękujemy! Przekazaliśmy zgłoszenie opiekunowi urządzenia.", tone: "ok" },
-    );
+    if (data.outcome === "duplicate") return setMessage({ text: "Już to od Ciebie mamy. Dziękujemy!", tone: "ok" });
+    if (data.outcome === "limit") return setMessage({ text: "Limit zgłoszeń na dziś. Spróbuj jutro.", tone: "warn" });
+    setMessage(kind === "ok" ? { text: "Dziękujemy! Zapisaliśmy, że jest gotowy do użycia.", tone: "ok" } : { text: "Dziękujemy! Opiekun dostanie zgłoszenie.", tone: "ok" });
   }
 
   return (
     <section aria-labelledby="zglos-naglowek" className="space-y-3">
       <h2 id="zglos-naglowek" className="font-bold">
-        Przechodzisz obok? Daj znać, w jakim stanie jest urządzenie
+        Przechodzisz obok? Daj znać
       </h2>
       <button type="button" disabled={busy} onClick={() => send("ok")} className="btn btn-ok btn-lg w-full">
         <span>
@@ -172,7 +168,7 @@ function Keeper({ id, passport }: { id: string; passport: PassportPublic }) {
 
   async function request() {
     const { data, error } = await api.POST("/v1/aed/{id}/passport/link", { params: { path: { id } } }).catch(() => ({ data: undefined, error: undefined }));
-    setMessage(data ? { text: `Wysłaliśmy link na adres ${data.sentTo}. Sprawdź skrzynkę.`, tone: "ok" } : { text: problemMessage(error, "Nie udało się wysłać linku. Spróbuj ponownie za chwilę."), tone: "danger" });
+    setMessage(data ? { text: `Wysłaliśmy link na ${data.sentTo}.`, tone: "ok" } : { text: problemMessage(error, "Nie udało się wysłać linku. Spróbuj za chwilę."), tone: "danger" });
   }
 
   return (
@@ -180,10 +176,7 @@ function Keeper({ id, passport }: { id: string; passport: PassportPublic }) {
       <h2 id="opiekun-naglowek" className="text-base font-bold">
         Opiekujesz się tym defibrylatorem?
       </h2>
-      <p>
-        W paszporcie wpiszesz terminy ważności elektrod i baterii. Przypomnimy Ci o wymianie e-mailem lub SMS-em 30 i 7 dni wcześniej, a po przeglądzie jednym kliknięciem potwierdzisz, że urządzenie
-        działa.
-      </p>
+      <p>Wpisz terminy elektrod i baterii, a przypomnimy o wymianie.</p>
       {account && (
         <p>
           Zalogowano przez mObywatel jako <strong>{account.name}</strong>
@@ -195,14 +188,14 @@ function Keeper({ id, passport }: { id: string; passport: PassportPublic }) {
             Otwórz panel opiekuna
           </Link>
         ) : (
-          <p>Tego urządzenia nie ma jeszcze przy Twoim koncie. Wejdź do panelu linkiem i kliknij tam „Dodaj do mojego konta”.</p>
+          <p>Nie ma go przy Twoim koncie. Wejdź do panelu linkiem i kliknij „Dodaj do mojego konta”.</p>
         ))}
       {!account && canLogIn && (
         <>
           <Link href={loginHref(`/aed/${id}`)} className="btn btn-primary">
             Zaloguj się przez mObywatel
           </Link>
-          <p className="hint">Pierwszy raz? Do panelu wejdziesz najpierw linkiem. Dodasz tam urządzenie do swojego konta i potem wystarczy już samo logowanie.</p>
+          <p className="hint">Pierwszy raz? Najpierw wejdź linkiem z e-maila.</p>
         </>
       )}
       {!mine &&
@@ -211,7 +204,7 @@ function Keeper({ id, passport }: { id: string; passport: PassportPublic }) {
             Wyślij link na adres {passport.keeperEmail}
           </button>
         ) : (
-          <p>W danych tego urządzenia nie ma adresu e-mail opiekuna. Napisz do operatora serwisu, a przygotuje dla Ciebie link.</p>
+          <p>Brak e-maila opiekuna w danych. Link przygotuje operator serwisu.</p>
         ))}
       <LiveMessage message={message} />
       <p>
