@@ -1,12 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ACCESS_LABEL, AVAILABLE_NOW, addressLine, distance, hours, title } from "@/lib/aed-text";
 import { api, type AedItem } from "@/lib/api/client";
 import { AVAILABLE_AT_NIGHT, nextSundayNight, reachSummary } from "@/lib/reach-text";
-import { useLoad } from "@/lib/use-load";
+import { MAX_WALK_M, googleDirections, straightDistance, walkTime, walkingRoute, type Point, type WalkingRoute } from "@/lib/route";
+import { useLoad, type Loaded } from "@/lib/use-load";
 import AedDetails, { pickedFrom, type Picked } from "./aed-details";
+import type { WalkOnMap } from "./aed-map";
 
 // MapLibre needs a browser; it is loaded only on the client, after the list is already usable.
 const AedMap = dynamic(() => import("./aed-map"), { ssr: false, loading: () => <div className="h-full min-h-[420px] rounded border border-line bg-gov-light" aria-hidden /> });
@@ -50,6 +52,24 @@ export default function Finder() {
     return data;
   });
 
+  // With a known position the way is shown to the device in the panel, or else to the first one on the list.
+  const nearest = near && list.state === "ready" ? list.data.items[0] : undefined;
+  const target: Picked | null = near ? (selected ?? (nearest ? pickedFrom(nearest) : null)) : null;
+  const walkable = near && target && straightDistance(near, target) <= MAX_WALK_M ? target : null;
+  const route = useLoad(near && walkable ? `${near.lat},${near.lon}|${walkable.lat},${walkable.lon}` : "", (signal) =>
+    near && walkable ? walkingRoute(near, walkable, signal) : Promise.resolve(null),
+  );
+  // Same way, same object: the map refits only when the way itself changes.
+  const toLat = walkable?.lat;
+  const toLon = walkable?.lon;
+  const routeResult = route.state === "ready" ? route.data : route.state;
+  const walk = useMemo<WalkOnMap | null>(() => {
+    if (!near || toLat === undefined || toLon === undefined) return null;
+    const line = routeResult === "loading" ? "loading" : routeResult === "error" || routeResult === null ? "straight" : routeResult.line;
+    return { from: near, to: { lat: toLat, lon: toLon }, line };
+  }, [near, toLat, toLon, routeResult]);
+  const walkNote = near && target ? <WalkNote route={route} from={near} to={target} tooFar={!walkable} /> : null;
+
   const locate = () => {
     if (!("geolocation" in navigator)) return setLocating("denied");
     setLocating("asking");
@@ -66,7 +86,7 @@ export default function Finder() {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
       {selected ? (
-        <AedDetails picked={selected} layer={layer} onlyAvailable={onlyAvailable} onPick={setSelected} onClose={closeDetails} />
+        <AedDetails picked={selected} from={near} layer={layer} onlyAvailable={onlyAvailable} onPick={setSelected} onClose={closeDetails} walkNote={walkNote} />
       ) : (
       <section aria-labelledby="lista-naglowek" className="space-y-4">
         <h2 id="lista-naglowek" ref={listHeading} tabIndex={-1} className="text-lg font-bold">
@@ -106,6 +126,30 @@ export default function Finder() {
           <p role="alert" className="text-sm text-danger">
             Nie udało się ustalić, gdzie jesteś. Wpisz miejscowość albo ulicę w polu wyszukiwania.
           </p>
+        )}
+
+        {walkNote && nearest && (
+          <section aria-labelledby="droga-naglowek" className="space-y-2 rounded border-2 border-danger p-3">
+            <h3 id="droga-naglowek" className="font-bold">
+              Droga do najbliższego defibrylatora
+            </h3>
+            <p>
+              <button type="button" onClick={() => setSelected(pickedFrom(nearest))} className="text-left font-semibold text-gov underline-offset-2 hover:underline">
+                {title(nearest)}
+              </button>
+              {addressLine(nearest) && <span className="block text-sm">{addressLine(nearest)}</span>}
+            </p>
+            {walkNote}
+            <a
+              href={googleDirections(near, pickedFrom(nearest))}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block rounded bg-gov px-4 py-2 font-semibold text-white hover:bg-gov-dark"
+            >
+              Prowadź mnie w Mapach Google<span className="sr-only"> (otworzy się w nowej karcie)</span>
+            </a>
+            <p className="text-xs text-muted">Drogę wyznacza bezpłatny serwis map OpenStreetMap (FOSSGIS). Wysyłamy mu tylko Twoje położenie i miejsce urządzenia.</p>
+          </section>
         )}
 
         <label className="flex items-start gap-2 text-sm">
@@ -198,9 +242,23 @@ export default function Finder() {
       )}
 
       <section aria-label="Mapa" className="min-h-[420px] lg:sticky lg:top-4 lg:h-[calc(100vh-8rem)]">
-        <AedMap showCommunity={showCommunity} focus={near} selected={selected} onSelect={setSelected} />
+        <AedMap showCommunity={showCommunity} focus={near} walk={walk} selected={selected} onSelect={setSelected} />
       </section>
     </div>
+  );
+}
+
+/** How far the walk is and how long it takes; the way itself is drawn on the map. */
+function WalkNote({ route, from, to, tooFar }: { route: Loaded<WalkingRoute | null>; from: Point; to: Point; tooFar: boolean }) {
+  let text: string;
+  if (tooFar) text = `To ${distance(Math.round(straightDistance(from, to)))} w linii prostej, za daleko, żeby pokazać drogę pieszo.`;
+  else if (route.state === "loading") text = "Wyznaczam drogę pieszo…";
+  else if (route.state === "ready" && route.data) text = `Pieszo ${distance(route.data.distanceM)}, ${walkTime(route.data.durationS)}. Drogę zaznaczyliśmy na mapie na czerwono.`;
+  else text = "Nie udało się wyznaczyć drogi. Na mapie przerywana linia pokazuje kierunek w linii prostej.";
+  return (
+    <p aria-live="polite" className="text-sm">
+      {text}
+    </p>
   );
 }
 

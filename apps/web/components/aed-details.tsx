@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, type ReactNode, type Ref } from "react";
 import { api, type AedItem } from "@/lib/api/client";
 import { ACCESS_LABEL, AVAILABLE_NOW, STATUS_WARNING, addressLine, date, distance, hours, title } from "@/lib/aed-text";
+import { googleDirections, type Point } from "@/lib/route";
 import { useLoad } from "@/lib/use-load";
 
 /** A device picked on the map or in a list. The position comes with it, so the map can fly there before the details arrive. */
@@ -23,10 +24,14 @@ export interface AedDetailsProps {
   onlyAvailable: boolean;
   onPick: (picked: Picked) => void;
   onClose: () => void;
+  /** The person's position, when they shared it: the directions start there. */
+  from?: Point | null;
+  /** How far the walk to this device is, shown above the directions button. */
+  walkNote?: ReactNode;
 }
 
 /** Everything we know about one device, plus the closest other devices in case this one cannot be reached. */
-export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClose }: AedDetailsProps) {
+export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClose, from = null, walkNote }: AedDetailsProps) {
   const heading = useRef<HTMLHeadingElement>(null);
 
   const loaded = useLoad(`${picked.id}|${layer}|${onlyAvailable}`, async (signal) => {
@@ -64,7 +69,7 @@ export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClo
             {loaded.message}
           </p>
         )}
-        {loaded.state === "ready" && <Device item={loaded.data.item} headingRef={heading} />}
+        {loaded.state === "ready" && <Device item={loaded.data.item} headingRef={heading} from={from} walkNote={walkNote} />}
       </div>
 
       {loaded.state === "ready" && (
@@ -96,7 +101,7 @@ export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClo
   );
 }
 
-function Device({ item, headingRef }: { item: AedItem; headingRef: Ref<HTMLHeadingElement> }) {
+function Device({ item, headingRef, from, walkNote }: { item: AedItem; headingRef: Ref<HTMLHeadingElement>; from: Point | null; walkNote: ReactNode }) {
   const { record } = item;
   const where = [
     record.opis_lokalizacji,
@@ -140,8 +145,9 @@ function Device({ item, headingRef }: { item: AedItem; headingRef: Ref<HTMLHeadi
           ))}
       </dl>
 
+      {walkNote}
       <a
-        href={`https://www.google.com/maps/dir/?api=1&destination=${record.szerokosc_geograficzna},${record.dlugosc_geograficzna}`}
+        href={googleDirections(from, { lat: record.szerokosc_geograficzna, lon: record.dlugosc_geograficzna })}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-block rounded bg-gov px-4 py-2 font-semibold text-white hover:bg-gov-dark"
