@@ -28,19 +28,24 @@ export function parseCoordinate(text: string): { value: number; kind: 'decimal' 
   return null
 }
 
-/**
- * PUWG 1992 (EPSG:2180, the Polish national grid) → WGS84, by the Krüger series for the transverse
- * Mercator projection on GRS80. Accurate to centimetres, which is far more than an AED needs.
- */
-export function puwg1992ToWgs84(easting: number, northing: number): { lat: number; lon: number } {
+/** A transverse Mercator grid on GRS80: scale on the central meridian, that meridian in degrees, and the offsets. */
+interface Grid {
+  k0: number
+  lon0: number
+  falseEasting: number
+  falseNorthing: number
+}
+
+/** Grid metres → WGS84, by the Krüger series. Accurate to centimetres, which is far more than an AED needs. */
+function gridToWgs84(easting: number, northing: number, grid: Grid): { lat: number; lon: number } {
   const a = 6378137
   const f = 1 / 298.257222101
-  const k0 = 0.9993
-  const lon0 = (19 * Math.PI) / 180
+  const { k0 } = grid
+  const lon0 = (grid.lon0 * Math.PI) / 180
   const n = f / (2 - f)
   const A = (a / (1 + n)) * (1 + n ** 2 / 4 + n ** 4 / 64)
-  const xi = (northing + 5_300_000) / (k0 * A)
-  const eta = (easting - 500_000) / (k0 * A)
+  const xi = (northing - grid.falseNorthing) / (k0 * A)
+  const eta = (easting - grid.falseEasting) / (k0 * A)
   const beta = [n / 2 - (2 * n ** 2) / 3 + (37 * n ** 3) / 96, n ** 2 / 48 + n ** 3 / 15, (17 * n ** 3) / 480]
   let xiP = xi
   let etaP = eta
@@ -55,6 +60,22 @@ export function puwg1992ToWgs84(easting: number, northing: number): { lat: numbe
   delta.forEach((d, index) => (lat += d * Math.sin(2 * (index + 1) * chi)))
   const lon = lon0 + Math.atan2(Math.sinh(etaP), Math.cos(xiP))
   return { lat: (lat * 180) / Math.PI, lon: (lon * 180) / Math.PI }
+}
+
+/** PUWG 1992 (EPSG:2180, the Polish national grid) → WGS84. */
+export const puwg1992ToWgs84 = (easting: number, northing: number): { lat: number; lon: number } =>
+  gridToWgs84(easting, northing, { k0: 0.9993, lon0: 19, falseEasting: 500_000, falseNorthing: -5_300_000 })
+
+/**
+ * PUWG 2000 (EPSG:2176–2179), the grid of municipal surveying and city geoportals → WGS84. It has four zones
+ * with central meridians 15°, 18°, 21° and 24°; the zone number (5–8) is the millions digit of the easting.
+ * Null when the easting names no zone or lies further from the zone's meridian than a zone is wide.
+ */
+export function puwg2000ToWgs84(easting: number, northing: number): { lat: number; lon: number } | null {
+  const zone = Math.floor(easting / 1_000_000)
+  const falseEasting = zone * 1_000_000 + 500_000
+  if (zone < 5 || zone > 8 || Math.abs(easting - falseEasting) > 150_000) return null
+  return gridToWgs84(easting, northing, { k0: 0.999923, lon0: zone * 3, falseEasting, falseNorthing: 0 })
 }
 
 const round = (value: number) => Math.round(value * 1e7) / 1e7
@@ -93,20 +114,26 @@ export function resolveCoordinates(
   let lat = first.value
   let lon = second.value
 
-  // Metres, not degrees: the national grid. By Polish geodetic convention the first value (X) is the northing.
+  // Metres, not degrees: a national grid. By Polish geodetic convention the first value (X) is the northing.
+  // PUWG 1992 stays under a million in both values; PUWG 2000 has millions in both.
   if (Math.abs(lat) > 1000 && Math.abs(lon) > 1000) {
-    const direct = puwg1992ToWgs84(lon, lat)
-    const swapped = puwg1992ToWgs84(lat, lon)
-    const converted = inLat(direct.lat) && inLon(direct.lon) ? direct : swapped
-    lat = converted.lat
-    lon = converted.lon
-    fixes.push({
-      code: 'coordinates_puwg1992',
-      field: 'szerokosc_geograficzna',
-      message: 'Współrzędne były w układzie PUWG 1992 (metry); przeliczono je na WGS84.',
-      before,
-      after: `${round(lat)}; ${round(lon)}`,
-    })
+    const zoned = Math.abs(lat) >= 1_000_000 && Math.abs(lon) >= 1_000_000
+    const convert = zoned ? puwg2000ToWgs84 : puwg1992ToWgs84
+    const inPoland = (point: { lat: number; lon: number } | null) => point !== null && inLat(point.lat) && inLon(point.lon)
+    const direct = convert(lon, lat)
+    // In the westernmost zone of PUWG 2000 both readings of a pair can fall inside Poland; the convention decides.
+    const converted = inPoland(direct) ? direct : convert(lat, lon)
+    if (converted) {
+      lat = converted.lat
+      lon = converted.lon
+      fixes.push({
+        code: zoned ? 'coordinates_puwg2000' : 'coordinates_puwg1992',
+        field: 'szerokosc_geograficzna',
+        message: `Współrzędne były w układzie PUWG ${zoned ? '2000' : '1992'} (metry); przeliczono je na WGS84.`,
+        before,
+        after: `${round(lat)}; ${round(lon)}`,
+      })
+    }
   }
 
   if (!(inLat(lat) && inLon(lon)) && inLat(lon) && inLon(lat)) {

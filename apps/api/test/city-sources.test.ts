@@ -1,7 +1,7 @@
 /** A city that serves its list through an API with a key (Warsaw), and the words such a list is written in. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cluster, compare, type DedupItem } from '../src/pipeline/dedup'
-import { parseIndoor, parseOpeningHours, splitAddress, splitStreet } from '../src/pipeline/normalize'
+import { parseIndoor, parseOpeningHours, puwg1992ToWgs84, puwg2000ToWgs84, resolveCoordinates, splitAddress, splitStreet } from '../src/pipeline/normalize'
 import { parseAny, parseGeoJson } from '../src/pipeline/parse'
 import { checkSource, loadSourceDefs, normalizeSource, parseSource, publicUrl, readSourceBytes } from '../src/pipeline/sources'
 import type { SourceDef } from '../src/pipeline/types'
@@ -178,6 +178,53 @@ describe('words offices use', () => {
     expect(splitAddress('ul. Kilińskiego 102/102a, 90 – 012 Łódź')).toMatchObject({ nazwa_ulicy: 'Kilińskiego', nr_budynku: '102/102a', kod_pocztowy: '90-012', miejscowosc: 'Łódź' })
     expect(splitStreet('Aleja 3 Maja')).toEqual({ cecha_ulicy: 'aleja', nazwa_ulicy: '3 Maja' })
     expect(splitStreet('ul. 11 Listopada 4')).toEqual({ cecha_ulicy: 'ulica', nazwa_ulicy: '11 Listopada', nr_budynku: '4' })
+  })
+})
+
+describe('coordinates from a city geoportal (PUWG 2000)', () => {
+  // The same latitude on the central meridians of both grids: each northing is the meridian arc times the
+  // grid's scale, so the 1992 conversion (checked against GUGiK elsewhere) gives the latitude to expect.
+  const reference = puwg1992ToWgs84(500_000, 500_000)
+  const northing = (0.999923 * (500_000 + 5_300_000)) / 0.9993
+
+  it('agrees with the address register', () => {
+    // Marszałkowska 1, Warszawa, as the GUGiK geocoder returns it in EPSG:2178 and in EPSG:4326.
+    const point = puwg2000ToWgs84(7501432.02, 5786746.212)!
+    expect(point.lat).toBeCloseTo(52.2143273, 6)
+    expect(point.lon).toBeCloseTo(21.020953, 6)
+    expect(resolveCoordinates('5786746,212', '7501432,02')).toMatchObject({ lat: 52.2143273, lon: 21.020953 })
+  })
+
+  it('takes the zone from the easting', () => {
+    const warsawZone = puwg2000ToWgs84(7_500_000, northing)!
+    expect(warsawZone.lon).toBeCloseTo(21, 9)
+    expect(warsawZone.lat).toBeCloseTo(reference.lat, 9)
+    expect(puwg2000ToWgs84(5_500_000, northing)!.lon).toBeCloseTo(15, 9)
+    expect(puwg2000ToWgs84(6_500_000, northing)!.lon).toBeCloseTo(18, 9)
+    expect(puwg2000ToWgs84(8_500_000, northing)!.lon).toBeCloseTo(24, 9)
+    expect(puwg2000ToWgs84(4_500_000, northing)).toBeNull()
+    expect(puwg2000ToWgs84(7_900_000, northing)).toBeNull()
+  })
+
+  it('moves east by the metres given', () => {
+    // 10 km east of the meridian is 10 km divided by the radius of the parallel, to well under a metre.
+    const latitude = (reference.lat * Math.PI) / 180
+    const e2 = (1 / 298.257222101) * (2 - 1 / 298.257222101)
+    const parallelRadius = (6378137 / Math.sqrt(1 - e2 * Math.sin(latitude) ** 2)) * Math.cos(latitude)
+    const expected = 21 + ((10_000 / (0.999923 * parallelRadius)) * 180) / Math.PI
+    expect(puwg2000ToWgs84(7_510_000, northing)!.lon).toBeCloseTo(expected, 5)
+  })
+
+  it('is recognised in a file, whichever value comes first', () => {
+    const conventional = resolveCoordinates(String(northing), '7500000')
+    expect(conventional.fixes.map((fix) => fix.code)).toEqual(['coordinates_puwg2000'])
+    expect(conventional.lat).toBeCloseTo(reference.lat, 6)
+    expect(conventional.lon).toBeCloseTo(21, 6)
+    const reversed = resolveCoordinates('7500000', String(northing))
+    expect(reversed.lat).toBeCloseTo(reference.lat, 6)
+    expect(reversed.lon).toBeCloseTo(21, 6)
+    // Millions that fit no zone are not coordinates of anything in Poland.
+    expect(resolveCoordinates('1234567', '2345678')).toMatchObject({ lat: null, lon: null, fixes: [] })
   })
 })
 
