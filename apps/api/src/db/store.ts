@@ -27,6 +27,8 @@ export interface ChangeLogEntry {
 
 export class Store {
   aeds: MergedAed[] = []
+  /** Goes up whenever a device changes (a pipeline run, a keeper's edit); what is built from the devices is kept until then. */
+  revision = 0
   private byId = new Map<string, MergedAed>()
   reports: SourceReport[] = []
   reviews: ReviewPair[] = []
@@ -94,6 +96,7 @@ export class Store {
     if (!applyOverride(aed.record, aed.provenance as Record<string, string>, passportOverride(passport))) return aed
     aed.record.data_aktualizacji = today
     aed.quality = qualityScore(aed.record, aed.sources.length, aed.issues.filter((issue) => issue.severity === 'warning').length, today)
+    this.revision++
     await this.db.run('UPDATE aed SET record = ?, provenance = ?, quality = ? WHERE id = ?', [json(aed.record), json(aed.provenance), aed.quality, aed.id])
     return aed
   }
@@ -120,6 +123,7 @@ export class Store {
   private setAeds(aeds: MergedAed[]): void {
     this.aeds = aeds
     this.byId = new Map(aeds.map((aed) => [aed.id, aed]))
+    this.revision++
   }
 
   get(id: string): MergedAed | undefined {
