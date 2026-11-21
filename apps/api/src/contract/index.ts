@@ -68,6 +68,10 @@ export const AedItem = z
     publication: Publication,
     quality: z.number().int().min(0).max(100).openapi({ description: 'Ocena jakości rekordu 0–100' }),
     distanceM: z.number().int().nullable().openapi({ description: 'Odległość od punktu z parametru `near`, w metrach' }),
+    availableNow: z.enum(['yes', 'no', 'unknown']).openapi({
+      description:
+        'Czy przechodzień dostanie się do urządzenia w chwili zapytania: no = poza godzinami dostępności, wycofane, czasowo niedostępne albo tylko dla personelu; unknown = rekord nie podaje godzin dostępności albo podaje je w zapisie, którego system nie rozumie.',
+    }),
     record: AedRecord,
   })
   .openapi('AedItem')
@@ -115,6 +119,7 @@ export const AedListQuery = z.object({
     .optional()
     .openapi({ description: 'TERC prefix: 2 digits = województwo, 4 = powiat, 7 = gmina', example: '1434021' }),
   q: z.string().max(100).optional().openapi({ description: 'Text to find in the name, street or locality' }),
+  availableNow: z.enum(['true', 'false']).optional().openapi({ description: 'true = only devices a passer-by can reach right now (see `availableNow` of a device)' }),
   limit: z.coerce.number().int().min(1).max(1000).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 })
@@ -213,6 +218,15 @@ export const statsRoute = createRoute({
 
 const ReportLine = z.object({ code: z.string(), count: z.number().int(), example: z.string() })
 
+const FieldCoverage = z
+  .object({
+    field: z.string().openapi({ description: 'Nazwa pola wzorca', example: 'godziny_dostepnosci' }),
+    provided: z.number().int().openapi({ description: 'Wiersze, w których wartość daje samo źródło' }),
+    added: z.number().int().openapi({ description: 'Wiersze, w których wartość uzupełnił system z rejestrów państwowych (TERYT, adresy)' }),
+    constant: z.boolean().openapi({ description: 'Wartość jest stała dla całego źródła (np. miejscowość w pliku jednej gminy), a nie kolumną pliku' }),
+  })
+  .openapi('FieldCoverage')
+
 export const SourceReport = z
   .object({
     id: z.string(),
@@ -234,16 +248,29 @@ export const SourceReport = z
     fileFixes: z.array(FixSchema),
     fixes: z.array(ReportLine),
     issues: z.array(ReportLine.extend({ severity: z.enum(['error', 'warning']) })),
+    coverage: z.array(FieldCoverage).openapi({ description: 'Zakres danych źródła względem wzorca: jedna pozycja na każde pole, które źródło może dostarczyć' }),
   })
   .openapi('SourceReport', { description: 'Raport jakości dla dostawcy: co odczytano, co poprawiono, czego nie udało się naprawić.' })
+
+export const KnownSource = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    url: z.string(),
+    licence: z.string().nullable().openapi({ description: 'null, gdy źródło nie podaje licencji' }),
+    devices: z.number().int().nullable().openapi({ description: 'Liczba urządzeń według samego źródła; null, gdy nieznana' }),
+    scope: z.string().openapi({ description: 'Co wiadomo o zakresie danych źródła' }),
+    reason: z.string().openapi({ description: 'Dlaczego źródło nie jest włączone do zbioru' }),
+  })
+  .openapi('KnownSource', { description: 'Źródło danych o AED, które znamy, ale którego nie włączamy do zbioru krajowego.' })
 
 export const sourcesRoute = createRoute({
   method: 'get',
   path: '/v1/sources',
   operationId: 'listSources',
   tags: ['data'],
-  summary: 'Every source of the national dataset with its quality report',
-  responses: { 200: json(z.object({ items: z.array(SourceReport) }).openapi('SourceList'), 'Sources'), ...problems },
+  summary: 'Every source of the national dataset with its quality report and data scope; known sources that are not merged in',
+  responses: { 200: json(z.object({ items: z.array(SourceReport), notIncluded: z.array(KnownSource) }).openapi('SourceList'), 'Sources'), ...problems },
 })
 
 export const SchemaResponse = z
@@ -291,7 +318,14 @@ export const jsonldRoute = fileRoute('/dane/aed.jsonld', 'downloadJsonLd', 'appl
 export const csvwRoute = fileRoute('/dane/aed.csv-metadata.json', 'downloadCsvw', 'application/csvm+json', 'CSVW metadata of the CSV file')
 export const tableSchemaRoute = fileRoute('/dane/schema.json', 'downloadTableSchema', 'application/json', 'The data pattern as a Frictionless Table Schema')
 export const patternDocRoute = fileRoute('/dane/wzorzec.md', 'downloadPatternDoc', 'text/markdown', 'The data pattern as a readable field table')
+export const patternXlsxRoute = fileRoute(
+  '/dane/wzorzec.xlsx',
+  'downloadPatternXlsx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'The data pattern as an Excel workbook: field table, dictionaries, example row and an empty template',
+)
 export const templateRoute = fileRoute('/dane/szablon.csv', 'downloadTemplate', 'text/csv', 'Empty CSV template with the header and one example row')
+export const sourceScopeRoute = fileRoute('/dane/zakres-zrodel.csv', 'downloadSourceScope', 'text/csv', 'Data scope of every source against the pattern: one row per source and field')
 export const communityRoute = fileRoute('/dane/aed-osm.geojson', 'downloadCommunity', 'application/geo+json', 'Unconfirmed devices known only from OpenStreetMap (ODbL) – not part of the dataset for dane.gov.pl')
 export const feedRoute = fileRoute('/feeds/dane-gov-pl.xml', 'getHarvesterFeed', 'application/xml', 'Feed for the dane.gov.pl harvester (XML, schema 1.13)')
 
@@ -302,7 +336,7 @@ const MappingTargetSchema = z.string().openapi({ description: 'Pole wzorca albo 
 export const ImportRequest = z
   .object({
     fileName: z.string().max(200).openapi({ example: 'aed-marki.csv' }),
-    contentBase64: z.string().openapi({ description: 'The file, base64-encoded (CSV or GeoJSON, up to 5 MB)' }),
+    contentBase64: z.string().openapi({ description: 'The file, base64-encoded (CSV, XLSX or GeoJSON, up to 5 MB)' }),
     mapping: z
       .record(z.string(), MappingTargetSchema.nullable())
       .optional()
@@ -325,7 +359,7 @@ export const ImportRequest = z
 export const ImportPreview = z
   .object({
     stub: z.boolean().openapi({ description: 'true while this endpoint answers with sample data' }),
-    format: z.enum(['csv', 'geojson']),
+    format: z.enum(['csv', 'geojson', 'xlsx']),
     fileFixes: z.array(FixSchema),
     columns: z.array(
       z.object({

@@ -1,6 +1,6 @@
 /** Handlers of the endpoints that answer from real data. Each is typed against its route in src/contract. */
 import type { RouteHandler } from '@hono/zod-openapi'
-import { FIELDS, GROUPS, SCHEMA_NAME, SCHEMA_TITLE, SCHEMA_VERSION, csvHeader, csvwMetadata, fieldDocsMarkdown, tableSchema, type AedRecord, type FieldDef } from '@aed/schema'
+import { FIELDS, GROUPS, SCHEMA_NAME, SCHEMA_TITLE, SCHEMA_VERSION, SYSTEM_FIELDS, csvHeader, csvwMetadata, fieldDocsMarkdown, reachableNow, tableSchema, type AedRecord, type FieldDef } from '@aed/schema'
 import { config, now, today } from './config'
 import { getContext } from './context'
 import {
@@ -23,10 +23,12 @@ import {
 import { ApiError } from './http/errors'
 import { ok } from './http/respond'
 import { runJob } from './jobs'
+import { KNOWN_SOURCES } from './pipeline/known'
 import { distanceM } from './pipeline/normalize'
 import type { MergedAed } from './pipeline/merge'
-import { csvCell, toCsv, toGeoJson, toJsonLd } from './publish/files'
+import { csvCell, toCsv, toGeoJson, toJsonLd, toScopeCsv } from './publish/files'
 import { harvesterXml, nationalFeed } from './publish/harvester'
+import { patternWorkbook } from './publish/xlsx'
 import type { Context } from 'hono'
 
 // --------------------------------------------------------------------- shared
@@ -91,11 +93,13 @@ export const aedListHandler: RouteHandler<typeof aedListRoute> = async (c) => {
   const bbox = query.bbox?.split(',').map(Number) as [number, number, number, number] | undefined
   const near = query.near?.split(',').map(Number) as [number, number] | undefined
   const text = query.q?.trim().toLowerCase()
+  const at = new Date(now())
 
   let matches = store.aeds
     .filter((aed) => inLayer(aed, query.layer))
     .filter((aed) => {
       const { record } = aed
+      if (query.availableNow === 'true' && reachableNow(record, at) !== 'yes') return false
       if (bbox && !(record.dlugosc_geograficzna >= bbox[0] && record.szerokosc_geograficzna >= bbox[1] && record.dlugosc_geograficzna <= bbox[2] && record.szerokosc_geograficzna <= bbox[3])) return false
       if (query.terc && !(record.kod_terc ?? '').startsWith(query.terc)) return false
       if (text && ![record.nazwa, record.nazwa_ulicy, record.miejscowosc, record.podmiot_odpowiedzialny].some((value) => value?.toLowerCase().includes(text))) return false
@@ -107,12 +111,16 @@ export const aedListHandler: RouteHandler<typeof aedListRoute> = async (c) => {
     if (query.radiusM !== undefined) matches = matches.filter((match) => match.distance! <= query.radiusM!)
     matches.sort((a, b) => a.distance! - b.distance!)
   } else {
-    matches.sort((a, b) => a.aed.record.nazwa.localeCompare(b.aed.record.nazwa, 'pl') || a.aed.id.localeCompare(b.aed.id))
+    // Without a point to measure from: devices confirmed by their keeper first, then by name.
+    const rank = (aed: MergedAed) => (aed.publication === 'official' ? 0 : 1)
+    matches.sort((a, b) => rank(a.aed) - rank(b.aed) || a.aed.record.nazwa.localeCompare(b.aed.record.nazwa, 'pl') || a.aed.id.localeCompare(b.aed.id))
   }
 
   return ok(c, AedListResponse, {
     total: matches.length,
-    items: matches.slice(query.offset, query.offset + query.limit).map(({ aed, distance }) => ({ id: aed.id, publication: aed.publication, quality: aed.quality, distanceM: distance, record: aed.record })),
+    items: matches
+      .slice(query.offset, query.offset + query.limit)
+      .map(({ aed, distance }) => ({ id: aed.id, publication: aed.publication, quality: aed.quality, distanceM: distance, availableNow: reachableNow(aed.record, at), record: aed.record })),
   })
 }
 
@@ -128,6 +136,7 @@ export const aedDetailHandler: RouteHandler<typeof aedDetailRoute> = async (c) =
     publication: aed.publication,
     quality: aed.quality,
     distanceM: null,
+    availableNow: reachableNow(aed.record, new Date(now())),
     record: aed.record,
     provenance: aed.provenance as Record<string, string>,
     sources: aed.sources.map((ref) => ({ ...ref, name: reports.get(ref.sourceId)?.name ?? ref.sourceId, licence: reports.get(ref.sourceId)?.licence ?? '' })),
@@ -184,7 +193,7 @@ export const statsHandler: RouteHandler<typeof statsRoute> = async (c) => {
 
 export const sourcesHandler: RouteHandler<typeof sourcesRoute> = async (c) => {
   const { store } = await getContext()
-  return c.json({ items: store.reports }, 200)
+  return c.json({ items: store.reports, notIncluded: KNOWN_SOURCES }, 200)
 }
 
 export const schemaHandler: RouteHandler<typeof schemaRoute> = (c) =>
@@ -213,7 +222,7 @@ export const schemaHandler: RouteHandler<typeof schemaRoute> = (c) =>
 
 type FileHandler = (c: Context) => Promise<Response> | Response
 
-const send = (c: Context, body: string, contentType: string, fileName?: string) =>
+const send = (c: Context, body: string | Uint8Array<ArrayBuffer>, contentType: string, fileName?: string) =>
   c.body(body, 200, {
     'Content-Type': contentType,
     ...(fileName ? { 'Content-Disposition': `inline; filename="${fileName}"` } : {}),
@@ -237,10 +246,18 @@ export const csvwHandler: FileHandler = (c) => send(c, JSON.stringify(csvwMetada
 export const tableSchemaHandler: FileHandler = (c) => send(c, JSON.stringify(tableSchema(), null, 2), 'application/json; charset=utf-8', 'wzorzec-danych-aed.schema.json')
 export const patternDocHandler: FileHandler = (c) => send(c, fieldDocsMarkdown(), 'text/markdown; charset=utf-8', 'wzorzec-danych-aed.md')
 export const communityHandler: FileHandler = async (c) => send(c, JSON.stringify(toGeoJson(await records('community'))), 'application/geo+json; charset=utf-8', 'aed-osm.geojson')
+export const patternXlsxHandler: FileHandler = async (c) =>
+  send(c, await patternWorkbook(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'wzorzec-danych-aed.xlsx')
 
-/** Header plus one example row built from the examples in the field catalogue; `id` is left to the system. */
+/** Every published source's data scope against the pattern. A submission that awaits approval is not public yet. */
+export const sourceScopeHandler: FileHandler = async (c) => {
+  const { store } = await getContext()
+  return send(c, toScopeCsv(store.reports.filter((report) => !report.awaitingApproval)), 'text/csv; charset=utf-8', 'zakres-zrodel.csv')
+}
+
+/** Header plus one example row built from the examples in the field catalogue; the system's own columns stay empty. */
 export const templateHandler: FileHandler = (c) => {
-  const example = (FIELDS as readonly FieldDef[]).map((field) => (['id', 'zrodlo', 'licencja', 'data_aktualizacji'].includes(field.name) ? '' : csvCell(field.example)))
+  const example = (FIELDS as readonly FieldDef[]).map((field) => ((SYSTEM_FIELDS as readonly string[]).includes(field.name) ? '' : csvCell(field.example)))
   return send(c, `${csvHeader().join(',')}\r\n${example.join(',')}\r\n`, 'text/csv; charset=utf-8', 'szablon-aed.csv')
 }
 

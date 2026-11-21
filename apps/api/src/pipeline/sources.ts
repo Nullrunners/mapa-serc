@@ -55,7 +55,10 @@ export async function readSourceBytes(
   return null
 }
 
-export const parseSource = (def: SourceDef, bytes: Uint8Array): RawTable => (def.format === 'geojson' ? parseGeoJson(bytes) : parseCsv(bytes))
+export function parseSource(def: SourceDef, bytes: Uint8Array): RawTable {
+  if (def.format === 'xlsx') throw new Error('A workbook is read only when it is uploaded through the wizard; a file source must be CSV or GeoJSON.')
+  return def.format === 'geojson' ? parseGeoJson(bytes) : parseCsv(bytes)
+}
 
 const derivedKey = (parts: unknown[]) => createHash('sha1').update(parts.map((part) => String(part ?? '')).join('|')).digest('hex').slice(0, 12)
 
@@ -78,7 +81,8 @@ export function normalizeSource(def: SourceDef, table: RawTable): NormalizedReco
 
     const nameColumn = Object.entries(def.mapping).find(([, target]) => target === 'nazwa')?.[0]
     if (def.fallbackName && !(nameColumn && row[nameColumn])) {
-      const fallback = def.fallbackName.map((column) => row[column]).find((value) => value)
+      // A tag that holds only punctuation (".", "-") is no name, and a leading dash is a list marker left in the tag.
+      const fallback = def.fallbackName.map((column) => (row[column] ?? '').replace(/^[\s\-–—.,;:*]+/, '')).find((value) => /\p{L}/u.test(value))
       row['@name'] = (fallback ?? 'Defibrylator AED').slice(0, 200)
       mapping['@name'] = 'nazwa'
     }

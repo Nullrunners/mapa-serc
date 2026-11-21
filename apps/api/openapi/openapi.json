@@ -215,6 +215,15 @@
             ],
             "description": "Odległość od punktu z parametru `near`, w metrach"
           },
+          "availableNow": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ],
+            "description": "Czy przechodzień dostanie się do urządzenia w chwili zapytania: no = poza godzinami dostępności, wycofane, czasowo niedostępne albo tylko dla personelu; unknown = rekord nie podaje godzin dostępności albo podaje je w zapisie, którego system nie rozumie."
+          },
           "record": {
             "$ref": "#/components/schemas/AedRecord"
           }
@@ -224,6 +233,7 @@
           "publication",
           "quality",
           "distanceM",
+          "availableNow",
           "record"
         ]
       },
@@ -843,10 +853,17 @@
             "items": {
               "$ref": "#/components/schemas/SourceReport"
             }
+          },
+          "notIncluded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KnownSource"
+            }
           }
         },
         "required": [
-          "items"
+          "items",
+          "notIncluded"
         ]
       },
       "SourceReport": {
@@ -978,6 +995,13 @@
                 "severity"
               ]
             }
+          },
+          "coverage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldCoverage"
+            },
+            "description": "Zakres danych źródła względem wzorca: jedna pozycja na każde pole, które źródło może dostarczyć"
           }
         },
         "required": [
@@ -999,7 +1023,8 @@
           "incomplete",
           "fileFixes",
           "fixes",
-          "issues"
+          "issues",
+          "coverage"
         ],
         "description": "Raport jakości dla dostawcy: co odczytano, co poprawiono, czego nie udało się naprawić."
       },
@@ -1027,6 +1052,80 @@
           "message"
         ],
         "description": "Poprawka, którą system wprowadził sam."
+      },
+      "FieldCoverage": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Nazwa pola wzorca",
+            "example": "godziny_dostepnosci"
+          },
+          "provided": {
+            "type": "integer",
+            "description": "Wiersze, w których wartość daje samo źródło"
+          },
+          "added": {
+            "type": "integer",
+            "description": "Wiersze, w których wartość uzupełnił system z rejestrów państwowych (TERYT, adresy)"
+          },
+          "constant": {
+            "type": "boolean",
+            "description": "Wartość jest stała dla całego źródła (np. miejscowość w pliku jednej gminy), a nie kolumną pliku"
+          }
+        },
+        "required": [
+          "field",
+          "provided",
+          "added",
+          "constant"
+        ]
+      },
+      "KnownSource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "licence": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "null, gdy źródło nie podaje licencji"
+          },
+          "devices": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Liczba urządzeń według samego źródła; null, gdy nieznana"
+          },
+          "scope": {
+            "type": "string",
+            "description": "Co wiadomo o zakresie danych źródła"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Dlaczego źródło nie jest włączone do zbioru"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "licence",
+          "devices",
+          "scope",
+          "reason"
+        ],
+        "description": "Źródło danych o AED, które znamy, ale którego nie włączamy do zbioru krajowego."
       },
       "SchemaResponse": {
         "type": "object",
@@ -1178,7 +1277,8 @@
             "type": "string",
             "enum": [
               "csv",
-              "geojson"
+              "geojson",
+              "xlsx"
             ]
           },
           "fileFixes": {
@@ -1346,7 +1446,7 @@
           },
           "contentBase64": {
             "type": "string",
-            "description": "The file, base64-encoded (CSV or GeoJSON, up to 5 MB)"
+            "description": "The file, base64-encoded (CSV, XLSX or GeoJSON, up to 5 MB)"
           },
           "mapping": {
             "type": "object",
@@ -1788,6 +1888,20 @@
           },
           {
             "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "description": "true = only devices a passer-by can reach right now (see `availableNow` of a device)"
+            },
+            "required": false,
+            "description": "true = only devices a passer-by can reach right now (see `availableNow` of a device)",
+            "name": "availableNow",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "integer",
               "minimum": 1,
               "maximum": 1000,
@@ -2008,7 +2122,7 @@
         "tags": [
           "data"
         ],
-        "summary": "Every source of the national dataset with its quality report",
+        "summary": "Every source of the national dataset with its quality report and data scope; known sources that are not merged in",
         "responses": {
           "200": {
             "description": "Sources",
@@ -2338,6 +2452,48 @@
         "x-status": "live"
       }
     },
+    "/dane/wzorzec.xlsx": {
+      "get": {
+        "operationId": "downloadPatternXlsx",
+        "tags": [
+          "files"
+        ],
+        "summary": "The data pattern as an Excel workbook: field table, dictionaries, example row and an empty template",
+        "responses": {
+          "200": {
+            "description": "The data pattern as an Excel workbook: field table, dictionaries, example row and an empty template",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
     "/dane/szablon.csv": {
       "get": {
         "operationId": "downloadTemplate",
@@ -2392,6 +2548,48 @@
             "description": "Unconfirmed devices known only from OpenStreetMap (ODbL) – not part of the dataset for dane.gov.pl",
             "content": {
               "application/geo+json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/dane/zakres-zrodel.csv": {
+      "get": {
+        "operationId": "downloadSourceScope",
+        "tags": [
+          "files"
+        ],
+        "summary": "Data scope of every source against the pattern: one row per source and field",
+        "responses": {
+          "200": {
+            "description": "Data scope of every source against the pattern: one row per source and field",
+            "content": {
+              "text/csv": {
                 "schema": {
                   "type": "string"
                 }

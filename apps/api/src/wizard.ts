@@ -20,7 +20,8 @@ import { enrich } from './pipeline/geocode'
 import { suggestMapping, toMapping, type ColumnSuggestion } from './pipeline/mapping'
 import { parseAny } from './pipeline/parse'
 import { checkSource, normalizeSource } from './pipeline/sources'
-import { PRIORITY, type NormalizedRecord, type SourceDef } from './pipeline/types'
+import { PRIORITY, type NormalizedRecord, type RawTable, type SourceDef } from './pipeline/types'
+import { isLegacyXls, isXlsx, parseXlsx } from './pipeline/xlsx'
 import { toCsv } from './publish/files'
 import { verifyInvitation } from './radar/links'
 import type { z } from '@hono/zod-openapi'
@@ -39,8 +40,9 @@ interface Prepared {
   def: SourceDef
   records: NormalizedRecord[]
   columns: ColumnSuggestion[]
-  format: 'csv' | 'geojson'
-  fileFixes: ReturnType<typeof parseAny>['fixes']
+  format: SourceDef['format']
+  fileFixes: RawTable['fixes']
+  table: RawTable & { format: SourceDef['format'] }
 }
 
 const slug = (text: string) =>
@@ -57,16 +59,17 @@ const slug = (text: string) =>
 const sourceIdFor = (providerName: string, fileName: string) =>
   `upload-${slug(providerName) || 'dostawca'}-${createHash('sha1').update(`${providerName}|${fileName}`).digest('hex').slice(0, 8)}`
 
-function prepare(request: Request, pending: boolean): Prepared {
+async function prepare(request: Request, pending: boolean): Promise<Prepared> {
   const bytes = Buffer.from(request.contentBase64, 'base64')
   if (bytes.length === 0) throw new ApiError(400, 'file_unreadable', 'Plik jest pusty.')
   if (bytes.length > MAX_FILE_BYTES) throw new ApiError(400, 'file_unreadable', 'Plik jest większy niż 5 MB. Podziel go na części albo podaj adres zbioru.')
+  if (isLegacyXls(bytes)) throw new ApiError(400, 'file_unreadable', 'To plik w starym formacie Excela (.xls). Zapisz go jako skoroszyt programu Excel (.xlsx) albo jako CSV i wgraj ponownie.')
 
-  let table: ReturnType<typeof parseAny>
+  let table: Prepared['table']
   try {
-    table = parseAny(bytes)
+    table = isXlsx(bytes) ? { ...(await parseXlsx(bytes)), format: 'xlsx' } : parseAny(bytes)
   } catch {
-    throw new ApiError(400, 'file_unreadable', 'Nie udało się odczytać pliku. Obsługiwane formaty to CSV i GeoJSON.')
+    throw new ApiError(400, 'file_unreadable', 'Nie udało się odczytać pliku. Obsługiwane formaty to CSV, XLSX i GeoJSON.')
   }
   if (table.rows.length === 0 || table.headers.length < 2) {
     throw new ApiError(400, 'file_unreadable', 'W pliku nie ma tabeli z danymi: potrzebny jest wiersz nagłówka i co najmniej jeden wiersz z urządzeniem.')
@@ -100,7 +103,7 @@ function prepare(request: Request, pending: boolean): Prepared {
   }
   const records = normalizeSource(def, table)
   checkSource(def, records)
-  return { def, records, columns, format: table.format, fileFixes: table.fixes }
+  return { def, records, columns, format: table.format, fileFixes: table.fixes, table }
 }
 
 /** The device the system already knows that a row most likely describes. */
@@ -129,7 +132,7 @@ function findDuplicate(record: NormalizedRecord, store: Store) {
 
 export const importPreviewHandler: RouteHandler<typeof importPreviewRoute> = async (c) => {
   const { store, geo } = await getContext()
-  const prepared = prepare(c.req.valid('json'), true)
+  const prepared = await prepare(c.req.valid('json'), true)
   const shown = prepared.records.slice(0, PREVIEW_ROWS)
   await enrich(shown, geo)
 
@@ -177,7 +180,7 @@ export const importCommitHandler: RouteHandler<typeof importCommitRoute> = async
   const invitedBy = request.invitation ? verifyInvitation(request.invitation) : null
   if (request.invitation && invitedBy === null) throw new ApiError(422, 'validation_error', 'Link zaproszenia jest nieprawidłowy albo uszkodzony. Otwórz go ponownie z wiadomości od operatora.', [{ path: 'invitation', message: 'Nieprawidłowy token zaproszenia.' }])
   const approved = invitedBy !== null || (config.adminToken !== '' && c.req.header('Authorization') === `Bearer ${config.adminToken}`)
-  const prepared = prepare(request, !approved)
+  const prepared = await prepare(request, !approved)
 
   await store.saveStoredSource(prepared.def, prepared.records)
   await store.log({ actor: prepared.def.name, entity: 'source', entityId: prepared.def.id, action: approved ? 'import_published' : 'import_submitted', detail: { fileName: request.fileName, rows: prepared.records.length, licence: prepared.def.licence } })
