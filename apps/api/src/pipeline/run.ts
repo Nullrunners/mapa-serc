@@ -158,6 +158,13 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
   if (input.geo) await enrich(records.filter((record) => !isOsm(record)), input.geo)
   if (input.cachedGeo) await enrich(records.filter(isOsm), input.cachedGeo, { geocodeAddresses: false })
 
+  /** Records of other sources that the record's own source says are the same device (SourceDef.refs). */
+  const refsOf = (record: NormalizedRecord) =>
+    Object.entries(sources.get(record.sourceId)!.refs ?? {}).flatMap(([column, sourceId]) => {
+      const key = (record.raw[column] ?? '').trim()
+      return key === '' ? [] : [{ sourceId, key }]
+    })
+
   const located: DedupItem[] = []
   const unlocated: number[] = []
   records.forEach((record, index) => {
@@ -166,6 +173,8 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
     located.push({
       index,
       sourceId: record.sourceId,
+      key: record.sourceKey,
+      refs: refsOf(record),
       priority: PRIORITY[sources.get(record.sourceId)!.kind],
       lat,
       lon,

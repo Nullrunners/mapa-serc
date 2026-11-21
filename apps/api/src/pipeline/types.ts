@@ -28,6 +28,11 @@ export interface SourceDef {
   /** Column that identifies a row within the source. Without it the key is derived from name and address. */
   keyColumn?: string
   /**
+   * Columns that hold the identifier a device has in another source: column → id of that source. OSM mappers
+   * note the city's device number in `ref:api-um-warszawa-pl`; such a pair is one device whatever its names say.
+   */
+  refs?: Record<string, string>
+  /**
    * Columns to take the place name from, in order, when the mapped name is empty (OSM rarely names an AED).
    * Only columns that name a place belong here: words about the spot ("przy wejściu") are a description, not a
    * name. A record that none of them names is called UNNAMED_PLACE and goes by its address.

@@ -28,6 +28,10 @@ export interface DedupItem {
   name: string
   street: string
   number: string
+  /** Identifier of the row within its source; needed only for records that other sources point at. */
+  key?: string
+  /** Records of other sources that, by this record's own source, describe the same device. */
+  refs?: { sourceId: string; key: string }[]
 }
 
 const NOISE = new Set(['defibrylator', 'aed', 'ul', 'al', 'ulica', 'aleja', 'im', 'w', 'nr', 'sp', 'z', 'o', 'oo'])
@@ -132,18 +136,44 @@ const CELL_DEG = 0.002
  * Groups items into devices. Items are taken in order of source priority; each joins the best existing
  * cluster it certainly matches, otherwise starts its own. A cluster never holds two items of one source:
  * two AEDs in one school are two AEDs.
+ *
+ * A record that names its counterpart in another source (`refs`) joins that record's cluster without any
+ * comparison of names, as long as the two are not further apart than records of one device can be.
  */
 export function cluster(items: DedupItem[]): { clusters: number[][]; reviews: ReviewPair[] } {
   const ordered = [...items].sort((a, b) => b.priority - a.priority || a.sourceId.localeCompare(b.sourceId) || a.index - b.index)
   const byIndex = new Map(items.map((item) => [item.index, item]))
+  const refKey = (sourceId: string, key: string) => `${sourceId}\u0000${key}`
+  const byKey = new Map(items.filter((item) => item.key !== undefined).map((item) => [refKey(item.sourceId, item.key!), item.index]))
   const clusters: number[][] = []
   const clusterOf = new Map<number, number>()
   const grid = new Map<string, number[]>()
   const reviews: ReviewPair[] = []
   const cell = (lat: number, lon: number) => [Math.floor(lat / CELL_DEG), Math.floor(lon / (CELL_DEG * 1.6))] as const
+  const holdsSource = (clusterId: number, sourceId: string) => clusters[clusterId]!.some((member) => byIndex.get(member)!.sourceId === sourceId)
+
+  /** The cluster of the record this item points at, when that record is already placed and close enough. */
+  const referred = (item: DedupItem): number | null => {
+    for (const ref of item.refs ?? []) {
+      const target = byKey.get(refKey(ref.sourceId, ref.key))
+      const clusterId = target === undefined ? undefined : clusterOf.get(target)
+      if (target === undefined || clusterId === undefined || holdsSource(clusterId, item.sourceId)) continue
+      const other = byIndex.get(target)!
+      if (distanceM(item.lat, item.lon, other.lat, other.lon) <= DEDUP.maxDistanceM) return clusterId
+    }
+    return null
+  }
 
   for (const item of ordered) {
     const [row, column] = cell(item.lat, item.lon)
+    const cellKey = `${row}:${column}`
+    const byReference = referred(item)
+    if (byReference !== null) {
+      clusters[byReference]!.push(item.index)
+      clusterOf.set(item.index, byReference)
+      grid.set(cellKey, [...(grid.get(cellKey) ?? []), item.index])
+      continue
+    }
     let best: { clusterId: number; comparison: Comparison; other: number } | null = null
     const pending: ReviewPair[] = []
     for (let dRow = -1; dRow <= 1; dRow++) {
@@ -151,7 +181,7 @@ export function cluster(items: DedupItem[]): { clusters: number[][]; reviews: Re
         for (const otherIndex of grid.get(`${row + dRow}:${column + dColumn}`) ?? []) {
           const other = byIndex.get(otherIndex)!
           const clusterId = clusterOf.get(otherIndex)!
-          if (clusters[clusterId]!.some((member) => byIndex.get(member)!.sourceId === item.sourceId)) continue
+          if (holdsSource(clusterId, item.sourceId)) continue
           const comparison = compare(item, other)
           if (comparison.decision === 'auto' && (!best || comparison.score > best.comparison.score)) best = { clusterId, comparison, other: otherIndex }
           if (comparison.decision === 'review') pending.push({ a: otherIndex, b: item.index, score: comparison.score, distanceM: comparison.distanceM })
@@ -167,7 +197,6 @@ export function cluster(items: DedupItem[]): { clusters: number[][]; reviews: Re
       reviews.push(...pending)
     }
     clusterOf.set(item.index, clusterId)
-    const cellKey = `${row}:${column}`
     grid.set(cellKey, [...(grid.get(cellKey) ?? []), item.index])
   }
   return { clusters, reviews }
