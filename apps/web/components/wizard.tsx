@@ -142,17 +142,17 @@ export default function Wizard() {
             Wybierz plik z listą defibrylatorów
           </h2>
           <p>
-            Wystarczy plik, który już masz, w dowolnym układzie kolumn. Nie musisz go przerabiać: sami zgadniemy, co jest czym, a Ty tylko to potwierdzisz. Arkusz z Excela (.xlsx) możesz wgrać od razu,
-            bez zapisywania go w innym formacie.
+            Wystarczy plik, który już masz, w dowolnym układzie kolumn. Nie musisz go przerabiać: sami zgadniemy, co jest czym, a Ty tylko to potwierdzisz. Arkusz z Excela możesz wgrać od razu,
+            także w starszym formacie (.xls), bez zapisywania go w innym.
           </p>
           <div>
             <label htmlFor="plik" className="block font-semibold">
               Plik z urządzeniami
             </label>
             <p id="plik-opis" className="text-sm text-muted">
-              Excel (.xlsx), CSV lub GeoJSON, do 5 MB.
+              Excel (.xlsx albo .xls), CSV lub GeoJSON, do 5 MB.
             </p>
-            <input id="plik" type="file" accept=".xlsx,.csv,.txt,.json,.geojson,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/json,application/geo+json" aria-describedby="plik-opis" disabled={busy} onChange={(event) => chooseFile(event.target.files?.[0])} className="mt-2 block w-full rounded border border-muted p-2 file:mr-3 file:rounded file:border-0 file:bg-gov file:px-4 file:py-2 file:font-semibold file:text-white" />
+            <input id="plik" type="file" accept=".xlsx,.xls,.csv,.txt,.json,.geojson,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/json,application/geo+json" aria-describedby="plik-opis" disabled={busy} onChange={(event) => chooseFile(event.target.files?.[0])} className="mt-2 block w-full rounded border border-muted p-2 file:mr-3 file:rounded file:border-0 file:bg-gov file:px-4 file:py-2 file:font-semibold file:text-white" />
           </div>
           {busy && <p className="text-muted">Sprawdzam plik…</p>}
           <p className="text-sm">
