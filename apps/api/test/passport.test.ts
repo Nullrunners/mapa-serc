@@ -6,7 +6,7 @@ import { supplyFor } from '../src/gaps/state'
 import { normalisePhone } from '../src/passport/handlers'
 import { dueWindow, expiryState, maskEmail, summariseReports, type FieldReport } from '../src/passport/model'
 import { notWorking, REPORTS_PER_DEVICE_DAY } from '../src/passport/service'
-import { signInvitation, verifyInvitation } from '../src/radar/links'
+import { signInvitation, stickerSheetUrls, verifyInvitation } from '../src/radar/links'
 
 const app = createApp()
 const OPERATOR = { Authorization: 'Bearer test-token' }
@@ -47,6 +47,14 @@ describe('passport model', () => {
     const now = '2026-11-21T12:00:00.000Z'
     expect(summariseReports([by('a', '2026-11-20T08:00:00.000Z'), by('a', '2026-11-20T10:00:00.000Z')], null, now).problems[0]!.count).toBe(1)
     expect(summariseReports([by('a', '2026-11-20T08:00:00.000Z'), by('b', '2026-11-20T10:00:00.000Z')], null, now).problems[0]).toMatchObject({ count: 2, lastAt: '2026-11-20T10:00:00.000Z' })
+  })
+
+  it('splits the sticker sheets of many devices into links of 40', () => {
+    const ids = Array.from({ length: 85 }, (_, index) => `id-${index}`)
+    const urls = stickerSheetUrls(ids)
+    expect(urls).toHaveLength(3)
+    expect(urls[0]).toBe(`http://localhost:3000/naklejki?id=${ids.slice(0, 40).join(',')}`)
+    expect(urls[2]!.split('=')[1]!.split(',')).toHaveLength(5)
   })
 
   it('normalises phone numbers and masks addresses', () => {

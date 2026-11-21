@@ -47,3 +47,13 @@ export const passportUrl = (aedId: string) => `${config.publicWebUrl}/aed/${aedI
 
 /** The sticker with the QR code, ready to print. */
 export const stickerUrl = (aedId: string) => `${config.publicWebUrl}/aed/${aedId}/naklejka`
+
+/** Devices on one A4 sticker sheet link; the ids travel in the address, so it stays short enough for any client. */
+export const STICKERS_PER_SHEET = 40
+
+/** A4 sheets with the stickers of several devices, four to a page, at most 40 devices per link. */
+export function stickerSheetUrls(aedIds: readonly string[]): string[] {
+  const urls: string[] = []
+  for (let start = 0; start < aedIds.length; start += STICKERS_PER_SHEET) urls.push(`${config.publicWebUrl}/naklejki?id=${aedIds.slice(start, start + STICKERS_PER_SHEET).join(',')}`)
+  return urls
+}

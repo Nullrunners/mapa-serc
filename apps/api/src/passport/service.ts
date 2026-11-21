@@ -9,7 +9,7 @@ import { config } from '../config'
 import type { Store } from '../db/store'
 import { send } from '../notify'
 import type { MergedAed } from '../pipeline/merge'
-import { ownerUrl, passportUrl } from '../radar/links'
+import { ownerUrl, passportUrl, stickerSheetUrls } from '../radar/links'
 import {
   dueWindow,
   expiryState,
@@ -194,6 +194,7 @@ export async function welcomeProvider(store: Store, email: string, devices: read
       '2. W panelu opiekuna wpisz terminy ważności elektrod i baterii. Przypomnimy o wymianie na ten adres 30 i 7 dni przed terminem.',
       '3. Po przeglądzie kliknij „Potwierdzam sprawność”. W otwartym zbiorze danych urządzenie będzie wtedy oznaczone jako sprawne i sprawdzone.',
       '',
+      ...(one ? [] : ['Wszystkie naklejki na kartkach A4, po cztery na stronie:', ...stickerSheetUrls(devices.map((device) => device.id)), '']),
       ...devices.flatMap((device) => [device.name, `  naklejka: ${device.stickerUrl}`, `  panel opiekuna: ${device.ownerUrl}`, '']),
       'Nie przekazuj linków do panelu osobom spoza instytucji: każdy z nich pozwala zmieniać dane urządzenia.',
       '',
