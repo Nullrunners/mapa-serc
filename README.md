@@ -8,9 +8,13 @@ Dane urzędowe o AED to dziś pięć samorządowych zbiorów w portalu (782 urz�
 
 | Element | Stan |
 |---|---|
-| Wzorzec danych AED: 32 pola, z niego generowane skoroszyt XLSX, Table Schema, szablon CSV, opis pól i schemat API | działa |
+| Wzorzec danych AED: 34 pola, z niego generowane skoroszyt XLSX, Table Schema, szablon CSV, opis pól i schemat API | działa |
 | Zakres danych każdego źródła na tle wzorca (tabela na stronie „Skąd te dane" i plik CSV), lista znanych źródeł, których nie włączamy | działa |
-| „Dostępny teraz" w wyszukiwarce: odczyt godzin dostępności, oznaczenie przy urządzeniu, filtr | działa |
+| „Dostępny teraz" w wyszukiwarce: odczyt godzin dostępności (także święta państwowe, `PH`), oznaczenie przy urządzeniu, filtr | działa |
+| Ranking „Najszybciej w ręku" (`/v1/aed?sort=reach`): czas dojścia, godziny i święta, szafka z kodem albo recepcja, piętro, zgłoszone problemy; godzina zamknięcia lub otwarcia; sprawdzenie dowolnej chwili (`at`), w interfejsie „teraz" i noc z soboty na niedzielę | działa; sprawdzone na danych Warszawy. Sposób dostępu zgadujemy z opisu tylko przy jednoznacznych zwrotach („w portierni", „klucze"), nowe pole `sposob_dostepu` jest na razie puste we wszystkich źródłach |
+| Cyfrowy Paszport AED: strona urządzenia pod kodem QR (`/aed/{id}`), naklejka do druku z kodem QR, zgłoszenia przechodniów („jest na miejscu", szafka zamknięta, brak urządzenia, alarm baterii, uszkodzenie), panel opiekuna (`/opiekun`) z terminami ważności elektrod i baterii i przyciskiem „Potwierdzam sprawność", który od razu zmienia status i datę weryfikacji w plikach dla portalu | działa; API w testach, strony obejrzane w przeglądarce |
+| Paszport: przypomnienia e-mail (SMTP) i SMS (SMSAPI.pl) 30 i 7 dni przed terminem i po nim, powiadomienie opiekuna o zgłoszonym problemie, link do panelu wysyłany na adres e-mail z danych urządzenia | działa w testach; bez `SMTP_URL` / `SMSAPI_TOKEN` wiadomości trafiają tylko do dziennika (`GET /admin/outbox`). Wiadomości dostają tylko opiekunowie, którzy założyli paszport |
+| Naklejka NFC | ten sam adres co w kodzie QR można zapisać na naklejce NFC; nie testowaliśmy tego na urządzeniu |
 | Potok scalania: odczyt plików w dowolnym dialekcie, automatyczne poprawki (także współrzędne w metrach, w układach PUWG 1992 i PUWG 2000), kody TERYT i geokodowanie z rejestrów GUGiK, deduplikacja, pochodzenie każdego pola, ocena jakości | działa |
 | Pliki zbioru krajowego: CSV (RFC 4180), GeoJSON, JSON-LD, metadane CSVW | działa |
 | Plik XML dla harvestera dane.gov.pl, zgodny z oficjalnym XSD 1.13 (sprawdzany w testach) | działa |
@@ -22,7 +26,7 @@ Dane urzędowe o AED to dziś pięć samorządowych zbiorów w portalu (782 urz�
 | Radar: klasyfikacja ogłoszeń modelem językowym, wskazówki ze stron gmin i BIP | do zrobienia; dziś ogłoszenia odsiewa filtr słów kluczowych |
 | Źródło: Warszawa, 708 urządzeń z API miasta. Klucz (`WARSAW_API_KEY`) jest potrzebny tylko do pobrania świeżej listy; bez niego czytana jest kopia dołączona do repozytorium | działa |
 | Łączenie rekordów po numerze urządzenia zapisanym w innym źródle (OpenStreetMap podaje numer z API Warszawy) | działa |
-| „Gdzie brakuje AED" (`/braki`, `/v1/gaps`): mieszkańcy ze spisu 2021 w sześciokątach H3 na tle godzin tygodnia, w których defibrylator jest w zasięgu 400 m; mapa luk, 10 najlepszych miejsc na nowe urządzenie w wybranym obszarze, raport miejsca z gotowym uzasadnieniem do wniosku (druk do PDF, CSV) | działa; sprawdzone w przeglądarce na komputerze i telefonie |
+| „Gdzie brakuje AED" (`/braki`, `/v1/gaps`): mieszkańcy ze spisu 2021 w sześciokątach H3 na tle godzin tygodnia, w których sprawny defibrylator jest w zasięgu 400 m (bez przeterminowanych elektrod i baterii i bez zgłoszonych przez przechodniów jako brakujące); mapa luk, 10 najlepszych miejsc na nowe urządzenie w wybranym obszarze, raport miejsca z gotowym uzasadnieniem do wniosku (druk do PDF, CSV) | działa; sprawdzone w przeglądarce na komputerze i telefonie |
 | Budynek-gospodarz z OpenStreetMap przy polecanym miejscu (szkoła, urząd, apteka) i ruch dzienny (dworce, galerie) w liczeniu potrzeb | do zrobienia |
 
 Zgłoszenie wysłane z kreatora bez tokenu operatora ma stan „oczekuje": dostawca widzi wynik, ale rekordy wchodzą do plików dla portalu dopiero po zatwierdzeniu (`POST /admin/sources/{id}/approve`). Niezatwierdzone zgłoszenie nie może też zmienić rekordów już opublikowanych. W wersji docelowej token operatora zastępuje tożsamość dostawcy z login.gov.pl.
@@ -56,6 +60,7 @@ Przy pierwszym starcie API buduje zbiór z kopii plików urzędowych dołączony
 pnpm job pipeline --refresh   # pobiera świeże pliki źródeł (także OpenStreetMap) i scala od nowa
 pnpm job enrich-osm           # kody gmin i adresy dla warstwy OpenStreetMap; kilkanaście minut za pierwszym razem
 pnpm job radar                # buduje wskazówki Radaru; za pierwszym razem pobiera ogłoszenia z e-Zamówień
+pnpm job reminders            # przypomnienia dla opiekunów (API uruchamia je też samo co godzinę)
 pnpm check                    # typy i testy
 ```
 
@@ -73,6 +78,9 @@ apps/api/          Hono + TypeScript + DuckDB
   test/fixtures/   zamrożone pliki źródeł i XSD portalu
   src/wizard.ts    kreator: podgląd pliku, zgłoszenie, zatwierdzenie
   src/radar/       Radar AED: budowanie wskazówek, decyzje, linki zaproszeń
+  src/passport/    Cyfrowy Paszport AED: zgłoszenia przechodniów, panel opiekuna, przypomnienia
+  src/notify/      wysyłka e-mail (SMTP) i SMS (SMSAPI.pl) z dziennikiem wiadomości
+  src/reach/       ranking „Najszybciej w ręku”
   src/gaps/        analiza luk: ludność w H3, godziny tygodnia urządzeń, wybór miejsc (zachłanny MCLP)
   reference/       ludność ze spisu 2021 w siatce 1 km (wycinek dla Polski)
 apps/web/          Next.js: mapa z listą, kreator, wzorzec, źródła i jakość, Radar, mapa luk
