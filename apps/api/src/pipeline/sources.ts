@@ -95,7 +95,7 @@ export async function readSourceBytes(
 }
 
 export function parseSource(def: SourceDef, bytes: Uint8Array): RawTable {
-  if (def.format === 'xlsx') throw new Error('A workbook is read only when it is uploaded through the wizard; a file source must be CSV or GeoJSON.')
+  if (def.format === 'xlsx' || def.format === 'xls') throw new Error('A workbook is read only when it is uploaded through the wizard; a file source must be CSV or GeoJSON.')
   return def.format === 'geojson' ? parseGeoJson(bytes) : parseCsv(bytes)
 }
 
@@ -144,12 +144,34 @@ const median = (values: number[]) => {
 }
 
 /**
+ * An office's list often names the town in some rows only ("ul. Paradna 36, 93-345 Łódź", then "ul. Wileńska 25").
+ * When nearly every row that names a town names the same one (a typo in one row must not spoil it), a row with
+ * a street and a number but no town is taken to be there too. The address register then has the last word:
+ * an address it does not know gets no position.
+ */
+function fillTown(def: SourceDef, records: NormalizedRecord[]): void {
+  if (def.kind === 'osm') return
+  const counts = new Map<string, number>()
+  for (const record of records) if (record.input.miejscowosc) counts.set(record.input.miejscowosc, (counts.get(record.input.miejscowosc) ?? 0) + 1)
+  const named = [...counts.values()].reduce((sum, count) => sum + count, 0)
+  const [town, count] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? ['', 0]
+  if (named < 5 || count < named * 0.9) return
+  for (const record of records) {
+    if (record.input.miejscowosc || !record.input.nazwa_ulicy || !record.input.nr_budynku) continue
+    record.input.miejscowosc = town
+    record.fixes.push({ code: 'locality_from_file', field: 'miejscowosc', message: `W wierszu nie było miejscowości; przyjęto „${town}", bo tę miejscowość podają pozostałe wiersze pliku.`, after: town })
+  }
+}
+
+/**
  * Checks that only make sense across a whole source:
+ *  - a row without a town in a list where every other row names the same town,
  *  - a point far away from all the others of a single-municipality source (a row pasted from another file),
  *  - two devices with identical coordinates but different addresses.
  * A far-away point loses its coordinates, so that the address is geocoded instead of trusting it.
  */
 export function checkSource(def: SourceDef, records: NormalizedRecord[]): void {
+  fillTown(def, records)
   const located = records.filter((record) => record.input.szerokosc_geograficzna != null && record.input.dlugosc_geograficzna != null)
 
   if (def.kind !== 'osm' && located.length >= 5) {

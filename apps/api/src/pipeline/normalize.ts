@@ -168,7 +168,8 @@ export function splitStreet(text: string): Pick<AedInput, 'cecha_ulicy' | 'nazwa
       break
     }
   }
-  const number = rest.match(/^(.*\D)\s+(\d+[A-Za-z]?(?:\s?[/-]\s?\d+[A-Za-z]?)?)$/)
+  // The number as offices type it: "28a", "17/21", "5/7/9", "2/ 4", "47 b".
+  const number = rest.match(/^(.*?\D)\s+(\d+\s?[A-Za-z]?(?:\s?[/-]\s?\d+\s?[A-Za-z]?)*)$/)
   const street = clean(number ? number[1]! : rest)
   return {
     ...(kind ? { cecha_ulicy: kind } : {}),
@@ -181,7 +182,7 @@ export function splitStreet(text: string): Pick<AedInput, 'cecha_ulicy' | 'nazwa
 export function splitAddress(text: string): Pick<AedInput, 'cecha_ulicy' | 'nazwa_ulicy' | 'nr_budynku' | 'kod_pocztowy' | 'miejscowosc'> {
   const value = clean(text)
   if (value === '') return {}
-  const postcode = value.match(/(\d{2})\s?-\s?(\d{3})/)
+  const postcode = value.match(/(\d{2})\s?[-–]\s?(\d{3})/)
   if (postcode) {
     const before = clean(value.slice(0, postcode.index))
     const after = clean(value.slice(postcode.index! + postcode[0].length))
@@ -193,6 +194,10 @@ export function splitAddress(text: string): Pick<AedInput, 'cecha_ulicy' | 'nazw
   if (comma > 0 && !/\d/.test(value.slice(comma))) {
     return { ...splitStreet(value.slice(0, comma)), miejscowosc: clean(value.slice(comma + 1)) }
   }
+  // "ul. Bydgoska 17/21 Łódź": the town follows the number with nothing in between. Only a capitalised word
+  // without digits after a building number is taken for a town, so "ul. 3 Maja 12" stays a street.
+  const town = value.match(/^(.*\d[A-Za-z]?)\s+(\p{Lu}[\p{L}.\- ]*)$/u)
+  if (town) return { ...splitStreet(town[1]!), miejscowosc: clean(town[2]!) }
   return splitStreet(value)
 }
 
@@ -317,7 +322,7 @@ export function parseOpeningHours(text: string): string | null {
   if (value === '') return null
   if (/^(24\/7|(Mo|Tu|We|Th|Fr|Sa|Su|PH)\b)/.test(value)) return value
   const plain = key(value)
-  if (/calodobow|cala dobe|24 ?h|24 ?\/ ?7|calodobowy|non stop/.test(plain)) return '24/7'
+  if (/calodobow|cala dobe|24 ?\/? ?h\b|24 ?\/ ?7|calodobowy|non stop/.test(plain)) return '24/7'
 
   let rest = value
     .toLowerCase()
@@ -333,7 +338,13 @@ export function parseOpeningHours(text: string): string | null {
     .replace(/\s+/g, ' ')
     // "soboty i niedziele" is a list of days, like "sobota, niedziela".
     .replace(/\b(Mo|Tu|We|Th|Fr|Sa|Su) i (?=(?:Mo|Tu|We|Th|Fr|Sa|Su)\b)/g, '$1,')
+    // "w godz: 7.00-18.00" leaves the colon behind.
+    .replace(/^[\s:;,.]+/, '')
     .trim()
+
+  // "8.00-18.00 w dni robocze", "7:30-18:00, pon.-pt.": the hours come first.
+  const reversed = rest.match(/^(\d{1,2})(?:[.:](\d{2}))?-(\d{1,2})(?:[.:](\d{2}))?[ ,]*(?:w )?((?:Mo|Tu|We|Th|Fr|Sa|Su)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?)\.?$/)
+  if (reversed) return `${reversed[5]} ${hhmm(reversed[1]!, reversed[2])}-${hhmm(reversed[3]!, reversed[4])}`
 
   const rules: string[] = []
   const rule = /((?:Mo|Tu|We|Th|Fr|Sa|Su)(?:[-,](?:Mo|Tu|We|Th|Fr|Sa|Su))*)[ :,]*(\d{1,2})(?:[.:](\d{2}))?-(\d{1,2})(?:[.:](\d{2}))?/g

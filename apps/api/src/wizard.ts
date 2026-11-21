@@ -21,7 +21,7 @@ import { suggestMapping, toMapping, type ColumnSuggestion } from './pipeline/map
 import { parseAny } from './pipeline/parse'
 import { checkSource, normalizeSource } from './pipeline/sources'
 import { PRIORITY, type NormalizedRecord, type RawTable, type SourceDef } from './pipeline/types'
-import { isLegacyXls, isXlsx, parseXlsx } from './pipeline/xlsx'
+import { isLegacyXls, isXlsx, parseXls, parseXlsx } from './pipeline/xlsx'
 import { toCsv } from './publish/files'
 import { verifyInvitation } from './radar/links'
 import type { z } from '@hono/zod-openapi'
@@ -63,13 +63,12 @@ async function prepare(request: Request, pending: boolean): Promise<Prepared> {
   const bytes = Buffer.from(request.contentBase64, 'base64')
   if (bytes.length === 0) throw new ApiError(400, 'file_unreadable', 'Plik jest pusty.')
   if (bytes.length > MAX_FILE_BYTES) throw new ApiError(400, 'file_unreadable', 'Plik jest większy niż 5 MB. Podziel go na części albo podaj adres zbioru.')
-  if (isLegacyXls(bytes)) throw new ApiError(400, 'file_unreadable', 'To plik w starym formacie Excela (.xls). Zapisz go jako skoroszyt programu Excel (.xlsx) albo jako CSV i wgraj ponownie.')
 
   let table: Prepared['table']
   try {
-    table = isXlsx(bytes) ? { ...(await parseXlsx(bytes)), format: 'xlsx' } : parseAny(bytes)
+    table = isXlsx(bytes) ? { ...(await parseXlsx(bytes)), format: 'xlsx' } : isLegacyXls(bytes) ? { ...parseXls(bytes), format: 'xls' } : parseAny(bytes)
   } catch {
-    throw new ApiError(400, 'file_unreadable', 'Nie udało się odczytać pliku. Obsługiwane formaty to CSV, XLSX i GeoJSON.')
+    throw new ApiError(400, 'file_unreadable', 'Nie udało się odczytać pliku. Obsługiwane formaty to Excel (.xlsx i .xls), CSV i GeoJSON.')
   }
   if (table.rows.length === 0 || table.headers.length < 2) {
     throw new ApiError(400, 'file_unreadable', 'W pliku nie ma tabeli z danymi: potrzebny jest wiersz nagłówka i co najmniej jeden wiersz z urządzeniem.')
