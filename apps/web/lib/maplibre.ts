@@ -103,6 +103,9 @@ function dimOutsidePoland(map: MapLibreMap): void {
  * Creates the map once the component is on the page and removes it when the component goes. `onLoad` adds our
  * sources and layers; it runs once, so it should talk to the component through refs. Declare this before the
  * component's own effects: they run in order, so by then `map.current` is set (or the map could not be drawn).
+ *
+ * Our layers go on as soon as the style of the base map is known, not when its first tiles are drawn ("load"):
+ * the devices are then fetched together with the tiles instead of after them.
  */
 export function useMapLibre(onLoad: (map: MapLibreMap) => void) {
   const frame = useRef<HTMLDivElement>(null);
@@ -120,7 +123,7 @@ export function useMapLibre(onLoad: (map: MapLibreMap) => void) {
       return;
     }
     map.current = created;
-    created.on("load", () => {
+    created.once("style.load", () => {
       dimOutsidePoland(created);
       load.current(created);
     });
@@ -133,10 +136,10 @@ export function useMapLibre(onLoad: (map: MapLibreMap) => void) {
   return { frame, container, map, drawable };
 }
 
-/** Runs `apply` now if `source` (added on "load") is on the map, otherwise right after the map has loaded. */
+/** Runs `apply` now if `source` (one of ours) is on the map, otherwise right after our layers are added. */
 export function whenLoaded(map: MapLibreMap, source: string, apply: () => void): void {
   if (map.getSource(source)) apply();
-  else map.once("load", apply);
+  else map.once("style.load", apply);
 }
 
 /** Replaces the data of one of our GeoJSON sources. */

@@ -12,7 +12,7 @@ import { count, distance, minutes } from "@/lib/format";
 import { nextSundayNight } from "@/lib/reach-text";
 import { MAX_WALK_M, OFF_WAY_M, follow, googleDirections, straightDistance, walkingRoute, type Point, type WalkingRoute } from "@/lib/route";
 import { guideWords } from "@/lib/route-text";
-import { useLoad, type Loaded } from "@/lib/use-load";
+import { useLoad, useLoadKeeping, type Loaded } from "@/lib/use-load";
 import AedDetails from "./aed-details";
 import type { GuideOnMap, WalkOnMap } from "./aed-map";
 
@@ -77,7 +77,8 @@ export default function Finder({ title, lead }: { title: string; lead: string })
   };
 
   const layer = showCommunity ? "all" : "official";
-  const list = useLoad(`${layer}|${submitted}|${near?.lat},${near?.lon}|${onlyAvailable}|${order}|${when}`, async (signal) => {
+  // The list stays while it is filtered or sorted again: the page does not jump, and the way on the map stays put.
+  const { loaded: list, refreshing } = useLoadKeeping(`${layer}|${submitted}|${near?.lat},${near?.lon}|${onlyAvailable}|${order}|${when}`, async (signal) => {
     const { data, error } = await api.GET("/v1/aed", {
       params: {
         query: {
@@ -93,11 +94,14 @@ export default function Finder({ title, lead }: { title: string; lead: string })
       signal,
     });
     if (error || !data) throw new Error("Nie udało się pobrać listy urządzeń. Spróbuj ponownie za chwilę.");
-    return data;
+    // A list still on screen while the next one loads says where it was measured from and for which moment.
+    return { ...data, near, when };
   });
 
   // With a known position the way is shown to the device in the panel, or else to the first one on the list.
-  const nearest = near && list.state === "ready" ? list.data.items[0] : undefined;
+  // Only from a list measured from here: the first device of an older list is the nearest to somewhere else.
+  const listed = list.state === "ready" ? list.data : null;
+  const nearest = near && listed?.near?.lat === near.lat && listed.near.lon === near.lon ? listed.items[0] : undefined;
   const target: Picked | null = near ? (selected ?? (nearest ? pickedFrom(nearest) : null)) : null;
   const walkable = near && target && straightDistance(near, target) <= MAX_WALK_M ? target : null;
   const route = useLoad(near && walkable ? `${near.lat},${near.lon}|${walkable.lat},${walkable.lon}` : "", (signal) =>
@@ -254,8 +258,8 @@ export default function Finder({ title, lead }: { title: string; lead: string })
           {near ? "Najbliższe urządzenia" : "Urządzenia"}
         </h2>
         <p aria-live="polite" className="text-sm text-muted">
-          {list.state === "loading" && "Wczytuję…"}
-          {list.state === "ready" && list.data.total > 0 && `Znaleziono: ${count(list.data.total)}${list.data.total > list.data.items.length ? ` (widać ${list.data.items.length})` : ""}`}
+          {(list.state === "loading" || refreshing) && "Wczytuję…"}
+          {list.state === "ready" && !refreshing && list.data.total > 0 && `Znaleziono: ${count(list.data.total)}${list.data.total > list.data.items.length ? ` (widać ${list.data.items.length})` : ""}`}
         </p>
       </div>
 
@@ -303,8 +307,12 @@ export default function Finder({ title, lead }: { title: string; lead: string })
           {list.message}
         </p>
       )}
-      {list.state === "ready" &&
-        (list.data.total === 0 ? <p>Nic nie znaleźliśmy. Spróbuj innej nazwy.</p> : <DeviceList items={list.data.items} when={when} onPick={pick} />)}
+      {list.state === "ready" && (
+        // Dimmed only when the new list takes a while; a quick answer just takes its place.
+        <div aria-busy={refreshing} className={refreshing ? "opacity-60 transition-opacity delay-200 duration-200" : undefined}>
+          {list.data.total === 0 ? <p>Nic nie znaleźliśmy. Spróbuj innej nazwy.</p> : <DeviceList items={list.data.items} when={list.data.when} onPick={pick} />}
+        </div>
+      )}
     </section>
   );
 
