@@ -32,6 +32,16 @@ CREATE TABLE IF NOT EXISTS geocode_cache (
   key VARCHAR, result VARCHAR);
 CREATE TABLE IF NOT EXISTS meta (
   key VARCHAR, value VARCHAR);
+CREATE TABLE IF NOT EXISTS passport (
+  aed_id VARCHAR, electrodes_exp VARCHAR, electrodes_child_exp VARCHAR, battery_exp VARCHAR, status VARCHAR,
+  confirmed_at VARCHAR, notify_email VARCHAR, notify_phone VARCHAR, link_version INTEGER, updated_at VARCHAR);
+CREATE TABLE IF NOT EXISTS field_reports (
+  id VARCHAR, aed_id VARCHAR, kind VARCHAR, note VARCHAR, created_at VARCHAR, client_hash VARCHAR);
+CREATE TABLE IF NOT EXISTS outbox (
+  id VARCHAR, aed_id VARCHAR, channel VARCHAR, recipient VARCHAR, subject VARCHAR, body VARCHAR, reason VARCHAR,
+  created_at VARCHAR, status VARCHAR, error VARCHAR);
+CREATE TABLE IF NOT EXISTS reminders_sent (
+  aed_id VARCHAR, item VARCHAR, due_date VARCHAR, win VARCHAR, sent_at VARCHAR);
 `
 
 export class Db {

@@ -8,9 +8,13 @@ Dane urzędowe o AED to dziś pięć samorządowych zbiorów w portalu (782 urz�
 
 | Element | Stan |
 |---|---|
-| Wzorzec danych AED: 32 pola, z niego generowane skoroszyt XLSX, Table Schema, szablon CSV, opis pól i schemat API | działa |
+| Wzorzec danych AED: 34 pola, z niego generowane skoroszyt XLSX, Table Schema, szablon CSV, opis pól i schemat API | działa |
 | Zakres danych każdego źródła na tle wzorca (tabela na stronie „Skąd te dane" i plik CSV), lista znanych źródeł, których nie włączamy | działa |
-| „Dostępny teraz" w wyszukiwarce: odczyt godzin dostępności, oznaczenie przy urządzeniu, filtr | działa |
+| „Dostępny teraz" w wyszukiwarce: odczyt godzin dostępności (także święta państwowe, `PH`), oznaczenie przy urządzeniu, filtr | działa |
+| Ranking „Najszybciej w ręku" (`/v1/aed?sort=reach`): czas dojścia, godziny i święta, szafka z kodem albo recepcja, piętro, zgłoszone problemy; godzina zamknięcia lub otwarcia; sprawdzenie dowolnej chwili (`at`), w interfejsie „teraz" i noc z soboty na niedzielę | działa; sprawdzone na danych Warszawy. Sposób dostępu zgadujemy z opisu tylko przy jednoznacznych zwrotach („w portierni", „klucze"), nowe pole `sposob_dostepu` jest na razie puste we wszystkich źródłach |
+| Cyfrowy Paszport AED: strona urządzenia pod kodem QR (`/aed/{id}`), naklejka do druku z kodem QR, zgłoszenia przechodniów („jest na miejscu", szafka zamknięta, brak urządzenia, alarm baterii, uszkodzenie), panel opiekuna (`/opiekun`) z terminami ważności elektrod i baterii i przyciskiem „Potwierdzam sprawność", który od razu zmienia status i datę weryfikacji w plikach dla portalu | działa; API w testach, strony obejrzane w przeglądarce |
+| Paszport: przypomnienia e-mail (SMTP) i SMS (SMSAPI.pl) 30 i 7 dni przed terminem i po nim, powiadomienie opiekuna o zgłoszonym problemie, link do panelu wysyłany na adres e-mail z danych urządzenia | działa w testach; bez `SMTP_URL` / `SMSAPI_TOKEN` wiadomości trafiają tylko do dziennika (`GET /admin/outbox`). Wiadomości dostają tylko opiekunowie, którzy założyli paszport |
+| Naklejka NFC | ten sam adres co w kodzie QR można zapisać na naklejce NFC; nie testowaliśmy tego na urządzeniu |
 | Potok scalania: odczyt plików w dowolnym dialekcie, automatyczne poprawki (także współrzędne w metrach, w układach PUWG 1992 i PUWG 2000), kody TERYT i geokodowanie z rejestrów GUGiK, deduplikacja, pochodzenie każdego pola, ocena jakości | działa |
 | Pliki zbioru krajowego: CSV (RFC 4180), GeoJSON, JSON-LD, metadane CSVW | działa |
 | Plik XML dla harvestera dane.gov.pl, zgodny z oficjalnym XSD 1.13 (sprawdzany w testach) | działa |
@@ -22,6 +26,8 @@ Dane urzędowe o AED to dziś pięć samorządowych zbiorów w portalu (782 urz�
 | Radar: klasyfikacja ogłoszeń modelem językowym, wskazówki ze stron gmin i BIP | do zrobienia; dziś ogłoszenia odsiewa filtr słów kluczowych |
 | Źródło: Warszawa, 708 urządzeń z API miasta. Klucz (`WARSAW_API_KEY`) jest potrzebny tylko do pobrania świeżej listy; bez niego czytana jest kopia dołączona do repozytorium | działa |
 | Łączenie rekordów po numerze urządzenia zapisanym w innym źródle (OpenStreetMap podaje numer z API Warszawy) | działa |
+| „Gdzie brakuje AED" (`/braki`, `/v1/gaps`): mieszkańcy ze spisu 2021 w sześciokątach H3 na tle godzin tygodnia, w których sprawny defibrylator jest w zasięgu 400 m (bez przeterminowanych elektrod i baterii i bez zgłoszonych przez przechodniów jako brakujące); mapa luk, 10 najlepszych miejsc na nowe urządzenie w wybranym obszarze, raport miejsca z gotowym uzasadnieniem do wniosku (druk do PDF, CSV) | działa; sprawdzone w przeglądarce na komputerze i telefonie |
+| Budynek-gospodarz z OpenStreetMap przy polecanym miejscu (szkoła, urząd, apteka) i ruch dzienny (dworce, galerie) w liczeniu potrzeb | do zrobienia |
 
 Zgłoszenie wysłane z kreatora bez tokenu operatora ma stan „oczekuje": dostawca widzi wynik, ale rekordy wchodzą do plików dla portalu dopiero po zatwierdzeniu (`POST /admin/sources/{id}/approve`). Niezatwierdzone zgłoszenie nie może też zmienić rekordów już opublikowanych. W wersji docelowej token operatora zastępuje tożsamość dostawcy z login.gov.pl.
 
@@ -34,6 +40,7 @@ Zgłoszenie wysłane z kreatora bez tokenu operatora ma stan „oczekuje": dosta
 - żaden z czterech plików z portalu nie podaje godzin dostępności, rodzaju dostępu, statusu ani daty weryfikacji urządzenia. Lista Warszawy podaje rodzaj dostępu dla wszystkich 708 urządzeń, a godziny opisuje słowami przy 612: 457 opisów system zapisał w składni `opening_hours`, 155 zostawił słowami w uwagach. OpenStreetMap podaje rodzaj dostępu dla 92% urządzeń, a godziny dla 37%
 - w sobotę 21.11.2026 o 13:26 jako „dostępne teraz" dało się oznaczyć 103 z 782 urządzeń urzędowych i 4171 z 18 000 znanych tylko z OpenStreetMap
 - poprawki wprowadzone automatycznie w czterech plikach z portalu: 7 wierszy z zamienionymi współrzędnymi, 29 adresów rozdzielonych z jednej kolumny, 1 urządzenie ze współrzędnymi skopiowanymi z innego miasta (położenie ustalone z adresu)
+- luki w dostępie (urządzenia urzędowe i z OpenStreetMap razem, stan z 21.11.2026, 14:38): z 37,1 mln mieszkańców ujętych w siatce spisu 26,9 mln (73%) nie ma żadnego znanego defibrylatora w promieniu 400 m, a 32,7 mln (88%) nie ma takiego, który byłby dostępny w niedzielę o 3:00. W Warszawie to odpowiednio 0,76 mln (35%) i 1,77 mln (81%) z 2,18 mln. Godziny znamy dla 6410 z 18 782 urządzeń; dla 2682 stojących na zewnątrz bez godzin przyjmujemy całą dobę, dla 6541 pozostałych dni robocze 8–16, a 3149 urządzeń tylko dla personelu nie liczymy. Kraj liczy się w tle w ok. 26 s po starcie API, analiza Warszawy z rekomendacjami trwa ok. 1,5 s
 - próba kreatora na prawdziwym pliku urzędu (Urząd Miasta Łodzi, arkusz `.xls`, 140 wierszy, same adresy): 118 urządzeń dostało położenie z adresu, w 61 wierszach miejscowość uzupełniono na podstawie pozostałych wierszy, 74 opisy godzin zapisano w składni `opening_hours`, a przy 98 wierszach system wskazał urządzenie, które już zna (pewne albo do sprawdzenia). Pliku nie ma w zbiorze, bo urząd nie podał warunków ponownego wykorzystania
 
 ## Uruchomienie
@@ -53,6 +60,7 @@ Przy pierwszym starcie API buduje zbiór z kopii plików urzędowych dołączony
 pnpm job pipeline --refresh   # pobiera świeże pliki źródeł (także OpenStreetMap) i scala od nowa
 pnpm job enrich-osm           # kody gmin i adresy dla warstwy OpenStreetMap; kilkanaście minut za pierwszym razem
 pnpm job radar                # buduje wskazówki Radaru; za pierwszym razem pobiera ogłoszenia z e-Zamówień
+pnpm job reminders            # przypomnienia dla opiekunów (API uruchamia je też samo co godzinę)
 pnpm check                    # typy i testy
 ```
 
@@ -70,7 +78,12 @@ apps/api/          Hono + TypeScript + DuckDB
   test/fixtures/   zamrożone pliki źródeł i XSD portalu
   src/wizard.ts    kreator: podgląd pliku, zgłoszenie, zatwierdzenie
   src/radar/       Radar AED: budowanie wskazówek, decyzje, linki zaproszeń
-apps/web/          Next.js: mapa z listą, kreator, wzorzec, źródła i jakość, Radar
+  src/passport/    Cyfrowy Paszport AED: zgłoszenia przechodniów, panel opiekuna, przypomnienia
+  src/notify/      wysyłka e-mail (SMTP) i SMS (SMSAPI.pl) z dziennikiem wiadomości
+  src/reach/       ranking „Najszybciej w ręku”
+  src/gaps/        analiza luk: ludność w H3, godziny tygodnia urządzeń, wybór miejsc (zachłanny MCLP)
+  reference/       ludność ze spisu 2021 w siatce 1 km (wycinek dla Polski)
+apps/web/          Next.js: mapa z listą, kreator, wzorzec, źródła i jakość, Radar, mapa luk
 zgloszenie/        pliki do zgłoszenia: wzorzec danych w XLSX
 ```
 
@@ -108,8 +121,11 @@ Schemat portalu przyjmuje wyłącznie adresy `https`, więc plik jest poprawny d
 | OpenStreetMap przez openaedmap.org | ODbL 1.0 | osobna warstwa „niepotwierdzone" i potwierdzenie istnienia urządzeń; wartości pól z OSM nie trafiają do rekordów urzędowych ani do plików dla portalu |
 | GUGiK: usługa geokodowania (UUG) i ULDK | – | kody TERYT i położenie z adresu |
 | e-Zamówienia, ogłoszenia o wyniku postępowania (CPV 33182100-0) | – | wskazówki dla Radaru: kto kupił AED |
+| GUS, Narodowy Spis Powszechny 2021: ludność w siatce 1 km, w wydaniu Eurostatu (Census 2021 grid, wersja 3) | CC BY 4.0 | liczba mieszkańców i osób 65+ do analizy luk; wycinek dla Polski w `apps/api/reference/` (opis zmian w `NOTICE.txt`, odtwarza go `apps/api/scripts/fetch-population.ts`). Portal Geostatystyczny GUS nie podaje licencji i nie ma pliku do pobrania, stąd wydanie Eurostatu |
 
 Zbiór krajowy jest publikowany na CC BY 4.0, bo taką licencję ma najbardziej wymagające źródło urzędowe. Każdy rekord ma kolumny `zrodlo` i `licencja`.
+
+Wynik analizy luk (`/v1/gaps*`) korzysta z położeń urządzeń z OpenStreetMap, więc jest na licencji ODbL 1.0 i nie wchodzi do plików dla portalu.
 
 Znamy też wykazy AED Łodzi, Krakowa i Gliwic oraz bazę ratujzsercem.pl. Żaden z nich nie ma podanej licencji, więc nie są w zbiorze; z powodami wymienia je strona „Skąd te dane" (`apps/api/src/pipeline/known.ts`). Przegląd portali otwartych danych Gdyni, Lublina i Metropolii GZM oraz krajowego katalogu metadanych z 21.11.2026 nie znalazł innych zbiorów AED.
 

@@ -14,12 +14,24 @@ import {
   csvRoute,
   csvwRoute,
   feedRoute,
+  gapsCsvRoute,
+  gapsOverviewRoute,
+  gapsRoute,
+  gapsSummaryRoute,
   geojsonRoute,
   healthRoute,
   importCommitRoute,
   importPreviewRoute,
   jobRoute,
   jsonldRoute,
+  adminOwnerLinkRoute,
+  outboxRoute,
+  ownerConfirmRoute,
+  ownerLinkRequestRoute,
+  ownerPassportRoute,
+  ownerUpdateRoute,
+  passportRoute,
+  reportRoute,
   mapRoute,
   patternDocRoute,
   patternXlsxRoute,
@@ -52,6 +64,17 @@ import {
   tableSchemaHandler,
   templateHandler,
 } from './handlers'
+import {
+  adminOwnerLinkHandler,
+  outboxHandler,
+  ownerConfirmHandler,
+  ownerLinkRequestHandler,
+  ownerPassportHandler,
+  ownerUpdateHandler,
+  passportHandler,
+  reportHandler,
+} from './passport/handlers'
+import { gapsCsvHandler, gapsHandler, gapsOverviewHandler, gapsSummaryHandler } from './gaps/handlers'
 import { candidateDecisionHandler, candidatesHandler } from './radar/handlers'
 import { approveSourceHandler, importCommitHandler, importPreviewHandler, sourceCsvHandler } from './wizard'
 
@@ -80,6 +103,9 @@ export const endpoints: Endpoint[] = [
   live(aedListRoute, aedListHandler),
   // Registered before /v1/aed/{id}, which would otherwise read "aed.geojson"-like paths as an id.
   live(mapRoute, mapHandler),
+  live(passportRoute, passportHandler),
+  live(reportRoute, reportHandler),
+  live(ownerLinkRequestRoute, ownerLinkRequestHandler),
   live(aedDetailRoute, aedDetailHandler),
   live(statsRoute, statsHandler),
   live(sourcesRoute, sourcesHandler),
@@ -104,6 +130,17 @@ export const endpoints: Endpoint[] = [
 
   live(candidatesRoute, candidatesHandler),
   live(candidateDecisionRoute, candidateDecisionHandler),
+
+  live(gapsSummaryRoute, gapsSummaryHandler),
+  live(gapsOverviewRoute, gapsOverviewHandler),
+  live(gapsCsvRoute, gapsCsvHandler),
+  live(gapsRoute, gapsHandler),
+
+  live(ownerPassportRoute, ownerPassportHandler),
+  live(ownerUpdateRoute, ownerUpdateHandler),
+  live(ownerConfirmRoute, ownerConfirmHandler),
+  live(adminOwnerLinkRoute, adminOwnerLinkHandler),
+  live(outboxRoute, outboxHandler),
 
   live(jobRoute, jobHandler),
 ]

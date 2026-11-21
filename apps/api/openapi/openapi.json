@@ -226,6 +226,9 @@
           },
           "record": {
             "$ref": "#/components/schemas/AedRecord"
+          },
+          "reach": {
+            "$ref": "#/components/schemas/Reach"
           }
         },
         "required": [
@@ -372,6 +375,21 @@
             "description": "Kto ma dostęp do urządzenia.",
             "example": "publiczny"
           },
+          "sposob_dostepu": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "swobodny",
+              "szafka_z_alarmem",
+              "szafka_z_kodem",
+              "przez_obsluge",
+              null
+            ],
+            "description": "Co trzeba zrobić na miejscu, żeby wziąć defibrylator. Od tego zależy, ile sekund straci ratujący. Kodu do szafki nie wpisuj: podaje go dyspozytor 112.",
+            "example": "szafka_z_alarmem"
+          },
           "godziny_dostepnosci": {
             "type": [
               "string",
@@ -460,8 +478,16 @@
               "string",
               "null"
             ],
-            "description": "Data, do której ważne są elektrody (RRRR-MM-DD). Pozwala systemowi przypomnieć opiekunowi o wymianie.",
+            "description": "Data, do której ważne są elektrody dla dorosłych (RRRR-MM-DD). Pozwala systemowi przypomnieć opiekunowi o wymianie.",
             "example": "2027-06-30"
+          },
+          "termin_waznosci_elektrod_pediatrycznych": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Data, do której ważne są elektrody dla dzieci (RRRR-MM-DD). Zostaw puste, gdy przy urządzeniu nie ma takich elektrod.",
+            "example": "2027-03-31"
           },
           "termin_waznosci_baterii": {
             "type": [
@@ -517,6 +543,7 @@
           "wewnatrz_budynku",
           "pietro",
           "dostep",
+          "sposob_dostepu",
           "godziny_dostepnosci",
           "uwagi_dostepu",
           "podmiot_odpowiedzialny",
@@ -528,6 +555,7 @@
           "model",
           "elektrody_pediatryczne",
           "termin_waznosci_elektrod",
+          "termin_waznosci_elektrod_pediatrycznych",
           "termin_waznosci_baterii",
           "zrodlo",
           "id_w_zrodle",
@@ -535,6 +563,118 @@
           "data_aktualizacji"
         ],
         "description": "Rekord urządzenia w układzie wzorca danych AED – te same kolumny co w pliku CSV dla dane.gov.pl."
+      },
+      "Reach": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "likely_open",
+              "unknown",
+              "closed"
+            ],
+            "description": "open = godziny obejmują tę chwilę; likely_open = szafka na zewnątrz bez podanych godzin; unknown = nie wiadomo; closed = poza godzinami, wycofane albo tylko dla personelu"
+          },
+          "etaS": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Szacowany czas do urządzenia w ręku, w sekundach: dojście i czas na miejscu. null, gdy teraz niedostępne"
+          },
+          "walkS": {
+            "type": "integer"
+          },
+          "accessS": {
+            "type": "integer",
+            "description": "Czas stracony na miejscu: szafka z kodem, recepcja, piętra"
+          },
+          "method": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "swobodny",
+              "szafka_z_alarmem",
+              "szafka_z_kodem",
+              "przez_obsluge",
+              null
+            ]
+          },
+          "methodGuessed": {
+            "type": "boolean",
+            "description": "true, gdy sposób dostępu odczytano z opisu, a nie z pola sposob_dostepu"
+          },
+          "change": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "open": {
+                "type": "boolean"
+              },
+              "minutes": {
+                "type": "integer"
+              },
+              "time": {
+                "type": "string"
+              },
+              "days": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "open",
+              "minutes",
+              "time",
+              "days"
+            ],
+            "description": "Najbliższa zmiana: do której czynne albo od kiedy (czas lokalny, days = 0 dziś, 1 jutro)"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "hours_24_7",
+                "hours_open",
+                "hours_closed",
+                "outdoor_no_hours",
+                "no_hours",
+                "assumed_closed",
+                "staff_only",
+                "out_of_service",
+                "method_free",
+                "method_alarm",
+                "method_code",
+                "method_staff",
+                "outdoor",
+                "floor",
+                "reported_problem"
+              ]
+            }
+          },
+          "score": {
+            "type": "integer",
+            "description": "Klucz sortowania w sekundach (mniej = lepiej)"
+          }
+        },
+        "required": [
+          "state",
+          "etaS",
+          "walkS",
+          "accessS",
+          "method",
+          "methodGuessed",
+          "change",
+          "reasons",
+          "score"
+        ],
+        "description": "Przy zapytaniu z parametrem near: dostępność w tej chwili i szacowany czas do urządzenia"
       },
       "Layer": {
         "type": "string",
@@ -645,6 +785,212 @@
         "required": [
           "type",
           "features"
+        ]
+      },
+      "PassportPublic": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "publication": {
+            "$ref": "#/components/schemas/Publication"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "czynny",
+              "czasowo_niedostepny",
+              "wycofany",
+              "nieznany"
+            ]
+          },
+          "confirmedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Ostatnie potwierdzenie sprawności (data weryfikacji)"
+          },
+          "confirmedByKeeper": {
+            "type": "boolean",
+            "description": "true, gdy datę potwierdził opiekun w paszporcie, a nie tylko podało ją źródło"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "item": {
+                  "type": "string",
+                  "enum": [
+                    "electrodes",
+                    "electrodes_child",
+                    "battery"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "date": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "ok",
+                    "soon",
+                    "expired",
+                    "unknown"
+                  ],
+                  "description": "soon = 30 dni albo mniej do terminu"
+                },
+                "daysLeft": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "item",
+                "label",
+                "date",
+                "state",
+                "daysLeft"
+              ]
+            }
+          },
+          "reports": {
+            "type": "object",
+            "properties": {
+              "lastOk": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Ostatnie „jest na miejscu” od przechodnia (30 dni)"
+              },
+              "okCount": {
+                "type": "integer"
+              },
+              "problems": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "$ref": "#/components/schemas/ReportKind"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "lastAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count",
+                    "lastAt"
+                  ]
+                },
+                "description": "Problemy zgłoszone po ostatnim potwierdzeniu"
+              }
+            },
+            "required": [
+              "lastOk",
+              "okCount",
+              "problems"
+            ]
+          },
+          "keeperEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Zamaskowany adres opiekuna, na który można wysłać link do zarządzania"
+          },
+          "passportUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "publication",
+          "status",
+          "confirmedAt",
+          "confirmedByKeeper",
+          "items",
+          "reports",
+          "keeperEmail",
+          "passportUrl"
+        ],
+        "description": "Cyfrowy Paszport AED: stan urządzenia widoczny dla każdego, kto zeskanuje naklejkę."
+      },
+      "ReportKind": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "locked",
+          "missing",
+          "battery_alarm",
+          "damaged"
+        ],
+        "description": "ok = urządzenie jest na miejscu, zielona dioda miga; locked = szafka zamknięta; missing = brak urządzenia; battery_alarm = sygnał baterii; damaged = uszkodzone"
+      },
+      "ReportResult": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "duplicate",
+              "limit"
+            ],
+            "description": "duplicate = ta sama osoba zgłosiła już coś przy tym urządzeniu w ciągu godziny"
+          },
+          "passport": {
+            "$ref": "#/components/schemas/PassportPublic"
+          }
+        },
+        "required": [
+          "outcome",
+          "passport"
+        ]
+      },
+      "ReportRequest": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ReportKind"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "OwnerLinkSent": {
+        "type": "object",
+        "properties": {
+          "sentTo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sentTo"
         ]
       },
       "AedDetail": {
@@ -1540,6 +1886,37 @@
               "report"
             ],
             "description": "Links for the provider: their data in the pattern, and the quality report"
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "ownerUrl": {
+                  "type": "string"
+                },
+                "passportUrl": {
+                  "type": "string"
+                },
+                "stickerUrl": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "ownerUrl",
+                "passportUrl",
+                "stickerUrl"
+              ]
+            },
+            "description": "Published devices of the submission with the keeper links: passport management and the sticker to print. Empty while pending."
           }
         },
         "required": [
@@ -1549,7 +1926,8 @@
           "added",
           "merged",
           "incomplete",
-          "files"
+          "files",
+          "devices"
         ]
       },
       "CandidateList": {
@@ -1735,6 +2113,936 @@
           "decision"
         ]
       },
+      "GapsSummary": {
+        "type": "object",
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "description": "false while the national figures are being computed (a few seconds after a start or a new merge)"
+          },
+          "computedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tookMs": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "totals": {
+            "$ref": "#/components/schemas/GapsTotals"
+          },
+          "method": {
+            "$ref": "#/components/schemas/GapsMethod"
+          }
+        },
+        "required": [
+          "ready",
+          "computedAt",
+          "tookMs",
+          "totals",
+          "method"
+        ]
+      },
+      "GapsTotals": {
+        "type": "object",
+        "properties": {
+          "residents": {
+            "type": "integer"
+          },
+          "seniors": {
+            "type": "integer",
+            "description": "Residents aged 65 or more"
+          },
+          "noDevice": {
+            "type": "integer",
+            "description": "Residents with no known device within reach at all"
+          },
+          "noNight": {
+            "type": "integer",
+            "description": "Residents with no device they can reach on Sunday at 3:00"
+          },
+          "coveredShare": {
+            "type": "number",
+            "description": "Share of resident-hours of the week with a device in reach (0–1)"
+          }
+        },
+        "required": [
+          "residents",
+          "seniors",
+          "noDevice",
+          "noNight",
+          "coveredShare"
+        ]
+      },
+      "GapsMethod": {
+        "type": "object",
+        "properties": {
+          "resolution": {
+            "type": "integer",
+            "description": "H3 resolution of the analysis"
+          },
+          "reachM": {
+            "type": "integer",
+            "description": "A device counts for a hexagon when it is at most this far from its centre"
+          },
+          "seniorWeight": {
+            "type": "number",
+            "description": "How many times a resident aged 65+ counts in the ranking"
+          },
+          "nightHour": {
+            "type": "string",
+            "example": "niedziela 3:00"
+          },
+          "assumedHours": {
+            "type": "string",
+            "description": "Hours assumed for a device indoors that gives none",
+            "example": "Mo-Fr 08:00-16:00"
+          },
+          "devices": {
+            "$ref": "#/components/schemas/GapsDeviceCounts"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "licence": {
+                  "type": "string"
+                },
+                "attribution": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "url",
+                "licence",
+                "attribution"
+              ]
+            }
+          },
+          "datasetRanAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "resolution",
+          "reachM",
+          "seniorWeight",
+          "nightHour",
+          "assumedHours",
+          "devices",
+          "sources",
+          "datasetRanAt"
+        ]
+      },
+      "GapsDeviceCounts": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "hours": {
+            "type": "integer",
+            "description": "Hours read from the record"
+          },
+          "outdoor": {
+            "type": "integer",
+            "description": "No hours, outside a building: counted as available around the clock"
+          },
+          "assumed": {
+            "type": "integer",
+            "description": "No hours, inside a building or unknown: office hours assumed"
+          },
+          "excluded": {
+            "type": "integer",
+            "description": "Not counted: private, withdrawn, out of service, expired electrodes or battery, or reported missing"
+          }
+        },
+        "required": [
+          "total",
+          "hours",
+          "outdoor",
+          "assumed",
+          "excluded"
+        ]
+      },
+      "GapsOverview": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "FeatureCollection"
+            ]
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "Feature"
+                  ]
+                },
+                "geometry": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "Polygon"
+                      ]
+                    },
+                    "coordinates": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "description": "Rings of [lon, lat] pairs"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "coordinates"
+                  ]
+                },
+                "properties": {
+                  "type": "object",
+                  "properties": {
+                    "hex": {
+                      "type": "string"
+                    },
+                    "residents": {
+                      "type": "integer"
+                    },
+                    "noDevice": {
+                      "type": "integer"
+                    },
+                    "noNight": {
+                      "type": "integer"
+                    },
+                    "coveredShare": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "hex",
+                    "residents",
+                    "noDevice",
+                    "noNight",
+                    "coveredShare"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "geometry",
+                "properties"
+              ]
+            }
+          }
+        },
+        "required": [
+          "type",
+          "features"
+        ]
+      },
+      "GapsView": {
+        "type": "object",
+        "properties": {
+          "tooLarge": {
+            "type": "boolean",
+            "description": "The area holds more populated squares than one analysis may; zoom in"
+          },
+          "cells": {
+            "type": "integer"
+          },
+          "maxCells": {
+            "type": "integer"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/GapsTotals"
+          },
+          "hexes": {
+            "$ref": "#/components/schemas/GapsHexes"
+          },
+          "places": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GapsPlace"
+            }
+          },
+          "method": {
+            "$ref": "#/components/schemas/GapsMethod"
+          }
+        },
+        "required": [
+          "tooLarge",
+          "cells",
+          "maxCells",
+          "totals",
+          "hexes",
+          "places",
+          "method"
+        ]
+      },
+      "GapsHexes": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "FeatureCollection"
+            ]
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "Feature"
+                  ]
+                },
+                "geometry": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "Polygon"
+                      ]
+                    },
+                    "coordinates": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "description": "Rings of [lon, lat] pairs"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "coordinates"
+                  ]
+                },
+                "properties": {
+                  "type": "object",
+                  "properties": {
+                    "hex": {
+                      "type": "string"
+                    },
+                    "residents": {
+                      "type": "number"
+                    },
+                    "coveredHours": {
+                      "type": "integer"
+                    },
+                    "noDevice": {
+                      "type": "boolean"
+                    },
+                    "noNight": {
+                      "type": "boolean"
+                    },
+                    "uncovered": {
+                      "type": "number",
+                      "description": "Residents × share of the week without a device in reach"
+                    }
+                  },
+                  "required": [
+                    "hex",
+                    "residents",
+                    "coveredHours",
+                    "noDevice",
+                    "noNight",
+                    "uncovered"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "geometry",
+                "properties"
+              ]
+            }
+          }
+        },
+        "required": [
+          "type",
+          "features"
+        ]
+      },
+      "GapsPlace": {
+        "type": "object",
+        "properties": {
+          "rank": {
+            "type": "integer"
+          },
+          "hex": {
+            "type": "string"
+          },
+          "lat": {
+            "type": "number"
+          },
+          "lon": {
+            "type": "number"
+          },
+          "gain": {
+            "type": "integer",
+            "description": "Weighted resident-hours without a device that this place removes"
+          },
+          "gained": {
+            "type": "object",
+            "properties": {
+              "residents": {
+                "type": "integer"
+              },
+              "seniors": {
+                "type": "integer"
+              },
+              "noDevice": {
+                "type": "integer"
+              },
+              "noNight": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "residents",
+              "seniors",
+              "noDevice",
+              "noNight"
+            ],
+            "description": "Residents in reach who gain round-the-clock access by this place (not counted again by later places)"
+          },
+          "inReach": {
+            "type": "object",
+            "properties": {
+              "residents": {
+                "type": "integer"
+              },
+              "seniors": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "residents",
+              "seniors"
+            ]
+          },
+          "coveredHoursNow": {
+            "type": "integer"
+          },
+          "nearby": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GapsNearbyDevice"
+            }
+          },
+          "nearestAllWeek": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "distanceM": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "distanceM"
+            ]
+          },
+          "commune": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "terc": {
+                "type": "string"
+              },
+              "gmina": {
+                "type": "string"
+              },
+              "powiat": {
+                "type": "string"
+              },
+              "wojewodztwo": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "terc",
+              "gmina",
+              "powiat",
+              "wojewodztwo"
+            ]
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Nearest address point within 100 m, if there is one"
+          },
+          "boundary": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Polygon"
+                ]
+              },
+              "coordinates": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "description": "Rings of [lon, lat] pairs"
+              }
+            },
+            "required": [
+              "type",
+              "coordinates"
+            ]
+          }
+        },
+        "required": [
+          "rank",
+          "hex",
+          "lat",
+          "lon",
+          "gain",
+          "gained",
+          "inReach",
+          "coveredHoursNow",
+          "nearby",
+          "nearestAllWeek",
+          "commune",
+          "address",
+          "boundary"
+        ]
+      },
+      "GapsNearbyDevice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "distanceM": {
+            "type": "integer"
+          },
+          "hours": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "hours",
+              "outdoor",
+              "assumed",
+              "excluded"
+            ],
+            "description": "Where the hours come from: the record, outdoors (around the clock), assumed office hours, or not counted"
+          },
+          "hoursPerWeek": {
+            "type": "integer"
+          },
+          "atNight": {
+            "type": "boolean"
+          },
+          "publication": {
+            "type": "string",
+            "enum": [
+              "official",
+              "community"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "distanceM",
+          "hours",
+          "basis",
+          "hoursPerWeek",
+          "atNight",
+          "publication"
+        ]
+      },
+      "OwnerView": {
+        "type": "object",
+        "properties": {
+          "aed": {
+            "$ref": "#/components/schemas/AedItem"
+          },
+          "passport": {
+            "$ref": "#/components/schemas/OwnerPassport"
+          },
+          "public": {
+            "$ref": "#/components/schemas/PassportPublic"
+          },
+          "reports": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "$ref": "#/components/schemas/ReportKind"
+                },
+                "note": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "at": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "note",
+                "at"
+              ]
+            }
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "channel": {
+                  "type": "string",
+                  "enum": [
+                    "email",
+                    "sms"
+                  ]
+                },
+                "recipient": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "sent",
+                    "logged",
+                    "failed"
+                  ]
+                }
+              },
+              "required": [
+                "channel",
+                "recipient",
+                "subject",
+                "reason",
+                "at",
+                "status"
+              ]
+            }
+          },
+          "stickerUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "aed",
+          "passport",
+          "public",
+          "reports",
+          "messages",
+          "stickerUrl"
+        ]
+      },
+      "OwnerPassport": {
+        "type": "object",
+        "properties": {
+          "electrodesExp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2027-06-30"
+          },
+          "electrodesChildExp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2027-06-30"
+          },
+          "batteryExp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2027-06-30"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "czynny",
+              "czasowo_niedostepny",
+              "wycofany",
+              "nieznany",
+              null
+            ]
+          },
+          "confirmedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notifyEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Prywatny adres do przypomnień; nie trafia do zbioru"
+          },
+          "notifyPhone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Numer do przypomnień SMS (+48…); nie trafia do zbioru"
+          }
+        },
+        "required": [
+          "electrodesExp",
+          "electrodesChildExp",
+          "batteryExp",
+          "status",
+          "confirmedAt",
+          "notifyEmail",
+          "notifyPhone"
+        ]
+      },
+      "OwnerPassportUpdate": {
+        "type": "object",
+        "properties": {
+          "electrodesExp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2027-06-30"
+          },
+          "electrodesChildExp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2027-06-30"
+          },
+          "batteryExp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2027-06-30"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "czynny",
+              "czasowo_niedostepny",
+              "wycofany",
+              "nieznany",
+              null
+            ]
+          },
+          "notifyEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 120
+          },
+          "notifyPhone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 24
+          }
+        }
+      },
+      "OwnerLinks": {
+        "type": "object",
+        "properties": {
+          "ownerUrl": {
+            "type": "string"
+          },
+          "passportUrl": {
+            "type": "string"
+          },
+          "stickerUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ownerUrl",
+          "passportUrl",
+          "stickerUrl"
+        ]
+      },
+      "OwnerLinkOptions": {
+        "type": "object",
+        "properties": {
+          "rotate": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "Outbox": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "aedId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "channel": {
+                  "type": "string",
+                  "enum": [
+                    "email",
+                    "sms"
+                  ]
+                },
+                "recipient": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "sent",
+                    "logged",
+                    "failed"
+                  ]
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "aedId",
+                "channel",
+                "recipient",
+                "subject",
+                "body",
+                "reason",
+                "at",
+                "status",
+                "error"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
       "JobResult": {
         "type": "object",
         "properties": {
@@ -1903,6 +3211,33 @@
           },
           {
             "schema": {
+              "type": "string",
+              "enum": [
+                "distance",
+                "reach"
+              ],
+              "default": "distance",
+              "description": "With `near`: distance = nearest first; reach = soonest in hand at this minute (hours, holidays, cabinet, floor)"
+            },
+            "required": false,
+            "description": "With `near`: distance = nearest first; reach = soonest in hand at this minute (hours, holidays, cabinet, floor)",
+            "name": "sort",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Moment to check instead of now, e.g. 2026-11-22T03:00:00+01:00",
+              "example": "2026-11-22T03:00:00+01:00"
+            },
+            "required": false,
+            "description": "Moment to check instead of now, e.g. 2026-11-22T03:00:00+01:00",
+            "name": "at",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "integer",
               "minimum": 1,
               "maximum": 1000,
@@ -1985,6 +3320,212 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MapFeatureCollection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/aed/{id}/passport": {
+      "get": {
+        "operationId": "getPassport",
+        "tags": [
+          "passport"
+        ],
+        "summary": "Public passport of a device: confirmations, expiry dates and reports of passers-by",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Passport",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PassportPublic"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No device with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/aed/{id}/reports": {
+      "post": {
+        "operationId": "reportAed",
+        "tags": [
+          "passport"
+        ],
+        "summary": "A passer-by who scanned the sticker says the device is there, or reports a problem",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Report taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No device with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/aed/{id}/passport/link": {
+      "post": {
+        "operationId": "requestOwnerLink",
+        "tags": [
+          "passport"
+        ],
+        "summary": "Sends the management link to the keeper email already in the data (never to an address given in the request)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerLinkSent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No device with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The device has no keeper email, or a link was sent minutes ago",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             }
@@ -3095,6 +4636,588 @@
         "x-status": "live"
       }
     },
+    "/v1/gaps/summary": {
+      "get": {
+        "operationId": "getGapsSummary",
+        "tags": [
+          "gaps"
+        ],
+        "summary": "National figures: residents with no defibrillator in reach, at all and at night, and how they were counted",
+        "responses": {
+          "200": {
+            "description": "National figures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GapsSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/gaps/overview.geojson": {
+      "get": {
+        "operationId": "getGapsOverview",
+        "tags": [
+          "gaps"
+        ],
+        "summary": "The country in large hexagons (H3 resolution 6) with residents and gaps, for the map",
+        "responses": {
+          "200": {
+            "description": "Large hexagons; empty while the national figures are being computed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GapsOverview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/gaps.csv": {
+      "get": {
+        "operationId": "downloadGapsCsv",
+        "tags": [
+          "gaps"
+        ],
+        "summary": "The recommended places of an area as CSV (ODbL 1.0: device positions come partly from OpenStreetMap)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?(,-?\\d+(\\.\\d+)?){3}$",
+              "description": "minLon,minLat,maxLon,maxLat – the area to analyse",
+              "example": "20.85,52.10,21.27,52.37"
+            },
+            "required": true,
+            "description": "minLon,minLat,maxLon,maxLat – the area to analyse",
+            "name": "bbox",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 10,
+              "description": "How many places to recommend"
+            },
+            "required": false,
+            "description": "How many places to recommend",
+            "name": "n",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One row per recommended place",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/gaps": {
+      "get": {
+        "operationId": "getGaps",
+        "tags": [
+          "gaps"
+        ],
+        "summary": "Gaps in one area: hexagons with the hours a defibrillator is in reach, and the best places for new ones",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?(,-?\\d+(\\.\\d+)?){3}$",
+              "description": "minLon,minLat,maxLon,maxLat – the area to analyse",
+              "example": "20.85,52.10,21.27,52.37"
+            },
+            "required": true,
+            "description": "minLon,minLat,maxLon,maxLat – the area to analyse",
+            "name": "bbox",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 10,
+              "description": "How many places to recommend"
+            },
+            "required": false,
+            "description": "How many places to recommend",
+            "name": "n",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The analysis of the area",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GapsView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/owner/passport": {
+      "get": {
+        "operationId": "getOwnerPassport",
+        "tags": [
+          "passport"
+        ],
+        "summary": "The passport of the device the owner link is for",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "description": "Token z linku dla opiekuna (parametr t)"
+            },
+            "required": true,
+            "description": "Token z linku dla opiekuna (parametr t)",
+            "name": "x-owner-token",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The device as its keeper sees it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, wrong or revoked owner link",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      },
+      "post": {
+        "operationId": "updateOwnerPassport",
+        "tags": [
+          "passport"
+        ],
+        "summary": "The keeper changes expiry dates, status or the private contact for reminders",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "description": "Token z linku dla opiekuna (parametr t)"
+            },
+            "required": true,
+            "description": "Token z linku dla opiekuna (parametr t)",
+            "name": "x-owner-token",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnerPassportUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The device as its keeper sees it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, wrong or revoked owner link",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/owner/passport/confirm": {
+      "post": {
+        "operationId": "confirmOwnerPassport",
+        "tags": [
+          "passport"
+        ],
+        "summary": "„Potwierdzam sprawność”: status czynny and today as the verification date, in the published dataset at once",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "description": "Token z linku dla opiekuna (parametr t)"
+            },
+            "required": true,
+            "description": "Token z linku dla opiekuna (parametr t)",
+            "name": "x-owner-token",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The device as its keeper sees it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, wrong or revoked owner link",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/admin/aed/{id}/owner-link": {
+      "post": {
+        "operationId": "createOwnerLink",
+        "tags": [
+          "admin"
+        ],
+        "summary": "A management link for the keeper of a device; rotate = true revokes the links given out before",
+        "security": [
+          {
+            "operatorToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnerLinkOptions"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Links",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerLinks"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong operator token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No device with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/admin/outbox": {
+      "get": {
+        "operationId": "listOutbox",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Messages sent to keepers (or only logged, when no mail or SMS account is configured)",
+        "security": [
+          {
+            "operatorToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 50
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Outbox"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong operator token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
     "/admin/jobs/{name}": {
       "post": {
         "operationId": "runJob",
@@ -3114,7 +5237,8 @@
               "enum": [
                 "pipeline",
                 "enrich-osm",
-                "radar"
+                "radar",
+                "reminders"
               ]
             },
             "required": true,

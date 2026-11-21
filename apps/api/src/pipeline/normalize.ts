@@ -3,7 +3,7 @@
  * Whatever can be repaired safely is repaired and recorded as a fix; whatever cannot becomes an issue.
  * Pure functions: no network, no database.
  */
-import { ACCESS, POLAND, STATUS, type Access, type AedInput, type MappingTarget, type Status } from '@aed/schema'
+import { ACCESS, ACCESS_METHODS, POLAND, STATUS, type Access, type AccessMethod, type AedInput, type MappingTarget, type Status } from '@aed/schema'
 import type { Fix, Issue } from './types'
 
 // -------------------------------------------------------------- coordinates
@@ -279,6 +279,20 @@ const ACCESS_WORDS: Record<string, Access> = {
   'tylko dla pracownikow': 'prywatny',
 }
 
+const METHOD_WORDS: [RegExp, AccessMethod][] = [
+  [/\b(kod|pin|szyfr)/, 'szafka_z_kodem'],
+  [/\balarm/, 'szafka_z_alarmem'],
+  [/\b(recepcj|portier|ochron|obslug|personel|klucz|dyzur|wydaje)/, 'przez_obsluge'],
+  [/\b(swobodn|otwart|bez zabezpieczen|na scianie|ogolnodostepn)/, 'swobodny'],
+]
+
+/** A provider's words for how the device is taken out: the pattern's own values, or the first clear keyword. */
+export function parseAccessMethod(text: string): AccessMethod | null {
+  if ((ACCESS_METHODS as readonly string[]).includes(text)) return text as AccessMethod
+  const words = key(text)
+  return METHOD_WORDS.find(([pattern]) => pattern.test(words))?.[1] ?? null
+}
+
 export const parseAccess = (text: string): Access | null => ACCESS_WORDS[key(text)] ?? ((ACCESS as readonly string[]).includes(text) ? (text as Access) : null)
 
 const STATUS_WORDS: Record<string, Status> = {
@@ -492,6 +506,12 @@ export function normalizeRow(row: Record<string, string>, mapping: Record<string
         else set(target, parsed)
         break
       }
+      case 'sposob_dostepu': {
+        const parsed = parseAccessMethod(value)
+        if (parsed === null) unrecognised(target, value)
+        else set(target, parsed)
+        break
+      }
       case 'status': {
         const parsed = parseStatus(value)
         if (parsed === null) unrecognised(target, value)
@@ -532,7 +552,8 @@ export function normalizeRow(row: Record<string, string>, mapping: Record<string
       }
       case 'data_weryfikacji':
       case 'termin_waznosci_elektrod':
-      case 'termin_waznosci_baterii': {
+      case 'termin_waznosci_baterii':
+      case 'termin_waznosci_elektrod_pediatrycznych': {
         const parsed = parseDate(value)
         if (parsed === null) unrecognised(target, value)
         else {

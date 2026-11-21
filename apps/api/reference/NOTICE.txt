@@ -1,0 +1,19 @@
+census-2021-pl.csv.gz
+=====================
+
+Residents of Poland in the 1 km statistical grid (ETRS89-LAEA, EPSG:3035), census of 31.03.2021.
+
+Source: Eurostat, Census 2021 population grid, version 3 (file ESTAT_Census_2021_V3.csv in
+https://gisco-services.ec.europa.eu/census/2021/Eurostat_Census-GRID_2021_V3.zip).
+Data for Poland delivered by Główny Urząd Statystyczny (Narodowy Spis Powszechny Ludności i Mieszkań 2021).
+Copyright European Union 2026. Licence: CC BY 4.0. The source must be indicated and modifications stated.
+
+Modifications made by AED Hub (scripts/fetch-population.ts):
+- kept only cells whose CNTR_ID includes PL and whose total population T is above 0 (197 439 cells,
+  37 092 675 residents; 856 border cells also include residents reported by a neighbouring country);
+- kept only the columns: n_km, e_km (south-west corner of the cell in kilometres, taken from GRD_ID),
+  t (total population) and y_ge65 (population aged 65 and over);
+- y_ge65 values withheld for confidentiality (-8888) or not available (-9999) are written as 0
+  (56 807 cells), and values above t are cut to t. The number of seniors is therefore a lower bound.
+
+The gap analysis (src/gaps) further divides each cell evenly among the H3 hexagons whose centre lies in it.

@@ -13,6 +13,7 @@ export const metadata: Metadata = {
 const NAV = [
   { href: "/", label: "Znajdź AED" },
   { href: "/dostawca", label: "Zgłoś urządzenia" },
+  { href: "/braki", label: "Gdzie brakuje AED" },
   { href: "/radar", label: "Radar AED" },
   { href: "/jakosc", label: "Skąd te dane" },
   { href: "/wzorzec", label: "Dla dostawców danych" },
@@ -25,7 +26,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <a href="#tresc" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:bg-white focus:px-3 focus:py-2">
           Przejdź do treści
         </a>
-        <header className="border-b-4 border-gov bg-white">
+        <header className="border-b-4 border-gov bg-white print:hidden">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-8 gap-y-2 px-4 py-3">
             <Link href="/" className="text-xl font-bold text-gov">
               AED Hub
@@ -47,7 +48,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <main id="tresc" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
           {children}
         </main>
-        <footer className="border-t border-line bg-gov-light text-sm text-muted">
+        <footer className="border-t border-line bg-gov-light text-sm text-muted print:hidden">
           <div className="mx-auto max-w-6xl space-y-1 px-4 py-4">
             <p>
               W nagłym wypadku dzwoń pod <strong className="text-ink">112</strong>. Dyspozytor wskaże najbliższy defibrylator i poprowadzi przez pierwszą pomoc.

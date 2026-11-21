@@ -5,6 +5,7 @@
  *   pnpm job pipeline --refresh   # download every source first
  *   pnpm job enrich-osm           # commune codes and addresses for the OpenStreetMap layer (minutes the first time)
  *   pnpm job radar                # rebuild the Radar leads
+ *   pnpm job reminders            # expiry reminders for device keepers (never sends the same one twice)
  *
  * API_URL (default http://localhost:PORT) and ADMIN_TOKEN come from the environment or the root .env.
  */
@@ -13,7 +14,7 @@ import { request as httpsRequest } from 'node:https'
 
 const [name, ...flags] = process.argv.slice(2)
 if (!name) {
-  console.error('usage: pnpm job <pipeline|enrich-osm|radar> [--refresh]')
+  console.error('usage: pnpm job <pipeline|enrich-osm|radar|reminders> [--refresh]')
   process.exit(2)
 }
 

@@ -3,6 +3,7 @@ import { createApp } from './app'
 import { config } from './config'
 import { getContext } from './context'
 import { endpointStatuses } from './endpoints'
+import { overviewFor } from './gaps/state'
 import { runJob } from './jobs'
 
 const app = createApp()
@@ -25,6 +26,12 @@ const server = serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' 
       const official = store.aeds.filter((aed) => aed.publication === 'official').length
       console.log(`dataset loaded from ${config.dbPath}: ${store.aeds.length} devices (${official} official), merged ${store.ranAt}`)
     }
+    // Expiry reminders for device keepers: now and every hour. A reminder already given is never sent again.
+    const reminders = () => runJob('reminders').then((summary) => summary.messages ? console.log(`reminders: ${summary.messages} messages to ${summary.devices} keepers`) : undefined, (error) => console.error('reminders failed', error))
+    void reminders()
+    setInterval(reminders, 60 * 60 * 1000).unref()
+    // National gap figures in the background, so the first visitor of /braki does not wait for them.
+    overviewFor(store).then((overview) => console.log(`gaps: national figures ready in ${(overview.tookMs / 1000).toFixed(1)} s`), () => undefined)
   } catch (error) {
     console.error('could not open the database or run the first pipeline', error)
   }

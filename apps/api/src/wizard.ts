@@ -23,7 +23,8 @@ import { checkSource, normalizeSource } from './pipeline/sources'
 import { PRIORITY, type NormalizedRecord, type RawTable, type SourceDef } from './pipeline/types'
 import { isLegacyXls, isXlsx, parseXls, parseXlsx } from './pipeline/xlsx'
 import { toCsv } from './publish/files'
-import { verifyInvitation } from './radar/links'
+import { deviceName } from './passport/service'
+import { ownerUrl, passportUrl, stickerUrl, verifyInvitation } from './radar/links'
 import type { z } from '@hono/zod-openapi'
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024
@@ -167,6 +168,13 @@ function outcome(store: Store, sourceId: string) {
   }
 }
 
+/** Published devices of a submission with the links its keeper needs: passport management and the sticker. */
+function deviceLinks(store: Store, sourceId: string) {
+  return store.aeds
+    .filter((aed) => aed.publication === 'official' && aed.sources.some((ref) => ref.sourceId === sourceId && ref.role === 'values'))
+    .map((aed) => ({ id: aed.id, name: deviceName(aed.record), ownerUrl: ownerUrl(aed.id, store.passports.get(aed.id)?.linkVersion ?? 0), passportUrl: passportUrl(aed.id), stickerUrl: stickerUrl(aed.id) }))
+}
+
 const files = (sourceId: string) => ({ csv: `${config.publicApiUrl}/v1/sources/${sourceId}/aed.csv`, report: `${config.publicApiUrl}/v1/sources` })
 
 export const importCommitHandler: RouteHandler<typeof importCommitRoute> = async (c) => {
@@ -177,16 +185,21 @@ export const importCommitHandler: RouteHandler<typeof importCommitRoute> = async
   const { store } = await getContext()
   // Published at once when an operator sends it, or when it answers an operator's invitation; otherwise it waits.
   const invitedBy = request.invitation ? verifyInvitation(request.invitation) : null
-  if (request.invitation && invitedBy === null) throw new ApiError(422, 'validation_error', 'Link zaproszenia jest nieprawidłowy albo uszkodzony. Otwórz go ponownie z wiadomości od operatora.', [{ path: 'invitation', message: 'Nieprawidłowy token zaproszenia.' }])
-  const approved = invitedBy !== null || (config.adminToken !== '' && c.req.header('Authorization') === `Bearer ${config.adminToken}`)
+  // Only a lead the operator invited (or already confirmed) can stand behind an invitation; a rejected one cannot.
+  const lead = invitedBy === null ? undefined : store.candidates.find((candidate) => candidate.id === invitedBy && (candidate.status === 'invited' || candidate.status === 'confirmed'))
+  if (request.invitation && !lead) throw new ApiError(422, 'validation_error', 'Link zaproszenia jest nieprawidłowy albo uszkodzony. Otwórz go ponownie z wiadomości od operatora.', [{ path: 'invitation', message: 'Nieprawidłowy token zaproszenia.' }])
+  const approved = lead !== undefined || (config.adminToken !== '' && c.req.header('Authorization') === `Bearer ${config.adminToken}`)
   const prepared = await prepare(request, !approved)
 
   await store.saveStoredSource(prepared.def, prepared.records)
   await store.log({ actor: prepared.def.name, entity: 'source', entityId: prepared.def.id, action: approved ? 'import_published' : 'import_submitted', detail: { fileName: request.fileName, rows: prepared.records.length, licence: prepared.def.licence } })
   await runJob('pipeline')
-  if (invitedBy !== null) await store.setCandidateStatus(invitedBy, 'confirmed')
+  if (lead) await store.setCandidateStatus(lead.id, 'confirmed')
 
-  return c.json({ stub: false, status: approved ? ('published' as const) : ('pending' as const), sourceId: prepared.def.id, ...outcome(store, prepared.def.id), files: files(prepared.def.id) }, 200)
+  return c.json(
+    { stub: false, status: approved ? ('published' as const) : ('pending' as const), sourceId: prepared.def.id, ...outcome(store, prepared.def.id), files: files(prepared.def.id), devices: approved ? deviceLinks(store, prepared.def.id) : [] },
+    200,
+  )
 }
 
 export const approveSourceHandler: RouteHandler<typeof approveSourceRoute> = async (c) => {
@@ -198,7 +211,7 @@ export const approveSourceHandler: RouteHandler<typeof approveSourceRoute> = asy
   if (!(await store.approveSource(id))) throw new ApiError(404, 'not_found', `No submission with id ${id}.`)
   await store.log({ actor: 'operator', entity: 'source', entityId: id, action: 'import_approved', detail: {} })
   await runJob('pipeline')
-  return c.json({ stub: false, status: 'published' as const, sourceId: id, ...outcome(store, id), files: files(id) }, 200)
+  return c.json({ stub: false, status: 'published' as const, sourceId: id, ...outcome(store, id), files: files(id), devices: deviceLinks(store, id) }, 200)
 }
 
 /** A provider's own devices in the data pattern, whatever their publication state. */

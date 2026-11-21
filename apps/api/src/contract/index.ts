@@ -6,7 +6,7 @@
  * published CSV. Everything around it is camelCase. A missing value is null; fields are never omitted.
  */
 import { createRoute, z } from '@hono/zod-openapi'
-import { FIELDS, type FieldDef } from '@aed/schema'
+import { ACCESS_METHODS, FIELDS, STATUS, type FieldDef } from '@aed/schema'
 
 // ---------------------------------------------------------------- building blocks
 
@@ -62,6 +62,27 @@ const IssueSchema = z
   .object({ code: z.string(), severity: z.enum(['error', 'warning']), field: z.string().optional(), message: z.string() })
   .openapi('Issue', { description: 'Problem, którego system nie naprawił. „error" wstrzymuje publikację rekordu.' })
 
+export const Reach = z
+  .object({
+    state: z.enum(['open', 'likely_open', 'unknown', 'closed']).openapi({
+      description: 'open = godziny obejmują tę chwilę; likely_open = szafka na zewnątrz bez podanych godzin; unknown = nie wiadomo; closed = poza godzinami, wycofane albo tylko dla personelu',
+    }),
+    etaS: z.number().int().nullable().openapi({ description: 'Szacowany czas do urządzenia w ręku, w sekundach: dojście i czas na miejscu. null, gdy teraz niedostępne' }),
+    walkS: z.number().int(),
+    accessS: z.number().int().openapi({ description: 'Czas stracony na miejscu: szafka z kodem, recepcja, piętra' }),
+    method: z.enum(ACCESS_METHODS).nullable(),
+    methodGuessed: z.boolean().openapi({ description: 'true, gdy sposób dostępu odczytano z opisu, a nie z pola sposob_dostepu' }),
+    change: z
+      .object({ open: z.boolean(), minutes: z.number().int(), time: z.string(), days: z.number().int() })
+      .nullable()
+      .openapi({ description: 'Najbliższa zmiana: do której czynne albo od kiedy (czas lokalny, days = 0 dziś, 1 jutro)' }),
+    reasons: z.array(
+      z.enum(['hours_24_7', 'hours_open', 'hours_closed', 'outdoor_no_hours', 'no_hours', 'assumed_closed', 'staff_only', 'out_of_service', 'method_free', 'method_alarm', 'method_code', 'method_staff', 'outdoor', 'floor', 'reported_problem']),
+    ),
+    score: z.number().int().openapi({ description: 'Klucz sortowania w sekundach (mniej = lepiej)' }),
+  })
+  .openapi('Reach', { description: 'Dostępny TERAZ: czy i jak szybko da się wyjąć urządzenie w tej minucie.' })
+
 export const AedItem = z
   .object({
     id: z.string(),
@@ -73,6 +94,7 @@ export const AedItem = z
         'Czy przechodzień dostanie się do urządzenia w chwili zapytania: no = poza godzinami dostępności, wycofane, czasowo niedostępne albo tylko dla personelu; unknown = rekord nie podaje godzin dostępności albo podaje je w zapisie, którego system nie rozumie.',
     }),
     record: AedRecord,
+    reach: Reach.optional().openapi({ description: 'Przy zapytaniu z parametrem near: dostępność w tej chwili i szacowany czas do urządzenia' }),
   })
   .openapi('AedItem')
 
@@ -120,6 +142,8 @@ export const AedListQuery = z.object({
     .openapi({ description: 'TERC prefix: 2 digits = województwo, 4 = powiat, 7 = gmina', example: '1434021' }),
   q: z.string().max(100).optional().openapi({ description: 'Text to find in the name, street or locality' }),
   availableNow: z.enum(['true', 'false']).optional().openapi({ description: 'true = only devices a passer-by can reach right now (see `availableNow` of a device)' }),
+  sort: z.enum(['distance', 'reach']).default('distance').openapi({ description: 'With `near`: distance = nearest first; reach = soonest in hand at this minute (hours, holidays, cabinet, floor)' }),
+  at: z.iso.datetime({ offset: true }).optional().openapi({ description: 'Moment to check instead of now, e.g. 2026-11-22T03:00:00+01:00', example: '2026-11-22T03:00:00+01:00' }),
   limit: z.coerce.number().int().min(1).max(1000).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 })
@@ -408,6 +432,9 @@ export const ImportResult = z
     merged: z.number().int().openapi({ description: 'Rows merged into devices already in the national dataset' }),
     incomplete: z.number().int(),
     files: z.object({ csv: z.string(), report: z.string() }).openapi({ description: 'Links for the provider: their data in the pattern, and the quality report' }),
+    devices: z
+      .array(z.object({ id: z.string(), name: z.string(), ownerUrl: z.string(), passportUrl: z.string(), stickerUrl: z.string() }))
+      .openapi({ description: 'Published devices of the submission with the keeper links: passport management and the sticker to print. Empty while pending.' }),
   })
   .openapi('ImportResult')
 
@@ -492,6 +519,361 @@ export const candidateDecisionRoute = createRoute({
   },
 })
 
+// ------------------------------------------------------------------ passport
+
+const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).openapi({ example: '2027-06-30' })
+
+export const ReportKind = z.enum(['ok', 'locked', 'missing', 'battery_alarm', 'damaged']).openapi('ReportKind', {
+  description: 'ok = urządzenie jest na miejscu, zielona dioda miga; locked = szafka zamknięta; missing = brak urządzenia; battery_alarm = sygnał baterii; damaged = uszkodzone',
+})
+
+export const PassportPublic = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    publication: Publication,
+    status: z.enum(STATUS),
+    confirmedAt: z.string().nullable().openapi({ description: 'Ostatnie potwierdzenie sprawności (data weryfikacji)' }),
+    confirmedByKeeper: z.boolean().openapi({ description: 'true, gdy datę potwierdził opiekun w paszporcie, a nie tylko podało ją źródło' }),
+    items: z.array(
+      z.object({
+        item: z.enum(['electrodes', 'electrodes_child', 'battery']),
+        label: z.string(),
+        date: z.string().nullable(),
+        state: z.enum(['ok', 'soon', 'expired', 'unknown']).openapi({ description: 'soon = 30 dni albo mniej do terminu' }),
+        daysLeft: z.number().int().nullable(),
+      }),
+    ),
+    reports: z.object({
+      lastOk: z.string().nullable().openapi({ description: 'Ostatnie „jest na miejscu” od przechodnia (30 dni)' }),
+      okCount: z.number().int(),
+      problems: z.array(z.object({ kind: ReportKind, count: z.number().int(), lastAt: z.string() })).openapi({ description: 'Problemy zgłoszone po ostatnim potwierdzeniu' }),
+    }),
+    keeperEmail: z.string().nullable().openapi({ description: 'Zamaskowany adres opiekuna, na który można wysłać link do zarządzania' }),
+    passportUrl: z.string(),
+  })
+  .openapi('PassportPublic', { description: 'Cyfrowy Paszport AED: stan urządzenia widoczny dla każdego, kto zeskanuje naklejkę.' })
+
+const AedIdParam = z.object({ id: z.string() })
+
+export const passportRoute = createRoute({
+  method: 'get',
+  path: '/v1/aed/{id}/passport',
+  operationId: 'getPassport',
+  tags: ['passport'],
+  summary: 'Public passport of a device: confirmations, expiry dates and reports of passers-by',
+  request: { params: AedIdParam },
+  responses: { 200: json(PassportPublic, 'Passport'), 404: problem('No device with this id'), ...problems },
+})
+
+export const ReportRequest = z.object({ kind: ReportKind, note: z.string().max(300).optional() }).openapi('ReportRequest')
+
+export const reportRoute = createRoute({
+  method: 'post',
+  path: '/v1/aed/{id}/reports',
+  operationId: 'reportAed',
+  tags: ['passport'],
+  summary: 'A passer-by who scanned the sticker says the device is there, or reports a problem',
+  request: { params: AedIdParam, body: { required: true, content: { 'application/json': { schema: ReportRequest } } } },
+  responses: {
+    200: json(
+      z.object({ outcome: z.enum(['accepted', 'duplicate', 'limit']).openapi({ description: 'duplicate = ta sama osoba zgłosiła już coś przy tym urządzeniu w ciągu godziny' }), passport: PassportPublic }).openapi('ReportResult'),
+      'Report taken',
+    ),
+    404: problem('No device with this id'),
+    ...problems,
+  },
+})
+
+export const ownerLinkRequestRoute = createRoute({
+  method: 'post',
+  path: '/v1/aed/{id}/passport/link',
+  operationId: 'requestOwnerLink',
+  tags: ['passport'],
+  summary: 'Sends the management link to the keeper email already in the data (never to an address given in the request)',
+  request: { params: AedIdParam },
+  responses: {
+    200: json(z.object({ sentTo: z.string() }).openapi('OwnerLinkSent'), 'Sent'),
+    404: problem('No device with this id'),
+    409: problem('The device has no keeper email, or a link was sent minutes ago'),
+    ...problems,
+  },
+})
+
+export const OwnerPassport = z
+  .object({
+    electrodesExp: IsoDate.nullable(),
+    electrodesChildExp: IsoDate.nullable(),
+    batteryExp: IsoDate.nullable(),
+    status: z.enum(STATUS).nullable(),
+    confirmedAt: z.string().nullable(),
+    notifyEmail: z.string().nullable().openapi({ description: 'Prywatny adres do przypomnień; nie trafia do zbioru' }),
+    notifyPhone: z.string().nullable().openapi({ description: 'Numer do przypomnień SMS (+48…); nie trafia do zbioru' }),
+  })
+  .openapi('OwnerPassport')
+
+export const OwnerPassportUpdate = z
+  .object({
+    electrodesExp: IsoDate.nullable().optional(),
+    electrodesChildExp: IsoDate.nullable().optional(),
+    batteryExp: IsoDate.nullable().optional(),
+    status: z.enum(STATUS).nullable().optional(),
+    notifyEmail: z.string().max(120).nullable().optional(),
+    notifyPhone: z.string().max(24).nullable().optional(),
+  })
+  .openapi('OwnerPassportUpdate')
+
+export const OwnerView = z
+  .object({
+    aed: AedItem,
+    passport: OwnerPassport,
+    public: PassportPublic,
+    reports: z.array(z.object({ kind: ReportKind, note: z.string().nullable(), at: z.string() })),
+    messages: z.array(z.object({ channel: z.enum(['email', 'sms']), recipient: z.string(), subject: z.string(), reason: z.string(), at: z.string(), status: z.enum(['sent', 'logged', 'failed']) })),
+    stickerUrl: z.string(),
+  })
+  .openapi('OwnerView')
+
+const ownerHeaders = z.object({ 'x-owner-token': z.string().min(10).openapi({ description: 'Token z linku dla opiekuna (parametr t)' }) })
+const ownerResponses = { 200: json(OwnerView, 'The device as its keeper sees it'), 401: problem('Missing, wrong or revoked owner link'), ...problems }
+
+export const ownerPassportRoute = createRoute({
+  method: 'get',
+  path: '/v1/owner/passport',
+  operationId: 'getOwnerPassport',
+  tags: ['passport'],
+  summary: 'The passport of the device the owner link is for',
+  request: { headers: ownerHeaders },
+  responses: ownerResponses,
+})
+
+export const ownerUpdateRoute = createRoute({
+  method: 'post',
+  path: '/v1/owner/passport',
+  operationId: 'updateOwnerPassport',
+  tags: ['passport'],
+  summary: 'The keeper changes expiry dates, status or the private contact for reminders',
+  request: { headers: ownerHeaders, body: { required: true, content: { 'application/json': { schema: OwnerPassportUpdate } } } },
+  responses: ownerResponses,
+})
+
+export const ownerConfirmRoute = createRoute({
+  method: 'post',
+  path: '/v1/owner/passport/confirm',
+  operationId: 'confirmOwnerPassport',
+  tags: ['passport'],
+  summary: '„Potwierdzam sprawność”: status czynny and today as the verification date, in the published dataset at once',
+  request: { headers: ownerHeaders },
+  responses: ownerResponses,
+})
+
+export const OwnerLinks = z.object({ ownerUrl: z.string(), passportUrl: z.string(), stickerUrl: z.string() }).openapi('OwnerLinks')
+
+export const adminOwnerLinkRoute = createRoute({
+  method: 'post',
+  path: '/admin/aed/{id}/owner-link',
+  operationId: 'createOwnerLink',
+  tags: ['admin'],
+  summary: 'A management link for the keeper of a device; rotate = true revokes the links given out before',
+  security: operatorOnly.security,
+  request: {
+    params: AedIdParam,
+    body: { required: false, content: { 'application/json': { schema: z.object({ rotate: z.boolean().default(false) }).openapi('OwnerLinkOptions') } } },
+  },
+  responses: { 200: json(OwnerLinks, 'Links'), 404: problem('No device with this id'), ...operatorOnly.responses401, ...problems },
+})
+
+export const outboxRoute = createRoute({
+  method: 'get',
+  path: '/admin/outbox',
+  operationId: 'listOutbox',
+  tags: ['admin'],
+  summary: 'Messages sent to keepers (or only logged, when no mail or SMS account is configured)',
+  security: operatorOnly.security,
+  request: { query: z.object({ limit: z.coerce.number().int().min(1).max(500).default(50) }) },
+  responses: {
+    200: json(
+      z
+        .object({
+          items: z.array(
+            z.object({ id: z.string(), aedId: z.string().nullable(), channel: z.enum(['email', 'sms']), recipient: z.string(), subject: z.string(), body: z.string(), reason: z.string(), at: z.string(), status: z.enum(['sent', 'logged', 'failed']), error: z.string().nullable() }),
+          ),
+        })
+        .openapi('Outbox'),
+      'Newest first',
+    ),
+    ...operatorOnly.responses401,
+    ...problems,
+  },
+})
+
+// ---------------------------------------------------------------------- gaps
+
+export const GapsTotals = z
+  .object({
+    residents: z.number().int(),
+    seniors: z.number().int().openapi({ description: 'Residents aged 65 or more' }),
+    noDevice: z.number().int().openapi({ description: 'Residents with no known device within reach at all' }),
+    noNight: z.number().int().openapi({ description: 'Residents with no device they can reach on Sunday at 3:00' }),
+    coveredShare: z.number().openapi({ description: 'Share of resident-hours of the week with a device in reach (0–1)' }),
+  })
+  .openapi('GapsTotals')
+
+export const GapsMethod = z
+  .object({
+    resolution: z.number().int().openapi({ description: 'H3 resolution of the analysis' }),
+    reachM: z.number().int().openapi({ description: 'A device counts for a hexagon when it is at most this far from its centre' }),
+    seniorWeight: z.number().openapi({ description: 'How many times a resident aged 65+ counts in the ranking' }),
+    nightHour: z.string().openapi({ example: 'niedziela 3:00' }),
+    assumedHours: z.string().openapi({ description: 'Hours assumed for a device indoors that gives none', example: 'Mo-Fr 08:00-16:00' }),
+    devices: z
+      .object({
+        total: z.number().int(),
+        hours: z.number().int().openapi({ description: 'Hours read from the record' }),
+        outdoor: z.number().int().openapi({ description: 'No hours, outside a building: counted as available around the clock' }),
+        assumed: z.number().int().openapi({ description: 'No hours, inside a building or unknown: office hours assumed' }),
+        excluded: z.number().int().openapi({ description: 'Not counted: private, withdrawn, out of service, expired electrodes or battery, or reported missing' }),
+      })
+      .openapi('GapsDeviceCounts'),
+    sources: z.array(z.object({ name: z.string(), url: z.string(), licence: z.string(), attribution: z.string() })),
+    datasetRanAt: z.string().nullable(),
+  })
+  .openapi('GapsMethod')
+
+export const GapsSummary = z
+  .object({
+    ready: z.boolean().openapi({ description: 'false while the national figures are being computed (a few seconds after a start or a new merge)' }),
+    computedAt: z.string().nullable(),
+    tookMs: z.number().int().nullable(),
+    totals: GapsTotals,
+    method: GapsMethod,
+  })
+  .openapi('GapsSummary')
+
+const Polygon = z.object({ type: z.literal('Polygon'), coordinates: z.array(z.array(z.array(z.number()))).openapi({ description: 'Rings of [lon, lat] pairs' }) })
+
+export const GapsOverview = z
+  .object({
+    type: z.literal('FeatureCollection'),
+    features: z.array(
+      z.object({
+        type: z.literal('Feature'),
+        geometry: Polygon,
+        properties: z.object({ hex: z.string(), residents: z.number().int(), noDevice: z.number().int(), noNight: z.number().int(), coveredShare: z.number() }),
+      }),
+    ),
+  })
+  .openapi('GapsOverview')
+
+export const GapsQuery = z.object({
+  bbox: z
+    .string()
+    .regex(/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?){3}$/)
+    .openapi({ description: 'minLon,minLat,maxLon,maxLat – the area to analyse', example: '20.85,52.10,21.27,52.37' }),
+  n: z.coerce.number().int().min(1).max(20).default(10).openapi({ description: 'How many places to recommend' }),
+})
+
+export const GapsNearbyDevice = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    distanceM: z.number().int(),
+    hours: z.string().nullable(),
+    basis: z.enum(['hours', 'outdoor', 'assumed', 'excluded']).openapi({ description: 'Where the hours come from: the record, outdoors (around the clock), assumed office hours, or not counted' }),
+    hoursPerWeek: z.number().int(),
+    atNight: z.boolean(),
+    publication: z.enum(['official', 'community']),
+  })
+  .openapi('GapsNearbyDevice')
+
+export const GapsPlace = z
+  .object({
+    rank: z.number().int(),
+    hex: z.string(),
+    lat: z.number(),
+    lon: z.number(),
+    gain: z.number().int().openapi({ description: 'Weighted resident-hours without a device that this place removes' }),
+    gained: z
+      .object({ residents: z.number().int(), seniors: z.number().int(), noDevice: z.number().int(), noNight: z.number().int() })
+      .openapi({ description: 'Residents in reach who gain round-the-clock access by this place (not counted again by later places)' }),
+    inReach: z.object({ residents: z.number().int(), seniors: z.number().int() }),
+    coveredHoursNow: z.number().int(),
+    nearby: z.array(GapsNearbyDevice),
+    nearestAllWeek: z.object({ id: z.string(), name: z.string(), distanceM: z.number().int() }).nullable(),
+    commune: z.object({ terc: z.string(), gmina: z.string(), powiat: z.string(), wojewodztwo: z.string() }).nullable(),
+    address: z.string().nullable().openapi({ description: 'Nearest address point within 100 m, if there is one' }),
+    boundary: Polygon,
+  })
+  .openapi('GapsPlace')
+
+export const GapsView = z
+  .object({
+    tooLarge: z.boolean().openapi({ description: 'The area holds more populated squares than one analysis may; zoom in' }),
+    cells: z.number().int(),
+    maxCells: z.number().int(),
+    totals: GapsTotals,
+    hexes: z
+      .object({
+        type: z.literal('FeatureCollection'),
+        features: z.array(
+          z.object({
+            type: z.literal('Feature'),
+            geometry: Polygon,
+            properties: z.object({
+              hex: z.string(),
+              residents: z.number(),
+              coveredHours: z.number().int(),
+              noDevice: z.boolean(),
+              noNight: z.boolean(),
+              uncovered: z.number().openapi({ description: 'Residents × share of the week without a device in reach' }),
+            }),
+          }),
+        ),
+      })
+      .openapi('GapsHexes'),
+    places: z.array(GapsPlace),
+    method: GapsMethod,
+  })
+  .openapi('GapsView')
+
+export const gapsSummaryRoute = createRoute({
+  method: 'get',
+  path: '/v1/gaps/summary',
+  operationId: 'getGapsSummary',
+  tags: ['gaps'],
+  summary: 'National figures: residents with no defibrillator in reach, at all and at night, and how they were counted',
+  responses: { 200: json(GapsSummary, 'National figures'), ...problems },
+})
+
+export const gapsOverviewRoute = createRoute({
+  method: 'get',
+  path: '/v1/gaps/overview.geojson',
+  operationId: 'getGapsOverview',
+  tags: ['gaps'],
+  summary: 'The country in large hexagons (H3 resolution 6) with residents and gaps, for the map',
+  responses: { 200: json(GapsOverview, 'Large hexagons; empty while the national figures are being computed'), ...problems },
+})
+
+export const gapsRoute = createRoute({
+  method: 'get',
+  path: '/v1/gaps',
+  operationId: 'getGaps',
+  tags: ['gaps'],
+  summary: 'Gaps in one area: hexagons with the hours a defibrillator is in reach, and the best places for new ones',
+  request: { query: GapsQuery },
+  responses: { 200: json(GapsView, 'The analysis of the area'), ...problems },
+})
+
+export const gapsCsvRoute = createRoute({
+  method: 'get',
+  path: '/v1/gaps.csv',
+  operationId: 'downloadGapsCsv',
+  tags: ['gaps'],
+  summary: 'The recommended places of an area as CSV (ODbL 1.0: device positions come partly from OpenStreetMap)',
+  request: { query: GapsQuery },
+  responses: { 200: file('text/csv', 'One row per recommended place'), ...problems },
+})
+
 // --------------------------------------------------------------------- admin
 
 export const JobResult = z
@@ -510,7 +892,7 @@ export const jobRoute = createRoute({
   summary: 'Runs a pipeline job inside the API process (the only process that may open the database)',
   security: operatorOnly.security,
   request: {
-    params: z.object({ name: z.enum(['pipeline', 'enrich-osm', 'radar']) }),
+    params: z.object({ name: z.enum(['pipeline', 'enrich-osm', 'radar', 'reminders']) }),
     body: {
       required: false,
       content: { 'application/json': { schema: z.object({ refresh: z.boolean().default(false).openapi({ description: 'Download fresh copies of the sources first' }) }).openapi('JobOptions') } },

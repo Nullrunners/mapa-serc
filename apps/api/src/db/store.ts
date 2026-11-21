@@ -2,13 +2,15 @@
  * Application state: the national dataset in memory (requests are answered from here) and its copy in DuckDB
  * (so a restart continues where it stopped). Everything that changes state goes through this file.
  */
-import type { AedRecord } from '@aed/schema'
+import { FIELD_NAMES, type AedRecord } from '@aed/schema'
 import { communeName, type Commune, type GeoCache } from '../pipeline/geocode'
-import { memberKey, type MergedAed } from '../pipeline/merge'
+import { memberKey, qualityScore, type MergedAed } from '../pipeline/merge'
+import { applyOverride, passportOverride } from '../passport/model'
 import type { PipelineResult, ReviewPair, SourceReport, StoredSource } from '../pipeline/run'
 import type { NormalizedRecord, SourceDef } from '../pipeline/types'
 import type { Candidate, CandidateStatus } from '../radar/build'
 import type { Db, Param } from './duck'
+import { PassportBook } from './passport'
 
 const json = (value: unknown): string => JSON.stringify(value)
 const parse = <T>(text: unknown): T => JSON.parse(String(text)) as T
@@ -33,8 +35,12 @@ export class Store {
   candidates: Candidate[] = []
   private links = new Map<string, string>()
   private geocodes = new Map<string, unknown>()
+  /** Device passports: the keeper's values, reports of passers-by, messages sent. */
+  readonly passports: PassportBook
 
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: Db) {
+    this.passports = new PassportBook(db)
+  }
 
   /** Reads the last persisted state. An empty database is a valid state: the first pipeline run fills it. */
   async load(): Promise<void> {
@@ -44,7 +50,7 @@ export class Store {
         id: String(row.id),
         publication: row.publication as MergedAed['publication'],
         quality: Number(row.quality),
-        record: parse<AedRecord>(row.record),
+        record: withAllFields(parse<AedRecord>(row.record)),
         provenance: parse(row.provenance),
         sources: parse(row.sources),
         issues: parse(row.issues),
@@ -67,6 +73,24 @@ export class Store {
       ...parse<Candidate>(row.document),
       status: row.status as CandidateStatus,
     }))
+    await this.passports.load()
+  }
+
+  /** aed id → fields the keeper set through the passport; the pipeline applies them after every merge. */
+  passportOverrides(): Map<string, Partial<AedRecord>> {
+    return new Map(this.passports.all().map((passport) => [passport.aedId, passportOverride(passport)]))
+  }
+
+  /** Puts the keeper's values into the published record at once, without waiting for the next pipeline run. */
+  async applyPassport(aedId: string, today: string): Promise<MergedAed | undefined> {
+    const aed = this.byId.get(aedId)
+    const passport = this.passports.get(aedId)
+    if (!aed || !passport) return aed
+    if (!applyOverride(aed.record, aed.provenance as Record<string, string>, passportOverride(passport))) return aed
+    aed.record.data_aktualizacji = today
+    aed.quality = qualityScore(aed.record, aed.sources.length, aed.issues.filter((issue) => issue.severity === 'warning').length, today)
+    await this.db.run('UPDATE aed SET record = ?, provenance = ?, quality = ? WHERE id = ?', [json(aed.record), json(aed.provenance), aed.quality, aed.id])
+    return aed
   }
 
   /** Replaces the leads with a fresh build; a lead the operator already decided on keeps its status. */
@@ -245,6 +269,12 @@ export class Store {
     const rows = await this.db.all<Record<string, string>>('SELECT logged_at, actor, entity, entity_id, action, detail FROM change_log WHERE entity_id = ? ORDER BY logged_at DESC', [entityId])
     return rows.map((row) => ({ at: row.logged_at!, actor: row.actor!, entity: row.entity!, entityId: row.entity_id!, action: row.action!, detail: parse(row.detail) }))
   }
+}
+
+/** A record saved before a field joined the pattern lacks it; the contract wants every field, null when unknown. */
+function withAllFields(record: AedRecord): AedRecord {
+  for (const field of FIELD_NAMES) if (record[field] === undefined) (record as Record<string, unknown>)[field] = null
+  return record
 }
 
 const recordRow = (record: NormalizedRecord): Param[] => [record.sourceId, record.sourceKey, json(record.input), json(record.raw), json(record.fixes), json(record.issues)]

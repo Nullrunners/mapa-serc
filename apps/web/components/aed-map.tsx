@@ -1,32 +1,16 @@
 "use client";
 
-import { Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
+import { Map as MapLibreMap, NavigationControl, type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, useState } from "react";
 import { API_URL } from "@/lib/api/client";
+import { canDrawMap, MAP_STYLE as STYLE, POLAND } from "@/lib/maplibre";
 import type { Picked } from "./aed-details";
-
-// maplibre-gl 6 looks for its worker next to its own module (import.meta.url). Once Turbopack bundles it
-// into a chunk that file is not there, so the workers fail to load. Point it at the worker explicitly;
-// `new URL(..., import.meta.url)` makes Turbopack emit the file as a static asset.
-setWorkerUrl(new URL("../node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs", import.meta.url).href);
-
-const STYLE = "https://tiles.openfreemap.org/styles/liberty";
-const POLAND: [number, number, number, number] = [14.1, 49.0, 24.2, 54.9];
 
 const LAYERS = [
   { id: "official", color: "#0052a5", label: "urzędowe" },
   { id: "community", color: "#6b7280", label: "niepotwierdzone" },
 ] as const;
-
-/** MapLibre needs WebGL2. Without it the constructor throws, and an uncaught error here would take the list down too. */
-function canDrawMap(): boolean {
-  try {
-    return document.createElement("canvas").getContext("webgl2") !== null;
-  } catch {
-    return false;
-  }
-}
 
 export interface AedMapProps {
   /** Show the unconfirmed OpenStreetMap layer. */

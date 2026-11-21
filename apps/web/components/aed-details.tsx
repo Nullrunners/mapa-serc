@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, type ReactNode, type Ref } from "react";
 import { api, type AedItem } from "@/lib/api/client";
 import { ACCESS_LABEL, AVAILABLE_NOW, STATUS_WARNING, addressLine, date, distance, hours, title } from "@/lib/aed-text";
@@ -147,6 +148,12 @@ function Device({ item, headingRef }: { item: AedItem; headingRef: Ref<HTMLHeadi
       >
         Pokaż drogę w Mapach Google<span className="sr-only"> (otworzy się w nowej karcie)</span>
       </a>
+      <p className="text-sm">
+        <Link href={`/aed/${item.id}`} className="font-semibold text-gov underline">
+          Paszport urządzenia
+        </Link>
+        : potwierdź, że jest na miejscu, zgłoś problem albo wydrukuj naklejkę z kodem QR.
+      </p>
     </article>
   );
 }
