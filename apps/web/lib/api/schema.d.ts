@@ -55,6 +55,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/aed/{id}/passport": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public passport of a device: confirmations, expiry dates and reports of passers-by */
+        get: operations["getPassport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/aed/{id}/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A passer-by who scanned the sticker says the device is there, or reports a problem */
+        post: operations["reportAed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/aed/{id}/passport/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sends the management link to the keeper email already in the data (never to an address given in the request) */
+        post: operations["requestOwnerLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/aed/{id}": {
         parameters: {
             query?: never;
@@ -480,6 +531,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/owner/passport": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The passport of the device the owner link is for */
+        get: operations["getOwnerPassport"];
+        put?: never;
+        /** The keeper changes expiry dates, status or the private contact for reminders */
+        post: operations["updateOwnerPassport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/owner/passport/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** „Potwierdzam sprawność”: status czynny and today as the verification date, in the published dataset at once */
+        post: operations["confirmOwnerPassport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/aed/{id}/owner-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A management link for the keeper of a device; rotate = true revokes the links given out before */
+        post: operations["createOwnerLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/outbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Messages sent to keepers (or only logged, when no mail or SMS account is configured) */
+        get: operations["listOutbox"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/jobs/{name}": {
         parameters: {
             query?: never;
@@ -690,10 +810,15 @@ export interface components {
              */
             elektrody_pediatryczne: boolean | null;
             /**
-             * @description Data, do której ważne są elektrody (RRRR-MM-DD). Pozwala systemowi przypomnieć opiekunowi o wymianie.
+             * @description Data, do której ważne są elektrody dla dorosłych (RRRR-MM-DD). Pozwala systemowi przypomnieć opiekunowi o wymianie.
              * @example 2027-06-30
              */
             termin_waznosci_elektrod: string | null;
+            /**
+             * @description Data, do której ważne są elektrody dla dzieci (RRRR-MM-DD). Zostaw puste, gdy przy urządzeniu nie ma takich elektrod.
+             * @example 2027-03-31
+             */
+            termin_waznosci_elektrod_pediatrycznych: string | null;
             /**
              * @description Data, do której ważna jest bateria (RRRR-MM-DD).
              * @example 2028-01-31
@@ -751,6 +876,64 @@ export interface components {
                     quality: number;
                 };
             }[];
+        };
+        /** @description Cyfrowy Paszport AED: stan urządzenia widoczny dla każdego, kto zeskanuje naklejkę. */
+        PassportPublic: {
+            id: string;
+            name: string;
+            publication: components["schemas"]["Publication"];
+            /** @enum {string} */
+            status: "czynny" | "czasowo_niedostepny" | "wycofany" | "nieznany";
+            /** @description Ostatnie potwierdzenie sprawności (data weryfikacji) */
+            confirmedAt: string | null;
+            /** @description true, gdy datę potwierdził opiekun w paszporcie, a nie tylko podało ją źródło */
+            confirmedByKeeper: boolean;
+            items: {
+                /** @enum {string} */
+                item: "electrodes" | "electrodes_child" | "battery";
+                label: string;
+                date: string | null;
+                /**
+                 * @description soon = 30 dni albo mniej do terminu
+                 * @enum {string}
+                 */
+                state: "ok" | "soon" | "expired" | "unknown";
+                daysLeft: number | null;
+            }[];
+            reports: {
+                /** @description Ostatnie „jest na miejscu” od przechodnia (30 dni) */
+                lastOk: string | null;
+                okCount: number;
+                /** @description Problemy zgłoszone po ostatnim potwierdzeniu */
+                problems: {
+                    kind: components["schemas"]["ReportKind"];
+                    count: number;
+                    lastAt: string;
+                }[];
+            };
+            /** @description Zamaskowany adres opiekuna, na który można wysłać link do zarządzania */
+            keeperEmail: string | null;
+            passportUrl: string;
+        };
+        /**
+         * @description ok = urządzenie jest na miejscu, zielona dioda miga; locked = szafka zamknięta; missing = brak urządzenia; battery_alarm = sygnał baterii; damaged = uszkodzone
+         * @enum {string}
+         */
+        ReportKind: "ok" | "locked" | "missing" | "battery_alarm" | "damaged";
+        ReportResult: {
+            /**
+             * @description duplicate = ta sama osoba zgłosiła już coś przy tym urządzeniu w ciągu godziny
+             * @enum {string}
+             */
+            outcome: "accepted" | "duplicate" | "limit";
+            passport: components["schemas"]["PassportPublic"];
+        };
+        ReportRequest: {
+            kind: components["schemas"]["ReportKind"];
+            note?: string;
+        };
+        OwnerLinkSent: {
+            sentTo: string;
         };
         AedDetail: components["schemas"]["AedItem"] & {
             /** @description pole → identyfikator źródła, z którego pochodzi wartość */
@@ -999,6 +1182,14 @@ export interface components {
                 csv: string;
                 report: string;
             };
+            /** @description Published devices of the submission with the keeper links: passport management and the sticker to print. Empty while pending. */
+            devices: {
+                id: string;
+                name: string;
+                ownerUrl: string;
+                passportUrl: string;
+                stickerUrl: string;
+            }[];
         };
         CandidateList: {
             stub: boolean;
@@ -1205,6 +1396,79 @@ export interface components {
             /** @enum {string} */
             publication: "official" | "community";
         };
+        OwnerView: {
+            aed: components["schemas"]["AedItem"];
+            passport: components["schemas"]["OwnerPassport"];
+            public: components["schemas"]["PassportPublic"];
+            reports: {
+                kind: components["schemas"]["ReportKind"];
+                note: string | null;
+                at: string;
+            }[];
+            messages: {
+                /** @enum {string} */
+                channel: "email" | "sms";
+                recipient: string;
+                subject: string;
+                reason: string;
+                at: string;
+                /** @enum {string} */
+                status: "sent" | "logged" | "failed";
+            }[];
+            stickerUrl: string;
+        };
+        OwnerPassport: {
+            /** @example 2027-06-30 */
+            electrodesExp: string | null;
+            /** @example 2027-06-30 */
+            electrodesChildExp: string | null;
+            /** @example 2027-06-30 */
+            batteryExp: string | null;
+            /** @enum {string|null} */
+            status: "czynny" | "czasowo_niedostepny" | "wycofany" | "nieznany" | null;
+            confirmedAt: string | null;
+            /** @description Prywatny adres do przypomnień; nie trafia do zbioru */
+            notifyEmail: string | null;
+            /** @description Numer do przypomnień SMS (+48…); nie trafia do zbioru */
+            notifyPhone: string | null;
+        };
+        OwnerPassportUpdate: {
+            /** @example 2027-06-30 */
+            electrodesExp?: string | null;
+            /** @example 2027-06-30 */
+            electrodesChildExp?: string | null;
+            /** @example 2027-06-30 */
+            batteryExp?: string | null;
+            /** @enum {string|null} */
+            status?: "czynny" | "czasowo_niedostepny" | "wycofany" | "nieznany" | null;
+            notifyEmail?: string | null;
+            notifyPhone?: string | null;
+        };
+        OwnerLinks: {
+            ownerUrl: string;
+            passportUrl: string;
+            stickerUrl: string;
+        };
+        OwnerLinkOptions: {
+            /** @default false */
+            rotate: boolean;
+        };
+        Outbox: {
+            items: {
+                id: string;
+                aedId: string | null;
+                /** @enum {string} */
+                channel: "email" | "sms";
+                recipient: string;
+                subject: string;
+                body: string;
+                reason: string;
+                at: string;
+                /** @enum {string} */
+                status: "sent" | "logged" | "failed";
+                error: string | null;
+            }[];
+        };
         JobResult: {
             job: string;
             tookMs: number;
@@ -1339,6 +1603,166 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MapFeatureCollection"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getPassport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Passport */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PassportPublic"];
+                };
+            };
+            /** @description No device with this id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reportAed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Report taken */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportResult"];
+                };
+            };
+            /** @description No device with this id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    requestOwnerLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerLinkSent"];
+                };
+            };
+            /** @description No device with this id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The device has no keeper email, or a link was sent minutes ago */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description The request does not match the contract */
@@ -2417,12 +2841,277 @@ export interface operations {
             };
         };
     };
+    getOwnerPassport: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Token z linku dla opiekuna (parametr t) */
+                "x-owner-token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The device as its keeper sees it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerView"];
+                };
+            };
+            /** @description Missing, wrong or revoked owner link */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateOwnerPassport: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Token z linku dla opiekuna (parametr t) */
+                "x-owner-token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OwnerPassportUpdate"];
+            };
+        };
+        responses: {
+            /** @description The device as its keeper sees it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerView"];
+                };
+            };
+            /** @description Missing, wrong or revoked owner link */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    confirmOwnerPassport: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Token z linku dla opiekuna (parametr t) */
+                "x-owner-token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The device as its keeper sees it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerView"];
+                };
+            };
+            /** @description Missing, wrong or revoked owner link */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createOwnerLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OwnerLinkOptions"];
+            };
+        };
+        responses: {
+            /** @description Links */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerLinks"];
+                };
+            };
+            /** @description Missing or wrong operator token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No device with this id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listOutbox: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Outbox"];
+                };
+            };
+            /** @description Missing or wrong operator token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     runJob: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                name: "pipeline" | "enrich-osm" | "radar";
+                name: "pipeline" | "enrich-osm" | "radar" | "reminders";
             };
             cookie?: never;
         };

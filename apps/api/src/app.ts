@@ -32,7 +32,7 @@ export function createApp() {
   // and a token in a header is not sent by a browser on its own, so an open origin list is safe for reads.
   app.use('/dane/*', cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'] }))
   app.use('/feeds/*', cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'] }))
-  app.use('/v1/*', cors({ origin: (origin) => (config.corsOrigins.includes(origin) ? origin : null), allowMethods: ['GET', 'POST', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'], maxAge: 86_400 }))
+  app.use('/v1/*', cors({ origin: (origin) => (config.corsOrigins.includes(origin) ? origin : null), allowMethods: ['GET', 'POST', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization', 'X-Owner-Token'], maxAge: 86_400 }))
   app.use('/health', cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'] }))
   app.use('/openapi.json', cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'] }))
 

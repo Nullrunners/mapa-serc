@@ -25,6 +25,7 @@
     "exceljs": "^4.4.0",
     "h3-js": "^4.5.0",
     "hono": "^4.13.18",
+    "nodemailer": "^8.0.11",
     "tsx": "^4.23.15",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.6.7"
@@ -32,6 +33,7 @@
   "devDependencies": {
     "@types/geojson": "^7946.0.16",
     "@types/node": "^24.0.0",
+    "@types/nodemailer": "^8.0.2",
     "typescript": "^7.0.2",
     "untun": "^0.2.2",
     "vitest": "^5.1.0"

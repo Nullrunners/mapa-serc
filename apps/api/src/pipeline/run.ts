@@ -7,7 +7,8 @@ import { UNNAMED_PLACE, type AedRecord } from '@aed/schema'
 import { sourceCoverage, type FieldCoverage } from './coverage'
 import { cluster, type DedupItem } from './dedup'
 import { addressFromPoint, enrich, type Geo } from './geocode'
-import { memberKey, mergeCluster, type MergedAed } from './merge'
+import { applyOverride } from '../passport/model'
+import { memberKey, mergeCluster, qualityScore, type MergedAed } from './merge'
 import { checkSource, normalizeSource, parseSource, publicUrl, readSourceBytes, type Origin } from './sources'
 import { PRIORITY, type Fix, type FixCode, type Issue, type IssueCode, type NormalizedRecord, type SourceDef } from './types'
 
@@ -37,6 +38,8 @@ export interface PipelineInput {
   existingIds: Map<string, string>
   /** Records as published by the previous run, to keep `data_aktualizacji` when nothing changed. */
   previous: Map<string, AedRecord>
+  /** aed id → fields the keeper set through the device passport; they win over every source. */
+  overrides?: Map<string, Partial<AedRecord>>
   today: string
 }
 
@@ -191,6 +194,10 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
   const aeds = [...clusters, ...unlocated.map((index) => [index])].map((members) => mergeCluster(members.map((index) => records[index]!), context))
 
   for (const aed of aeds) {
+    const override = input.overrides?.get(aed.id)
+    if (override && applyOverride(aed.record, aed.provenance as Record<string, string>, override)) {
+      aed.quality = qualityScore(aed.record, aed.sources.length, aed.issues.filter((issue) => issue.severity === 'warning').length, input.today)
+    }
     const before = input.previous.get(aed.id)
     if (before && JSON.stringify({ ...before, data_aktualizacji: '' }) === JSON.stringify({ ...aed.record, data_aktualizacji: '' })) {
       aed.record.data_aktualizacji = before.data_aktualizacji

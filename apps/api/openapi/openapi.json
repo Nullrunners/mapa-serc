@@ -460,8 +460,16 @@
               "string",
               "null"
             ],
-            "description": "Data, do której ważne są elektrody (RRRR-MM-DD). Pozwala systemowi przypomnieć opiekunowi o wymianie.",
+            "description": "Data, do której ważne są elektrody dla dorosłych (RRRR-MM-DD). Pozwala systemowi przypomnieć opiekunowi o wymianie.",
             "example": "2027-06-30"
+          },
+          "termin_waznosci_elektrod_pediatrycznych": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Data, do której ważne są elektrody dla dzieci (RRRR-MM-DD). Zostaw puste, gdy przy urządzeniu nie ma takich elektrod.",
+            "example": "2027-03-31"
           },
           "termin_waznosci_baterii": {
             "type": [
@@ -528,6 +536,7 @@
           "model",
           "elektrody_pediatryczne",
           "termin_waznosci_elektrod",
+          "termin_waznosci_elektrod_pediatrycznych",
           "termin_waznosci_baterii",
           "zrodlo",
           "id_w_zrodle",
@@ -645,6 +654,212 @@
         "required": [
           "type",
           "features"
+        ]
+      },
+      "PassportPublic": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "publication": {
+            "$ref": "#/components/schemas/Publication"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "czynny",
+              "czasowo_niedostepny",
+              "wycofany",
+              "nieznany"
+            ]
+          },
+          "confirmedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Ostatnie potwierdzenie sprawności (data weryfikacji)"
+          },
+          "confirmedByKeeper": {
+            "type": "boolean",
+            "description": "true, gdy datę potwierdził opiekun w paszporcie, a nie tylko podało ją źródło"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "item": {
+                  "type": "string",
+                  "enum": [
+                    "electrodes",
+                    "electrodes_child",
+                    "battery"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "date": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "ok",
+                    "soon",
+                    "expired",
+                    "unknown"
+                  ],
+                  "description": "soon = 30 dni albo mniej do terminu"
+                },
+                "daysLeft": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "item",
+                "label",
+                "date",
+                "state",
+                "daysLeft"
+              ]
+            }
+          },
+          "reports": {
+            "type": "object",
+            "properties": {
+              "lastOk": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Ostatnie „jest na miejscu” od przechodnia (30 dni)"
+              },
+              "okCount": {
+                "type": "integer"
+              },
+              "problems": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "$ref": "#/components/schemas/ReportKind"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "lastAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count",
+                    "lastAt"
+                  ]
+                },
+                "description": "Problemy zgłoszone po ostatnim potwierdzeniu"
+              }
+            },
+            "required": [
+              "lastOk",
+              "okCount",
+              "problems"
+            ]
+          },
+          "keeperEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Zamaskowany adres opiekuna, na który można wysłać link do zarządzania"
+          },
+          "passportUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "publication",
+          "status",
+          "confirmedAt",
+          "confirmedByKeeper",
+          "items",
+          "reports",
+          "keeperEmail",
+          "passportUrl"
+        ],
+        "description": "Cyfrowy Paszport AED: stan urządzenia widoczny dla każdego, kto zeskanuje naklejkę."
+      },
+      "ReportKind": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "locked",
+          "missing",
+          "battery_alarm",
+          "damaged"
+        ],
+        "description": "ok = urządzenie jest na miejscu, zielona dioda miga; locked = szafka zamknięta; missing = brak urządzenia; battery_alarm = sygnał baterii; damaged = uszkodzone"
+      },
+      "ReportResult": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "duplicate",
+              "limit"
+            ],
+            "description": "duplicate = ta sama osoba zgłosiła już coś przy tym urządzeniu w ciągu godziny"
+          },
+          "passport": {
+            "$ref": "#/components/schemas/PassportPublic"
+          }
+        },
+        "required": [
+          "outcome",
+          "passport"
+        ]
+      },
+      "ReportRequest": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ReportKind"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "OwnerLinkSent": {
+        "type": "object",
+        "properties": {
+          "sentTo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sentTo"
         ]
       },
       "AedDetail": {
@@ -1540,6 +1755,37 @@
               "report"
             ],
             "description": "Links for the provider: their data in the pattern, and the quality report"
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "ownerUrl": {
+                  "type": "string"
+                },
+                "passportUrl": {
+                  "type": "string"
+                },
+                "stickerUrl": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "ownerUrl",
+                "passportUrl",
+                "stickerUrl"
+              ]
+            },
+            "description": "Published devices of the submission with the keeper links: passport management and the sticker to print. Empty while pending."
           }
         },
         "required": [
@@ -1549,7 +1795,8 @@
           "added",
           "merged",
           "incomplete",
-          "files"
+          "files",
+          "devices"
         ]
       },
       "CandidateList": {
@@ -2344,6 +2591,327 @@
           "publication"
         ]
       },
+      "OwnerView": {
+        "type": "object",
+        "properties": {
+          "aed": {
+            "$ref": "#/components/schemas/AedItem"
+          },
+          "passport": {
+            "$ref": "#/components/schemas/OwnerPassport"
+          },
+          "public": {
+            "$ref": "#/components/schemas/PassportPublic"
+          },
+          "reports": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "$ref": "#/components/schemas/ReportKind"
+                },
+                "note": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "at": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "note",
+                "at"
+              ]
+            }
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "channel": {
+                  "type": "string",
+                  "enum": [
+                    "email",
+                    "sms"
+                  ]
+                },
+                "recipient": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "sent",
+                    "logged",
+                    "failed"
+                  ]
+                }
+              },
+              "required": [
+                "channel",
+                "recipient",
+                "subject",
+                "reason",
+                "at",
+                "status"
+              ]
+            }
+          },
+          "stickerUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "aed",
+          "passport",
+          "public",
+          "reports",
+          "messages",
+          "stickerUrl"
+        ]
+      },
+      "OwnerPassport": {
+        "type": "object",
+        "properties": {
+          "electrodesExp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2027-06-30"
+          },
+          "electrodesChildExp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2027-06-30"
+          },
+          "batteryExp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2027-06-30"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "czynny",
+              "czasowo_niedostepny",
+              "wycofany",
+              "nieznany",
+              null
+            ]
+          },
+          "confirmedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notifyEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Prywatny adres do przypomnień; nie trafia do zbioru"
+          },
+          "notifyPhone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Numer do przypomnień SMS (+48…); nie trafia do zbioru"
+          }
+        },
+        "required": [
+          "electrodesExp",
+          "electrodesChildExp",
+          "batteryExp",
+          "status",
+          "confirmedAt",
+          "notifyEmail",
+          "notifyPhone"
+        ]
+      },
+      "OwnerPassportUpdate": {
+        "type": "object",
+        "properties": {
+          "electrodesExp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2027-06-30"
+          },
+          "electrodesChildExp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2027-06-30"
+          },
+          "batteryExp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2027-06-30"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "czynny",
+              "czasowo_niedostepny",
+              "wycofany",
+              "nieznany",
+              null
+            ]
+          },
+          "notifyEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 120
+          },
+          "notifyPhone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 24
+          }
+        }
+      },
+      "OwnerLinks": {
+        "type": "object",
+        "properties": {
+          "ownerUrl": {
+            "type": "string"
+          },
+          "passportUrl": {
+            "type": "string"
+          },
+          "stickerUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ownerUrl",
+          "passportUrl",
+          "stickerUrl"
+        ]
+      },
+      "OwnerLinkOptions": {
+        "type": "object",
+        "properties": {
+          "rotate": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "Outbox": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "aedId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "channel": {
+                  "type": "string",
+                  "enum": [
+                    "email",
+                    "sms"
+                  ]
+                },
+                "recipient": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "sent",
+                    "logged",
+                    "failed"
+                  ]
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "aedId",
+                "channel",
+                "recipient",
+                "subject",
+                "body",
+                "reason",
+                "at",
+                "status",
+                "error"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
       "JobResult": {
         "type": "object",
         "properties": {
@@ -2594,6 +3162,212 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MapFeatureCollection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/aed/{id}/passport": {
+      "get": {
+        "operationId": "getPassport",
+        "tags": [
+          "passport"
+        ],
+        "summary": "Public passport of a device: confirmations, expiry dates and reports of passers-by",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Passport",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PassportPublic"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No device with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/aed/{id}/reports": {
+      "post": {
+        "operationId": "reportAed",
+        "tags": [
+          "passport"
+        ],
+        "summary": "A passer-by who scanned the sticker says the device is there, or reports a problem",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Report taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No device with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/aed/{id}/passport/link": {
+      "post": {
+        "operationId": "requestOwnerLink",
+        "tags": [
+          "passport"
+        ],
+        "summary": "Sends the management link to the keeper email already in the data (never to an address given in the request)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerLinkSent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No device with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The device has no keeper email, or a link was sent minutes ago",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             }
@@ -3926,6 +4700,366 @@
         "x-status": "live"
       }
     },
+    "/v1/owner/passport": {
+      "get": {
+        "operationId": "getOwnerPassport",
+        "tags": [
+          "passport"
+        ],
+        "summary": "The passport of the device the owner link is for",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "description": "Token z linku dla opiekuna (parametr t)"
+            },
+            "required": true,
+            "description": "Token z linku dla opiekuna (parametr t)",
+            "name": "x-owner-token",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The device as its keeper sees it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, wrong or revoked owner link",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      },
+      "post": {
+        "operationId": "updateOwnerPassport",
+        "tags": [
+          "passport"
+        ],
+        "summary": "The keeper changes expiry dates, status or the private contact for reminders",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "description": "Token z linku dla opiekuna (parametr t)"
+            },
+            "required": true,
+            "description": "Token z linku dla opiekuna (parametr t)",
+            "name": "x-owner-token",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnerPassportUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The device as its keeper sees it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, wrong or revoked owner link",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/owner/passport/confirm": {
+      "post": {
+        "operationId": "confirmOwnerPassport",
+        "tags": [
+          "passport"
+        ],
+        "summary": "„Potwierdzam sprawność”: status czynny and today as the verification date, in the published dataset at once",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "description": "Token z linku dla opiekuna (parametr t)"
+            },
+            "required": true,
+            "description": "Token z linku dla opiekuna (parametr t)",
+            "name": "x-owner-token",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The device as its keeper sees it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, wrong or revoked owner link",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/admin/aed/{id}/owner-link": {
+      "post": {
+        "operationId": "createOwnerLink",
+        "tags": [
+          "admin"
+        ],
+        "summary": "A management link for the keeper of a device; rotate = true revokes the links given out before",
+        "security": [
+          {
+            "operatorToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnerLinkOptions"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Links",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerLinks"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong operator token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No device with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/admin/outbox": {
+      "get": {
+        "operationId": "listOutbox",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Messages sent to keepers (or only logged, when no mail or SMS account is configured)",
+        "security": [
+          {
+            "operatorToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 50
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Outbox"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong operator token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
     "/admin/jobs/{name}": {
       "post": {
         "operationId": "runJob",
@@ -3945,7 +5079,8 @@
               "enum": [
                 "pipeline",
                 "enrich-osm",
-                "radar"
+                "radar",
+                "reminders"
               ]
             },
             "required": true,

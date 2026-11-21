@@ -4,11 +4,13 @@
  */
 import type { AedRecord } from '@aed/schema'
 import { communeName, type Commune, type GeoCache } from '../pipeline/geocode'
-import { memberKey, type MergedAed } from '../pipeline/merge'
+import { memberKey, qualityScore, type MergedAed } from '../pipeline/merge'
+import { applyOverride, passportOverride } from '../passport/model'
 import type { PipelineResult, ReviewPair, SourceReport, StoredSource } from '../pipeline/run'
 import type { NormalizedRecord, SourceDef } from '../pipeline/types'
 import type { Candidate, CandidateStatus } from '../radar/build'
 import type { Db, Param } from './duck'
+import { PassportBook } from './passport'
 
 const json = (value: unknown): string => JSON.stringify(value)
 const parse = <T>(text: unknown): T => JSON.parse(String(text)) as T
@@ -33,8 +35,12 @@ export class Store {
   candidates: Candidate[] = []
   private links = new Map<string, string>()
   private geocodes = new Map<string, unknown>()
+  /** Device passports: the keeper's values, reports of passers-by, messages sent. */
+  readonly passports: PassportBook
 
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: Db) {
+    this.passports = new PassportBook(db)
+  }
 
   /** Reads the last persisted state. An empty database is a valid state: the first pipeline run fills it. */
   async load(): Promise<void> {
@@ -67,6 +73,24 @@ export class Store {
       ...parse<Candidate>(row.document),
       status: row.status as CandidateStatus,
     }))
+    await this.passports.load()
+  }
+
+  /** aed id → fields the keeper set through the passport; the pipeline applies them after every merge. */
+  passportOverrides(): Map<string, Partial<AedRecord>> {
+    return new Map(this.passports.all().map((passport) => [passport.aedId, passportOverride(passport)]))
+  }
+
+  /** Puts the keeper's values into the published record at once, without waiting for the next pipeline run. */
+  async applyPassport(aedId: string, today: string): Promise<MergedAed | undefined> {
+    const aed = this.byId.get(aedId)
+    const passport = this.passports.get(aedId)
+    if (!aed || !passport) return aed
+    if (!applyOverride(aed.record, aed.provenance as Record<string, string>, passportOverride(passport))) return aed
+    aed.record.data_aktualizacji = today
+    aed.quality = qualityScore(aed.record, aed.sources.length, aed.issues.filter((issue) => issue.severity === 'warning').length, today)
+    await this.db.run('UPDATE aed SET record = ?, provenance = ?, quality = ? WHERE id = ?', [json(aed.record), json(aed.provenance), aed.quality, aed.id])
+    return aed
   }
 
   /** Replaces the leads with a fresh build; a lead the operator already decided on keeps its status. */

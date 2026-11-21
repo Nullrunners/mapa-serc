@@ -8,9 +8,10 @@ import { addressFromPoint, enrich } from './pipeline/geocode'
 import { runPipeline } from './pipeline/run'
 import { loadSourceDefs } from './pipeline/sources'
 import type { NormalizedRecord } from './pipeline/types'
+import { runReminders } from './passport/service'
 import { fetchNotices, osmGapCandidates, procurementCandidates, readNotices } from './radar/build'
 
-export type JobName = 'pipeline' | 'enrich-osm' | 'radar'
+export type JobName = 'pipeline' | 'enrich-osm' | 'radar' | 'reminders'
 export interface JobOptions {
   /** Download fresh copies of the sources first. */
   refresh?: boolean
@@ -40,6 +41,7 @@ async function pipelineJob(options: JobOptions) {
     cachedGeo,
     existingIds: store.existingIds(),
     previous: store.previousRecords(),
+    overrides: store.passportOverrides(),
     today: today(),
   })
   await store.savePipeline(result, defs)
@@ -119,7 +121,13 @@ async function radarJob(options: JobOptions) {
   }
 }
 
-const JOBS: Record<JobName, (options: JobOptions) => Promise<Record<string, unknown>>> = { pipeline: pipelineJob, 'enrich-osm': enrichOsmJob, radar: radarJob }
+/** Expiry reminders for device keepers; safe to run often, a reminder is never sent twice. */
+async function remindersJob() {
+  const { store } = await getContext()
+  return runReminders(store, today())
+}
+
+const JOBS: Record<JobName, (options: JobOptions) => Promise<Record<string, unknown>>> = { pipeline: pipelineJob, 'enrich-osm': enrichOsmJob, radar: radarJob, reminders: remindersJob }
 
 export function runJob(name: JobName, options: JobOptions = {}): Promise<Record<string, unknown>> {
   return exclusive(() => JOBS[name](options))
