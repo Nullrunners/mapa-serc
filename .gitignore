@@ -16,3 +16,4 @@ data/
 .direnv/
 *.log
 .DS_Store
+*.md

@@ -8,14 +8,16 @@ Dane urzędowe o AED to dziś cztery samorządowe pliki w portalu (74 urządzeni
 
 | Element | Stan |
 |---|---|
-| Wzorzec danych AED: 32 pola, z niego generowane Table Schema, szablon CSV, opis pól i schemat API | działa |
+| Wzorzec danych AED: 32 pola, z niego generowane skoroszyt XLSX, Table Schema, szablon CSV, opis pól i schemat API | działa |
+| Zakres danych każdego źródła na tle wzorca (tabela na stronie „Skąd te dane" i plik CSV), lista znanych źródeł, których nie włączamy | działa |
+| „Dostępny teraz" w wyszukiwarce: odczyt godzin dostępności, oznaczenie przy urządzeniu, filtr | działa |
 | Potok scalania: odczyt plików w dowolnym dialekcie, automatyczne poprawki, kody TERYT i geokodowanie z rejestrów GUGiK, deduplikacja, pochodzenie każdego pola, ocena jakości | działa |
 | Pliki zbioru krajowego: CSV (RFC 4180), GeoJSON, JSON-LD, metadane CSVW | działa |
 | Plik XML dla harvestera dane.gov.pl, zgodny z oficjalnym XSD 1.13 (sprawdzany w testach) | działa |
 | Raport jakości dla każdego dostawcy | działa |
-| Mapa z listą najbliższych urządzeń, strona wzorca, strona źródeł | działa; wygląd nie był jeszcze sprawdzany w przeglądarce |
-| Kreator dla dostawcy: plik CSV lub GeoJSON w dowolnym układzie, automatyczne dopasowanie kolumn, podgląd poprawek i duplikatów, zgłoszenie, zatwierdzenie przez operatora | działa w API (testy); interfejs zbudowany, nie był jeszcze sprawdzany w przeglądarce |
-| Kreator: pliki XLSX, podanie adresu istniejącego zbioru, formularz pojedynczego urządzenia | do zrobienia |
+| Mapa z listą najbliższych urządzeń, strona wzorca, strona źródeł | działa; obejrzane na zrzutach ekranu w szerokości komputera i telefonu. W przeglądarce bez WebGL2 zamiast mapy jest komunikat, a lista działa dalej |
+| Kreator dla dostawcy: plik Excela (.xlsx), CSV lub GeoJSON w dowolnym układzie, automatyczne dopasowanie kolumn, podgląd poprawek i duplikatów, zgłoszenie, zatwierdzenie przez operatora | działa w API (testy); interfejs zbudowany, nie był jeszcze sprawdzany w przeglądarce |
+| Kreator: podanie adresu istniejącego zbioru, formularz pojedynczego urządzenia, stary format Excela (.xls) | do zrobienia |
 | Radar AED: wskazówki z mapy społeczności (gminy i operatorzy) i z ogłoszeń o zakupach publicznych, decyzja operatora, link zaproszenia dla opiekuna, publikacja zgłoszenia z zaproszenia | działa w API (testy); interfejs zbudowany, nie był jeszcze sprawdzany w przeglądarce |
 | Radar: klasyfikacja ogłoszeń modelem językowym, wskazówki ze stron gmin i BIP | do zrobienia; dziś ogłoszenia odsiewa filtr słów kluczowych |
 | Źródło: Warszawa | czeka na klucz do API miasta |
@@ -28,6 +30,8 @@ Zgłoszenie wysłane z kreatora bez tokenu operatora ma stan „oczekuje": dosta
 - 18 257 urządzeń znanych tylko z OpenStreetMap, pokazywanych jako niepotwierdzone, poza plikami dla portalu
 - 36 urządzeń urzędowych potwierdzonych niezależnie przez OpenStreetMap; 21 par czeka na ręczne rozstrzygnięcie
 - Radar: w 2128 gminach społeczność zna co najmniej jedno urządzenie, a tylko 4 gminy mają dane urzędowe; 108 operatorów ma po 5 i więcej urządzeń na mapie społeczności (ZUS 177, InPost 96, Tauron 69); 47 ogłoszeń z lat 2021–2026 o zakupie AED przez podmioty publiczne (m.in. Koszalin 40 sztuk, Szczecin 40 sztuk w listopadzie 2026, Toruń 29)
+- żaden z czterech plików urzędowych nie podaje godzin dostępności, rodzaju dostępu, statusu ani daty weryfikacji urządzenia; OpenStreetMap podaje rodzaj dostępu dla 92% urządzeń, a godziny dla 37%
+- w sobotę 21.11.2026 o 11:30 jako „dostępne teraz" dało się oznaczyć 0 z 74 urządzeń urzędowych i 4215 z 18 257 znanych z OpenStreetMap
 - poprawki wprowadzone automatycznie w plikach urzędowych: 7 wierszy z zamienionymi współrzędnymi, 29 adresów rozdzielonych z jednej kolumny, 1 urządzenie ze współrzędnymi skopiowanymi z innego miasta (położenie ustalone z adresu)
 
 ## Uruchomienie
@@ -65,6 +69,7 @@ apps/api/          Hono + TypeScript + DuckDB
   src/wizard.ts    kreator: podgląd pliku, zgłoszenie, zatwierdzenie
   src/radar/       Radar AED: budowanie wskazówek, decyzje, linki zaproszeń
 apps/web/          Next.js: mapa z listą, kreator, wzorzec, źródła i jakość, Radar
+zgloszenie/        pliki do zgłoszenia: wzorzec danych w XLSX
 ```
 
 Front korzysta wyłącznie z API, przez klienta generowanego z OpenAPI. Po zmianie kontraktu: `pnpm contract`, potem `pnpm --filter @aed/web api:types`.
@@ -73,9 +78,13 @@ Front korzysta wyłącznie z API, przez klienta generowanego z OpenAPI. Po zmian
 
 Źródłem prawdy jest [packages/schema/src/fields.ts](packages/schema/src/fields.ts). Z działającego API można pobrać:
 
+- `/dane/wzorzec.xlsx` – skoroszyt Excela: tabela pól, słowniki, wiersz przykładowy i pusty szablon z listami wyboru
 - `/dane/wzorzec.md` – opis pól
 - `/dane/schema.json` – Frictionless Table Schema
 - `/dane/szablon.csv` – szablon z przykładowym wierszem
+- `/dane/zakres-zrodel.csv` – zakres danych każdego źródła na tle wzorca: jeden wiersz na źródło i pole
+
+Kopia skoroszytu do zgłoszenia leży w [zgloszenie/wzorzec-danych-aed.xlsx](zgloszenie/wzorzec-danych-aed.xlsx). Po zmianie katalogu pól odtwarza ją `pnpm pattern`.
 
 Rdzeń adresowy wzorca jest identyczny z plikiem, który Legionowo już publikuje w portalu. Grupy pól odpowiadają francuskiej bazie krajowej Géo'DAE, a słowniki tagom OpenStreetMap (`emergency=defibrillator`); godziny dostępności zapisujemy w składni `opening_hours`.
 
@@ -109,7 +118,7 @@ XSD harvestera i przykładowy plik XML w `apps/api/test/fixtures/harvester/` poc
 
 Regulamin dopuszcza wcześniej przygotowany kod pod warunkiem wskazania go:
 
-- Całe repozytorium w obecnym kształcie powstało w sobotę 21.11.2026 między 9:45 a 11:00, przed publikacją pełnej karty zadania, na podstawie krótkiego opisu zadania ze strony hackathonu.
+- Stan repozytorium z commita `e61ee2d` powstał w sobotę 21.11.2026 między 9:45 a 11:00, przed publikacją pełnej karty zadania, na podstawie krótkiego opisu zadania ze strony hackathonu. Wszystko, co dodano później, powstało po zapoznaniu się z kartą.
 - Szkielet API (obsługa błędów, tabela endpointów ze stanem „zaślepka / działa", eksport OpenAPI, devShell Nix, wzorzec Dockerfile) jest przeniesiony z naszego projektu z NASA Space Apps Challenge 2026 (github.com/Nullrunners/backend).
 
 ## Narzędzia AI
