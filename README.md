@@ -49,7 +49,7 @@ Przy pierwszym starcie API buduje zbiór z kopii plików urzędowych dołączony
 
 ```bash
 pnpm job pipeline --refresh   # pobiera świeże pliki źródeł (także OpenStreetMap) i scala od nowa
-pnpm job enrich-osm           # kody gmin dla warstwy OpenStreetMap; ok. 5 minut za pierwszym razem
+pnpm job enrich-osm           # kody gmin i adresy dla warstwy OpenStreetMap; kilkanaście minut za pierwszym razem
 pnpm job radar                # buduje wskazówki Radaru; za pierwszym razem pobiera ogłoszenia z e-Zamówień
 pnpm check                    # typy i testy
 ```

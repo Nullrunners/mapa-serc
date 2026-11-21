@@ -45,6 +45,7 @@ describe('community devices missing from the official dataset', () => {
       aed('k1', 'community', '1861011', 'Krosno', null),
       aed('k2', 'official', '1861011', 'Krosno', null),
     ],
+    communeNames: () => new Map([['0461011', 'Bydgoszcz']]),
   } as unknown as Store
 
   it('groups them by commune and sets them against the official count', () => {

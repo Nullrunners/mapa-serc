@@ -1,11 +1,11 @@
 /**
  * Polish state registers, both free and without a key:
  *   ULDK (uldk.gugik.gov.pl)       commune (TERC) for a point
- *   UUG  (services.gugik.gov.pl)   coordinates and TERYT codes for an address
+ *   UUG  (services.gugik.gov.pl)   coordinates and TERYT codes for an address, and the address nearest to a point
  * Every answer is cached, so a re-run of the pipeline asks only about new records.
  */
 import type { AedInput } from '@aed/schema'
-import { distanceM } from './normalize'
+import { distanceM, splitStreet } from './normalize'
 import type { NormalizedRecord } from './types'
 
 export interface Commune {
@@ -34,6 +34,8 @@ export interface GeoCache {
 export interface Geo {
   commune(lat: number, lon: number): Promise<Commune | null>
   address(query: string): Promise<GeocodedAddress | null>
+  /** The address point closest to a position, if there is one within 100 m. */
+  nearestAddress(lat: number, lon: number): Promise<GeocodedAddress | null>
 }
 
 export const memoryCache = (): GeoCache => {
@@ -74,6 +76,16 @@ export function createGeo(cache: GeoCache, fetchImpl: typeof fetch = fetch): Geo
     return response.text()
   }
 
+  /** First result of the address register. A village without street names comes back with no street. */
+  const uug = async (query: string): Promise<GeocodedAddress | null> => {
+    const body = JSON.parse(await text(`https://services.gugik.gov.pl/uug/?${query}`)) as { results?: Record<string, Record<string, string | null>> | null }
+    const first = body.results ? Object.values(body.results)[0] : undefined
+    const lat = Number(first?.y)
+    const lon = Number(first?.x)
+    if (!first || !Number.isFinite(lat) || !Number.isFinite(lon)) return null
+    return { lat, lon, city: first.city ?? '', street: first.street ?? '', number: first.number ?? '', postcode: first.code ?? '', simc: first.simc ?? '' }
+  }
+
   return {
     commune: (lat, lon) =>
       cached(`uldk:${lat.toFixed(5)},${lon.toFixed(5)}`, async () => {
@@ -86,17 +98,10 @@ export function createGeo(cache: GeoCache, fetchImpl: typeof fetch = fetch): Geo
         return { terc, gmina: gmina ?? '', powiat: powiat ?? '', wojewodztwo: wojewodztwo ?? '' }
       }),
 
-    address: (query) =>
-      cached(`uug:${query.toLowerCase()}`, async () => {
-        const body = JSON.parse(await text(`https://services.gugik.gov.pl/uug/?request=GetAddress&srid=4326&address=${encodeURIComponent(query)}`)) as {
-          results?: Record<string, Record<string, string>> | null
-        }
-        const first = body.results ? Object.values(body.results)[0] : undefined
-        const lat = Number(first?.y)
-        const lon = Number(first?.x)
-        if (!first || !Number.isFinite(lat) || !Number.isFinite(lon)) return null
-        return { lat, lon, city: first.city ?? '', street: first.street ?? '', number: first.number ?? '', postcode: first.code ?? '', simc: first.simc ?? '' }
-      }),
+    address: (query) => cached(`uug:${query.toLowerCase()}`, () => uug(`request=GetAddress&srid=4326&address=${encodeURIComponent(query)}`)),
+
+    nearestAddress: (lat, lon) =>
+      cached(`uug-point:${lat.toFixed(5)},${lon.toFixed(5)}`, () => uug(`request=GetAddressReverse&srid=4326&location=${encodeURIComponent(`POINT(${lon} ${lat})`)}`)),
   }
 }
 
@@ -108,9 +113,22 @@ export function addressQuery(input: AedInput): string | null {
 }
 
 /** "Marki (miasto)" → "Marki". */
-const communeName = (gmina: string) => gmina.replace(/\s*\(.*\)\s*$/, '').trim()
+export const communeName = (gmina: string) => gmina.replace(/\s*\(.*\)\s*$/, '').trim()
 
 const round = (value: number) => Math.round(value * 1e7) / 1e7
+
+/** Postcode and locality code of an address the register knows, where the record has none. */
+function completeCodes(record: NormalizedRecord, found: GeocodedAddress): void {
+  const { input } = record
+  if (!input.kod_pocztowy && found.postcode) {
+    input.kod_pocztowy = found.postcode
+    record.fixes.push({ code: 'postcode_from_register', field: 'kod_pocztowy', message: 'Kod pocztowy uzupełniono z państwowego rejestru adresów.', after: found.postcode })
+  }
+  if (!input.kod_simc && /^\d{7}$/.test(found.simc)) {
+    input.kod_simc = found.simc
+    record.fixes.push({ code: 'simc_from_register', field: 'kod_simc', message: 'Kod SIMC miejscowości uzupełniono z państwowego rejestru adresów.', after: found.simc })
+  }
+}
 
 /**
  * Completes records from the registers:
@@ -130,14 +148,7 @@ export async function enrich(records: NormalizedRecord[], geo: Geo, options: { g
           if (found) {
             input.szerokosc_geograficzna = round(found.lat)
             input.dlugosc_geograficzna = round(found.lon)
-            if (!input.kod_pocztowy && found.postcode) {
-              input.kod_pocztowy = found.postcode
-              record.fixes.push({ code: 'postcode_from_register', field: 'kod_pocztowy', message: 'Kod pocztowy uzupełniono z państwowego rejestru adresów.', after: found.postcode })
-            }
-            if (!input.kod_simc && /^\d{7}$/.test(found.simc)) {
-              input.kod_simc = found.simc
-              record.fixes.push({ code: 'simc_from_register', field: 'kod_simc', message: 'Kod SIMC miejscowości uzupełniono z państwowego rejestru adresów.', after: found.simc })
-            }
+            completeCodes(record, found)
             record.fixes.push({
               code: 'geocoded_from_address',
               field: 'szerokosc_geograficzna',
@@ -169,6 +180,42 @@ export async function enrich(records: NormalizedRecord[], geo: Geo, options: { g
       } catch {
         // Offline or the register is down: keep what the source gave us.
       }
+    }),
+  )
+}
+
+/**
+ * Gives records that have a position but no street address the nearest address point of the register.
+ * OpenStreetMap hardly ever carries an address, and a device in a place nobody named has nothing else to go by.
+ * Run it after duplicates are matched: an address read off the position is not a second piece of evidence that
+ * two records describe the same device. A point the register (or its cache) has no answer for stays as it was.
+ */
+export async function addressFromPoint(records: NormalizedRecord[], geo: Geo): Promise<void> {
+  await Promise.all(
+    records.map(async (record) => {
+      const { input } = record
+      if (input.szerokosc_geograficzna == null || input.dlugosc_geograficzna == null || input.nazwa_ulicy || input.nr_budynku) return
+      const found = await geo.nearestAddress(input.szerokosc_geograficzna, input.dlugosc_geograficzna).catch(() => null)
+      if (!found?.number) return
+
+      // The commune's name stood in for the locality (see `enrich`); the address point knows the actual town or village.
+      const guess = record.fixes.findIndex((fix) => fix.code === 'locality_from_commune')
+      if (found.city && (guess >= 0 || !input.miejscowosc)) {
+        if (guess >= 0) record.fixes.splice(guess, 1)
+        input.miejscowosc = found.city
+        record.fixes.push({ code: 'locality_from_register', field: 'miejscowosc', message: 'Miejscowość przyjęto z punktu adresowego najbliżej urządzenia.', after: found.city })
+      }
+      // An address in another locality than the one the source named would contradict it; leave such a record alone.
+      if (found.city && input.miejscowosc !== found.city) return
+
+      Object.assign(input, found.street ? splitStreet(`${found.street} ${found.number}`) : { nr_budynku: found.number })
+      record.fixes.push({
+        code: 'address_from_coordinates',
+        field: 'nazwa_ulicy',
+        message: 'Adres ustalono z położenia: to najbliższy punkt adresowy w państwowym rejestrze adresów.',
+        after: [[found.street, found.number].filter(Boolean).join(' '), found.city].filter(Boolean).join(', '),
+      })
+      completeCodes(record, found)
     }),
   )
 }

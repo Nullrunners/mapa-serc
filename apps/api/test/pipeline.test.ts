@@ -71,8 +71,12 @@ describe('pipeline on the official files', () => {
     expect(again.aeds.map((aed) => aed.id).sort()).toEqual(result.aeds.map((aed) => aed.id).sort())
     expect(new Set(again.aeds.map((aed) => aed.record.data_aktualizacji))).toEqual(new Set(['2026-11-21']))
 
+    // Radar labels a commune by its own name, which only the registers cache knows.
+    await store.geoCache().set('uldk:50.03000,21.47000', { terc: '1803042', gmina: 'Dębica (gmina wiejska)', powiat: 'dębicki', wojewodztwo: 'podkarpackie' })
+
     const reopened = new Store((store as unknown as { db: Db }).db)
     await reopened.load()
+    expect(reopened.communeNames().get('1803042')).toBe('Dębica')
     expect(reopened.aeds).toHaveLength(74)
     expect(reopened.official()).toHaveLength(73)
     expect(reopened.reports).toHaveLength(4)

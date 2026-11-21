@@ -102,7 +102,8 @@ export const aedListHandler: RouteHandler<typeof aedListRoute> = async (c) => {
       if (query.availableNow === 'true' && reachableNow(record, at) !== 'yes') return false
       if (bbox && !(record.dlugosc_geograficzna >= bbox[0] && record.szerokosc_geograficzna >= bbox[1] && record.dlugosc_geograficzna <= bbox[2] && record.szerokosc_geograficzna <= bbox[3])) return false
       if (query.terc && !(record.kod_terc ?? '').startsWith(query.terc)) return false
-      if (text && ![record.nazwa, record.nazwa_ulicy, record.miejscowosc, record.podmiot_odpowiedzialny].some((value) => value?.toLowerCase().includes(text))) return false
+      // The words about the spot count too: for a device nobody named they are where the name of the place ends up.
+      if (text && ![record.nazwa, record.nazwa_ulicy, record.miejscowosc, record.podmiot_odpowiedzialny, record.opis_lokalizacji].some((value) => value?.toLowerCase().includes(text))) return false
       return true
     })
     .map((aed) => ({ aed, distance: near ? Math.round(distanceM(near[0], near[1], aed.record.szerokosc_geograficzna, aed.record.dlugosc_geograficzna)) : null }))

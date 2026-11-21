@@ -9,11 +9,12 @@
   "format": "geojson",
   "snapshot": "osm/PL.geojson",
   "keyColumn": "@osm_id",
-  "fallbackName": ["operator", "description", "defibrillator:location:pl", "defibrillator:location"],
+  "fallbackName": ["operator"],
   "mapping": {
     "@lat": "szerokosc_geograficzna",
     "@lon": "dlugosc_geograficzna",
     "name": "nazwa",
+    "description": "uwagi_dostepu",
     "addr:street": "nazwa_ulicy",
     "addr:housenumber": "nr_budynku",
     "addr:postcode": "kod_pocztowy",

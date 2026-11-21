@@ -1,12 +1,12 @@
 /**
  * The whole merge, from source files to national records:
- * read → normalise → per-source checks → registers (coordinates, TERC) → deduplicate → merge → report.
+ * read → normalise → per-source checks → registers (coordinates, TERC) → deduplicate → addresses for OSM → merge → report.
  * No database in here: the caller passes what was stored and persists what comes back.
  */
-import type { AedRecord } from '@aed/schema'
+import { UNNAMED_PLACE, type AedRecord } from '@aed/schema'
 import { sourceCoverage, type FieldCoverage } from './coverage'
 import { cluster, type DedupItem } from './dedup'
-import { enrich, type Geo } from './geocode'
+import { addressFromPoint, enrich, type Geo } from './geocode'
 import { memberKey, mergeCluster, type MergedAed } from './merge'
 import { checkSource, normalizeSource, parseSource, readSourceBytes, type Origin } from './sources'
 import { PRIORITY, type Fix, type FixCode, type Issue, type IssueCode, type NormalizedRecord, type SourceDef } from './types'
@@ -27,8 +27,8 @@ export interface PipelineInput {
   /** Registers client; null skips the network step (tests, offline). */
   geo: Geo | null
   /**
-   * Registers client that answers only from its cache. Used for OpenStreetMap: 18 thousand lookups are too many
-   * for a normal run, so a separate job fills the cache and every run then reads from it.
+   * Registers client that answers only from its cache. Used for OpenStreetMap (commune codes and addresses):
+   * 18 thousand lookups are too many for a normal run, so a separate job fills the cache and every run then reads from it.
    */
   cachedGeo: Geo | null
   /** member key → id already assigned in the national dataset. */
@@ -167,12 +167,14 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
       priority: PRIORITY[sources.get(record.sourceId)!.kind],
       lat,
       lon,
-      name: record.input.nazwa ?? '',
+      // A device nobody named is matched by the words about its spot; they often carry the name of the place.
+      name: (record.input.nazwa === UNNAMED_PLACE ? record.input.opis_lokalizacji : record.input.nazwa) ?? '',
       street: record.input.nazwa_ulicy ?? '',
       number: record.input.nr_budynku ?? '',
     })
   })
   const { clusters, reviews } = cluster(located)
+  if (input.cachedGeo) await addressFromPoint(records.filter(isOsm), input.cachedGeo)
 
   const context = { sources, existingIds: input.existingIds, today: input.today }
   const aeds = [...clusters, ...unlocated.map((index) => [index])].map((members) => mergeCluster(members.map((index) => records[index]!), context))

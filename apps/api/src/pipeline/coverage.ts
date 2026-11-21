@@ -27,9 +27,13 @@ function addedFields(record: NormalizedRecord): Set<string> {
         // A code that the system corrected still came from the source; only a missing one counts as added.
         if (fix.before === undefined) added.add('kod_terc')
         break
+      case 'address_from_coordinates':
+        added.add('cecha_ulicy').add('nazwa_ulicy').add('nr_budynku')
+        break
       case 'postcode_from_register':
       case 'simc_from_register':
       case 'locality_from_commune':
+      case 'locality_from_register':
         if (fix.field) added.add(fix.field)
         break
     }
