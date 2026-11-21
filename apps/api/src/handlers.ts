@@ -26,7 +26,9 @@ import { runJob } from './jobs'
 import { KNOWN_SOURCES } from './pipeline/known'
 import { distanceM } from './pipeline/normalize'
 import type { MergedAed } from './pipeline/merge'
+import { summariseReports } from './passport/model'
 import { csvCell, toCsv, toGeoJson, toJsonLd, toScopeCsv } from './publish/files'
+import { reach } from './reach/score'
 import { harvesterXml, nationalFeed } from './publish/harvester'
 import { patternWorkbook } from './publish/xlsx'
 import type { Context } from 'hono'
@@ -93,7 +95,13 @@ export const aedListHandler: RouteHandler<typeof aedListRoute> = async (c) => {
   const bbox = query.bbox?.split(',').map(Number) as [number, number, number, number] | undefined
   const near = query.near?.split(',').map(Number) as [number, number] | undefined
   const text = query.q?.trim().toLowerCase()
-  const at = new Date(now())
+  const at = query.at ? new Date(query.at) : new Date(now())
+  const nowIso = now()
+  /** A problem passers-by reported and nobody has resolved yet. */
+  const problem = (aed: MergedAed) => {
+    const reports = store.passports.reportsOf(aed.id)
+    return reports.length > 0 && summariseReports(reports, store.passports.get(aed.id)?.confirmedAt ?? null, nowIso).problems.length > 0
+  }
 
   let matches = store.aeds
     .filter((aed) => inLayer(aed, query.layer))
@@ -110,7 +118,10 @@ export const aedListHandler: RouteHandler<typeof aedListRoute> = async (c) => {
 
   if (near) {
     if (query.radiusM !== undefined) matches = matches.filter((match) => match.distance! <= query.radiusM!)
-    matches.sort((a, b) => a.distance! - b.distance!)
+    if (query.sort === 'reach') {
+      const scores = new Map(matches.map((match) => [match.aed.id, reach(match.aed.record, match.distance!, at, { problem: problem(match.aed) }).score]))
+      matches.sort((a, b) => scores.get(a.aed.id)! - scores.get(b.aed.id)! || a.distance! - b.distance!)
+    } else matches.sort((a, b) => a.distance! - b.distance!)
   } else {
     // Without a point to measure from: devices confirmed by their keeper first, then by name.
     const rank = (aed: MergedAed) => (aed.publication === 'official' ? 0 : 1)
@@ -121,7 +132,15 @@ export const aedListHandler: RouteHandler<typeof aedListRoute> = async (c) => {
     total: matches.length,
     items: matches
       .slice(query.offset, query.offset + query.limit)
-      .map(({ aed, distance }) => ({ id: aed.id, publication: aed.publication, quality: aed.quality, distanceM: distance, availableNow: reachableNow(aed.record, at), record: aed.record })),
+      .map(({ aed, distance }) => ({
+        id: aed.id,
+        publication: aed.publication,
+        quality: aed.quality,
+        distanceM: distance,
+        availableNow: reachableNow(aed.record, at),
+        record: aed.record,
+        ...(distance === null ? {} : { reach: reach(aed.record, distance, at, { problem: problem(aed), withChange: true }) }),
+      })),
   })
 }
 

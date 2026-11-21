@@ -669,6 +669,7 @@ export interface components {
              */
             availableNow: "yes" | "no" | "unknown";
             record: components["schemas"]["AedRecord"];
+            reach?: components["schemas"]["Reach"];
         };
         /**
          * @description official = dane od opiekuna lub ze zbioru urzędowego, trafia do pliku dla dane.gov.pl. community = znane tylko z OpenStreetMap (ODbL), niepotwierdzone. pending = zgłoszenie z kreatora czeka na zatwierdzenie przez operatora. incomplete = brakuje pola wymaganego, zwykle położenia.
@@ -759,6 +760,12 @@ export interface components {
              */
             dostep: "publiczny" | "ograniczony" | "prywatny" | null;
             /**
+             * @description Co trzeba zrobić na miejscu, żeby wziąć defibrylator. Od tego zależy, ile sekund straci ratujący. Kodu do szafki nie wpisuj: podaje go dyspozytor 112.
+             * @example szafka_z_alarmem
+             * @enum {string|null}
+             */
+            sposob_dostepu: "swobodny" | "szafka_z_alarmem" | "szafka_z_kodem" | "przez_obsluge" | null;
+            /**
              * @description Kiedy można dostać się do urządzenia, w zapisie opening_hours znanym z OpenStreetMap: „24/7" przez całą dobę, „Mo-Fr 08:00-16:00" od poniedziałku do piątku, „Mo-Fr 07:30-15:30; Sa 08:00-12:00" dla różnych dni. Kreator układa ten zapis z wybranych dni i godzin.
              * @example Mo-Fr 08:00-16:00
              */
@@ -845,6 +852,33 @@ export interface components {
              * @example 2026-11-21
              */
             data_aktualizacji: string;
+        };
+        /** @description Przy zapytaniu z parametrem near: dostępność w tej chwili i szacowany czas do urządzenia */
+        Reach: {
+            /**
+             * @description open = godziny obejmują tę chwilę; likely_open = szafka na zewnątrz bez podanych godzin; unknown = nie wiadomo; closed = poza godzinami, wycofane albo tylko dla personelu
+             * @enum {string}
+             */
+            state: "open" | "likely_open" | "unknown" | "closed";
+            /** @description Szacowany czas do urządzenia w ręku, w sekundach: dojście i czas na miejscu. null, gdy teraz niedostępne */
+            etaS: number | null;
+            walkS: number;
+            /** @description Czas stracony na miejscu: szafka z kodem, recepcja, piętra */
+            accessS: number;
+            /** @enum {string|null} */
+            method: "swobodny" | "szafka_z_alarmem" | "szafka_z_kodem" | "przez_obsluge" | null;
+            /** @description true, gdy sposób dostępu odczytano z opisu, a nie z pola sposob_dostepu */
+            methodGuessed: boolean;
+            /** @description Najbliższa zmiana: do której czynne albo od kiedy (czas lokalny, days = 0 dziś, 1 jutro) */
+            change: {
+                open: boolean;
+                minutes: number;
+                time: string;
+                days: number;
+            } | null;
+            reasons: ("hours_24_7" | "hours_open" | "hours_closed" | "outdoor_no_hours" | "no_hours" | "staff_only" | "out_of_service" | "method_free" | "method_alarm" | "method_code" | "method_staff" | "outdoor" | "floor" | "reported_problem")[];
+            /** @description Klucz sortowania w sekundach (mniej = lepiej) */
+            score: number;
         };
         /**
          * @description Which devices: official (default), community (OSM only) or all
@@ -1547,6 +1581,10 @@ export interface operations {
                 q?: string;
                 /** @description true = only devices a passer-by can reach right now (see `availableNow` of a device) */
                 availableNow?: "true" | "false";
+                /** @description With `near`: distance = nearest first; reach = soonest in hand at this minute (hours, holidays, cabinet, floor) */
+                sort?: "distance" | "reach";
+                /** @description Moment to check instead of now, e.g. 2026-11-22T03:00:00+01:00 */
+                at?: string;
                 limit?: number;
                 offset?: number | null;
             };

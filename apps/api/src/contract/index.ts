@@ -6,7 +6,7 @@
  * published CSV. Everything around it is camelCase. A missing value is null; fields are never omitted.
  */
 import { createRoute, z } from '@hono/zod-openapi'
-import { FIELDS, STATUS, type FieldDef } from '@aed/schema'
+import { ACCESS_METHODS, FIELDS, STATUS, type FieldDef } from '@aed/schema'
 
 // ---------------------------------------------------------------- building blocks
 
@@ -62,6 +62,27 @@ const IssueSchema = z
   .object({ code: z.string(), severity: z.enum(['error', 'warning']), field: z.string().optional(), message: z.string() })
   .openapi('Issue', { description: 'Problem, którego system nie naprawił. „error" wstrzymuje publikację rekordu.' })
 
+export const Reach = z
+  .object({
+    state: z.enum(['open', 'likely_open', 'unknown', 'closed']).openapi({
+      description: 'open = godziny obejmują tę chwilę; likely_open = szafka na zewnątrz bez podanych godzin; unknown = nie wiadomo; closed = poza godzinami, wycofane albo tylko dla personelu',
+    }),
+    etaS: z.number().int().nullable().openapi({ description: 'Szacowany czas do urządzenia w ręku, w sekundach: dojście i czas na miejscu. null, gdy teraz niedostępne' }),
+    walkS: z.number().int(),
+    accessS: z.number().int().openapi({ description: 'Czas stracony na miejscu: szafka z kodem, recepcja, piętra' }),
+    method: z.enum(ACCESS_METHODS).nullable(),
+    methodGuessed: z.boolean().openapi({ description: 'true, gdy sposób dostępu odczytano z opisu, a nie z pola sposob_dostepu' }),
+    change: z
+      .object({ open: z.boolean(), minutes: z.number().int(), time: z.string(), days: z.number().int() })
+      .nullable()
+      .openapi({ description: 'Najbliższa zmiana: do której czynne albo od kiedy (czas lokalny, days = 0 dziś, 1 jutro)' }),
+    reasons: z.array(
+      z.enum(['hours_24_7', 'hours_open', 'hours_closed', 'outdoor_no_hours', 'no_hours', 'staff_only', 'out_of_service', 'method_free', 'method_alarm', 'method_code', 'method_staff', 'outdoor', 'floor', 'reported_problem']),
+    ),
+    score: z.number().int().openapi({ description: 'Klucz sortowania w sekundach (mniej = lepiej)' }),
+  })
+  .openapi('Reach', { description: 'Dostępny TERAZ: czy i jak szybko da się wyjąć urządzenie w tej minucie.' })
+
 export const AedItem = z
   .object({
     id: z.string(),
@@ -73,6 +94,7 @@ export const AedItem = z
         'Czy przechodzień dostanie się do urządzenia w chwili zapytania: no = poza godzinami dostępności, wycofane, czasowo niedostępne albo tylko dla personelu; unknown = rekord nie podaje godzin dostępności albo podaje je w zapisie, którego system nie rozumie.',
     }),
     record: AedRecord,
+    reach: Reach.optional().openapi({ description: 'Przy zapytaniu z parametrem near: dostępność w tej chwili i szacowany czas do urządzenia' }),
   })
   .openapi('AedItem')
 
@@ -120,6 +142,8 @@ export const AedListQuery = z.object({
     .openapi({ description: 'TERC prefix: 2 digits = województwo, 4 = powiat, 7 = gmina', example: '1434021' }),
   q: z.string().max(100).optional().openapi({ description: 'Text to find in the name, street or locality' }),
   availableNow: z.enum(['true', 'false']).optional().openapi({ description: 'true = only devices a passer-by can reach right now (see `availableNow` of a device)' }),
+  sort: z.enum(['distance', 'reach']).default('distance').openapi({ description: 'With `near`: distance = nearest first; reach = soonest in hand at this minute (hours, holidays, cabinet, floor)' }),
+  at: z.iso.datetime({ offset: true }).optional().openapi({ description: 'Moment to check instead of now, e.g. 2026-11-22T03:00:00+01:00', example: '2026-11-22T03:00:00+01:00' }),
   limit: z.coerce.number().int().min(1).max(1000).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 })

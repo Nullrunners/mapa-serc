@@ -226,6 +226,9 @@
           },
           "record": {
             "$ref": "#/components/schemas/AedRecord"
+          },
+          "reach": {
+            "$ref": "#/components/schemas/Reach"
           }
         },
         "required": [
@@ -371,6 +374,21 @@
             ],
             "description": "Kto ma dostęp do urządzenia.",
             "example": "publiczny"
+          },
+          "sposob_dostepu": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "swobodny",
+              "szafka_z_alarmem",
+              "szafka_z_kodem",
+              "przez_obsluge",
+              null
+            ],
+            "description": "Co trzeba zrobić na miejscu, żeby wziąć defibrylator. Od tego zależy, ile sekund straci ratujący. Kodu do szafki nie wpisuj: podaje go dyspozytor 112.",
+            "example": "szafka_z_alarmem"
           },
           "godziny_dostepnosci": {
             "type": [
@@ -525,6 +543,7 @@
           "wewnatrz_budynku",
           "pietro",
           "dostep",
+          "sposob_dostepu",
           "godziny_dostepnosci",
           "uwagi_dostepu",
           "podmiot_odpowiedzialny",
@@ -544,6 +563,117 @@
           "data_aktualizacji"
         ],
         "description": "Rekord urządzenia w układzie wzorca danych AED – te same kolumny co w pliku CSV dla dane.gov.pl."
+      },
+      "Reach": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "likely_open",
+              "unknown",
+              "closed"
+            ],
+            "description": "open = godziny obejmują tę chwilę; likely_open = szafka na zewnątrz bez podanych godzin; unknown = nie wiadomo; closed = poza godzinami, wycofane albo tylko dla personelu"
+          },
+          "etaS": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Szacowany czas do urządzenia w ręku, w sekundach: dojście i czas na miejscu. null, gdy teraz niedostępne"
+          },
+          "walkS": {
+            "type": "integer"
+          },
+          "accessS": {
+            "type": "integer",
+            "description": "Czas stracony na miejscu: szafka z kodem, recepcja, piętra"
+          },
+          "method": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "swobodny",
+              "szafka_z_alarmem",
+              "szafka_z_kodem",
+              "przez_obsluge",
+              null
+            ]
+          },
+          "methodGuessed": {
+            "type": "boolean",
+            "description": "true, gdy sposób dostępu odczytano z opisu, a nie z pola sposob_dostepu"
+          },
+          "change": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "open": {
+                "type": "boolean"
+              },
+              "minutes": {
+                "type": "integer"
+              },
+              "time": {
+                "type": "string"
+              },
+              "days": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "open",
+              "minutes",
+              "time",
+              "days"
+            ],
+            "description": "Najbliższa zmiana: do której czynne albo od kiedy (czas lokalny, days = 0 dziś, 1 jutro)"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "hours_24_7",
+                "hours_open",
+                "hours_closed",
+                "outdoor_no_hours",
+                "no_hours",
+                "staff_only",
+                "out_of_service",
+                "method_free",
+                "method_alarm",
+                "method_code",
+                "method_staff",
+                "outdoor",
+                "floor",
+                "reported_problem"
+              ]
+            }
+          },
+          "score": {
+            "type": "integer",
+            "description": "Klucz sortowania w sekundach (mniej = lepiej)"
+          }
+        },
+        "required": [
+          "state",
+          "etaS",
+          "walkS",
+          "accessS",
+          "method",
+          "methodGuessed",
+          "change",
+          "reasons",
+          "score"
+        ],
+        "description": "Przy zapytaniu z parametrem near: dostępność w tej chwili i szacowany czas do urządzenia"
       },
       "Layer": {
         "type": "string",
@@ -3076,6 +3206,33 @@
             "required": false,
             "description": "true = only devices a passer-by can reach right now (see `availableNow` of a device)",
             "name": "availableNow",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "distance",
+                "reach"
+              ],
+              "default": "distance",
+              "description": "With `near`: distance = nearest first; reach = soonest in hand at this minute (hours, holidays, cabinet, floor)"
+            },
+            "required": false,
+            "description": "With `near`: distance = nearest first; reach = soonest in hand at this minute (hours, holidays, cabinet, floor)",
+            "name": "sort",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Moment to check instead of now, e.g. 2026-11-22T03:00:00+01:00",
+              "example": "2026-11-22T03:00:00+01:00"
+            },
+            "required": false,
+            "description": "Moment to check instead of now, e.g. 2026-11-22T03:00:00+01:00",
+            "name": "at",
             "in": "query"
           },
           {
