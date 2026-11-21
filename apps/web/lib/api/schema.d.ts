@@ -848,7 +848,7 @@ export interface components {
             /** @description true while this endpoint answers with sample data */
             stub: boolean;
             /** @enum {string} */
-            format: "csv" | "geojson" | "xlsx";
+            format: "csv" | "geojson" | "xlsx" | "xls";
             fileFixes: components["schemas"]["Fix"][];
             columns: {
                 header: string;
