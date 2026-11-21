@@ -413,6 +413,32 @@ export default function Wizard() {
               Zobacz, co sprawdziliśmy w Twoim pliku
             </Link>
           </p>
+          {result.devices.length > 0 && (
+            <section aria-labelledby="paszporty-naglowek" className="space-y-2">
+              <h3 id="paszporty-naglowek" className="text-lg font-bold">
+                Paszporty Twoich urządzeń
+              </h3>
+              <p>
+                Wydrukuj naklejki z kodem QR i przyklej je przy defibrylatorach. W panelu opiekuna wpiszesz terminy ważności elektrod i baterii, a my przypomnimy Ci o wymianie. Zachowaj te linki: każdy daje
+                dostęp do zarządzania jednym urządzeniem.
+              </p>
+              <ul className="divide-y divide-line border-y border-line text-sm">
+                {result.devices.map((device) => (
+                  <li key={device.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2">
+                    <span className="font-semibold">{device.name}</span>
+                    <span className="flex gap-4">
+                      <a href={device.stickerUrl} className="text-gov underline">
+                        Naklejka
+                      </a>
+                      <a href={device.ownerUrl} className="text-gov underline">
+                        Panel opiekuna
+                      </a>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </section>
       )}
     </div>
