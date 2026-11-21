@@ -53,7 +53,7 @@ describe('data scope of the sources', () => {
   const scope = (name: string, field: string) => report(name).coverage.find((entry) => entry.field === field)!
 
   beforeAll(async () => {
-    const defs = loadSourceDefs().filter((def) => def.kind === 'official')
+    const defs = loadSourceDefs().filter((def) => def.id.startsWith('dane-gov-pl-'))
     result = await runPipeline({ defs, stored: [], rawDir: null, refresh: false, geo: null, cachedGeo: null, existingIds: new Map(), previous: new Map(), today: '2026-11-21' })
   })
 

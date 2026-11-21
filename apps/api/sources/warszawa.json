@@ -1,0 +1,30 @@
+{
+  "id": "um-warszawa",
+  "kind": "official",
+  "name": "Urząd m.st. Warszawy",
+  "attribution": "Urząd m.st. Warszawy (dane.gov.pl, zbiór 39512)",
+  "licence": "CC BY 4.0",
+  "url": "https://api.um.warszawa.pl/api/action/aed_get/?id=fc421df8-ebb7-42bc-b198-741a1858e03e&apikey={WARSAW_API_KEY}",
+  "landingPage": "https://dane.gov.pl/pl/dataset/39512",
+  "format": "geojson",
+  "fixture": "warszawa.json",
+  "keyColumn": "defibrillator_id",
+  "mapping": {
+    "@lat": "szerokosc_geograficzna",
+    "@lon": "dlugosc_geograficzna",
+    "defibrillator_id": "id_w_zrodle",
+    "location_object_name": "nazwa",
+    "location_street": "nazwa_ulicy",
+    "location_building": "nr_budynku",
+    "location_postcode": "kod_pocztowy",
+    "location_city": "miejscowosc",
+    "location_description": "opis_lokalizacji",
+    "device_location": "wewnatrz_budynku",
+    "device_public_access": "dostep",
+    "device_access_description": "godziny_dostepnosci",
+    "device_availability": null,
+    "device_manufacturer": "producent",
+    "device_specifications": null
+  },
+  "defaults": { "status": "czynny" }
+}
