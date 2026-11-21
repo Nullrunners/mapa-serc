@@ -119,12 +119,19 @@ export interface Overview {
   areas: Map<string, TotalsBuilder>
 }
 
-/** The whole country, summed straight into large hexagons; yields to other requests every few thousand squares. */
+/**
+ * The country takes most of a minute to count, and a request that comes in meanwhile waits until this lets go.
+ * So it lets go this often: a list of devices or a map layer is then held up by a blink, not by a quarter of a second.
+ */
+const SLICE_MS = 8
+
+/** The whole country, summed straight into large hexagons; yields to other requests every few milliseconds. */
 export async function nationalOverview(cells: readonly GridCell[], coverage: Coverage): Promise<Overview> {
   const total = new TotalsBuilder()
   const areas = new Map<string, TotalsBuilder>()
-  for (let i = 0; i < cells.length; i++) {
-    for (const demand of hexesOfCell(cells[i]!)) {
+  let sliceEnd = performance.now() + SLICE_MS
+  for (const cell of cells) {
+    for (const demand of hexesOfCell(cell)) {
       const state = hexState(demand, coverage)
       total.add(state)
       const parent = cellToParent(demand.hex, OVERVIEW_RES)
@@ -132,7 +139,10 @@ export async function nationalOverview(cells: readonly GridCell[], coverage: Cov
       if (!area) areas.set(parent, (area = new TotalsBuilder()))
       area.add(state)
     }
-    if (i % 2000 === 1999) await new Promise((done) => setImmediate(done))
+    if (performance.now() >= sliceEnd) {
+      await new Promise((done) => setImmediate(done))
+      sliceEnd = performance.now() + SLICE_MS
+    }
   }
   return { totals: total.result(), areas }
 }
