@@ -36,7 +36,7 @@ export default function StickerSheet() {
   for (let start = 0; start < devices.length; start += STICKERS_PER_PAGE) pages.push(devices.slice(start, start + STICKERS_PER_PAGE));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 print:space-y-0">
       <style>{`
         @page { size: A4; margin: 4mm; }
         @media print { main { padding: 0 !important; max-width: none !important; } }

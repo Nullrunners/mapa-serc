@@ -18,7 +18,7 @@ export default function Sticker({ id }: { id: string }) {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 print:space-y-0">
       <style>{`
         @page { size: 100mm 100mm; margin: 0; }
         @media print { main { padding: 0 !important; max-width: none !important; } }
@@ -40,7 +40,10 @@ export default function Sticker({ id }: { id: string }) {
         )}
       </div>
 
-      <StickerFace id={id} aed={loaded.state === "ready" ? loaded.data : null} />
+      {/* 10 cm is wider than a phone screen; the preview scrolls instead of the page. */}
+      <div className="overflow-x-auto print:overflow-visible">
+        <StickerFace id={id} aed={loaded.state === "ready" ? loaded.data : null} />
+      </div>
 
       <div className="max-w-2xl space-y-1 text-sm text-muted print:hidden">
         {url.state === "ready" && (
