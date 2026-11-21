@@ -353,7 +353,7 @@ export default function Wizard() {
               Adres e-mail instytucji <span className="font-normal text-muted">(nieobowiązkowy)</span>
             </label>
             <p id="email-opis" className="text-sm text-muted">
-              Wyślemy tu przypomnienie, żeby potwierdzić, że dane są aktualne. Nie pokazujemy go publicznie.
+              Wyślemy tu naklejki z kodem QR dla Twoich urządzeń i przypomnimy o wymianie elektrod i baterii przed terminem. Nie pokazujemy tego adresu publicznie.
             </p>
             <input id="email" type="email" autoComplete="email" aria-describedby="email-opis" value={provider.email} onChange={(event) => setProvider({ ...provider, email: event.target.value })} className="mt-1 w-full rounded border border-muted px-3 py-2" />
           </div>
@@ -397,6 +397,13 @@ export default function Wizard() {
               ? "Dane są już widoczne na mapie, a przy najbliższej aktualizacji pojawią się też na portalu dane.gov.pl."
               : "Administrator zbioru musi je jeszcze zatwierdzić. Potem zobaczysz je na mapie i na portalu dane.gov.pl."}
           </p>
+          {result.status === "pending" && (
+            <p>
+              {provider.email
+                ? `Po zatwierdzeniu wyślemy na adres ${provider.email} naklejki z kodem QR i linki do paszportów urządzeń.`
+                : "Naklejki z kodem QR i linki do paszportów urządzeń przekaże Ci administrator zbioru po zatwierdzeniu."}
+            </p>
+          )}
           <ul className="list-disc space-y-1 pl-6">
             <li>Nowe urządzenia: {result.added}</li>
             <li>Urządzenia, które już znaliśmy i połączyliśmy z Twoimi danymi: {result.merged}</li>
@@ -421,6 +428,7 @@ export default function Wizard() {
               <p>
                 Wydrukuj naklejki z kodem QR i przyklej je przy defibrylatorach. W panelu opiekuna wpiszesz terminy ważności elektrod i baterii, a my przypomnimy Ci o wymianie. Zachowaj te linki: każdy daje
                 dostęp do zarządzania jednym urządzeniem.
+                {provider.email && ` Wysłaliśmy je też na adres ${provider.email}.`}
               </p>
               <ul className="divide-y divide-line border-y border-line text-sm">
                 {result.devices.map((device) => (
