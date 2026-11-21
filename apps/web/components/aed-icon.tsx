@@ -38,9 +38,9 @@ const BOLT = "M11.375 8.75 8 14h2.375L9.5 18.25l3.5-5.5h-2.375z";
 const CROSS = "M18.2 2.8h1.6v1.4h1.4v1.6h-1.4v1.4h-1.6V5.8h-1.4V4.2h1.4z";
 
 /** The icon for the legend, in place of a coloured dot. */
-export function AedIcon({ kind, size = 16, faded = false }: { kind: AedKind; size?: number; faded?: boolean }) {
+export function AedIcon({ kind, size = 20 }: { kind: AedKind; size?: number }) {
   return (
-    <svg aria-hidden viewBox="0 0 24 24" width={size} height={size} className="shrink-0" opacity={faded ? FADED : 1}>
+    <svg aria-hidden viewBox="0 0 24 24" width={size} height={size} className="shrink-0">
       <path d={SQUARE} fill={kind.color} stroke="#ffffff" strokeWidth={1.5} />
       <path d={HEART} fill={kind.glyph} />
       <path d={BOLT} fill={kind.color} />
@@ -49,15 +49,12 @@ export function AedIcon({ kind, size = 16, faded = false }: { kind: AedKind; siz
   );
 }
 
-/** How much of an unconfirmed device's icon shows, on the map and in the legend. */
-export const FADED = 0.6;
-
 /**
- * The icon for the map, 28 px so it stands out among the shops and stops of the base map. It is drawn twice as large
+ * The icon for the map, 36 px so it stands out among the shops and stops of the base map. It is drawn twice as large
  * as it is shown, so it stays sharp on dense screens: add it with `pixelRatio: 2`.
  */
 export function aedImage(kind: AedKind): ImageData | null {
-  const size = 2 * 28;
+  const size = 2 * 36;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
   const context = canvas.getContext("2d");

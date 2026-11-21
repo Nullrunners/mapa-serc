@@ -4,17 +4,14 @@ import type { GeoJSONSource, Map as MapLibreMap, MapMovementEvent } from "maplib
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { Picked } from "@/components/device-list";
-import { AED_ICON_IMAGE, AED_ICON_ORDER, AED_KINDS, AedIcon, aedImage, aedImageId, FADED } from "@/components/aed-icon";
+import { AED_ICON_IMAGE, AED_ICON_ORDER, AED_KINDS, AedIcon, aedImage, aedImageId } from "@/components/aed-icon";
 import { MapFrame, MapLegend, MapUnavailable } from "@/components/map-frame";
 import { API_URL } from "@/lib/api/client";
 import { EMPTY, lineFeature, pointFeature, pointerOver, setData, useMapLibre, whenLoaded } from "@/lib/maplibre";
 import { bearing, type Point } from "@/lib/route";
 
-/** Drawn in this order, so the confirmed devices lie on top; the unconfirmed ones are paler. */
-const LAYERS = [
-  { id: "community", opacity: FADED },
-  { id: "official", opacity: 1 },
-] as const;
+/** Drawn in this order, so the confirmed devices lie on top of the unconfirmed ones. */
+const LAYERS = [{ id: "community" }, { id: "official" }] as const;
 
 /** A group of devices may hold any kind, so it takes the colour of the defibrillator sign. */
 const CLUSTER_COLOR = AED_KINDS[0].color;
@@ -78,7 +75,7 @@ function addLayers(map: MapLibreMap, onSelect: (picked: Picked) => void) {
       type: "circle",
       source: layer.id,
       filter: ["has", "point_count"],
-      paint: { "circle-color": CLUSTER_COLOR, "circle-opacity": 0.85 * layer.opacity, "circle-radius": ["step", ["get", "point_count"], 14, 50, 18, 500, 24], "circle-stroke-width": 2, "circle-stroke-color": "#ffffff" },
+      paint: { "circle-color": CLUSTER_COLOR, "circle-opacity": 0.9, "circle-radius": ["step", ["get", "point_count"], 14, 50, 18, 500, 24], "circle-stroke-width": 2, "circle-stroke-color": "#ffffff" },
     });
     map.addLayer({
       id: `${layer.id}-count`,
@@ -94,7 +91,6 @@ function addLayers(map: MapLibreMap, onSelect: (picked: Picked) => void) {
       source: layer.id,
       filter: ["!", ["has", "point_count"]],
       layout: { "icon-image": AED_ICON_IMAGE, "symbol-sort-key": AED_ICON_ORDER, "icon-allow-overlap": true, "icon-ignore-placement": true },
-      paint: { "icon-opacity": layer.opacity },
     });
 
     map.on("click", `${layer.id}-clusters`, async (event) => {
@@ -145,7 +141,7 @@ function addLayers(map: MapLibreMap, onSelect: (picked: Picked) => void) {
 
   // A ring around the device shown in the panel, drawn above both layers.
   map.addSource("selected", { type: "geojson", data: EMPTY });
-  map.addLayer({ id: "selected-ring", type: "circle", source: "selected", paint: { "circle-radius": 20, "circle-opacity": 0, "circle-stroke-width": 4, "circle-stroke-color": "#1b1b1b" } });
+  map.addLayer({ id: "selected-ring", type: "circle", source: "selected", paint: { "circle-radius": 25, "circle-opacity": 0, "circle-stroke-width": 4, "circle-stroke-color": "#1b1b1b" } });
 }
 
 /** A round badge with an arrow pointing up, twice the size it is drawn at so it stays sharp on dense screens. */
@@ -265,12 +261,6 @@ export default function AedMap({ showCommunity, focus, walk, guide, banner, sele
                 {kind.label}
               </li>
             ))}
-            {showCommunity && (
-              <li className="flex items-center gap-1.5">
-                <AedIcon kind={AED_KINDS[0]} faded />
-                bledsze: niepotwierdzone
-              </li>
-            )}
             {focus && (
               <li className="flex items-center gap-1.5">
                 <Dot color={WALK_COLOR} />
