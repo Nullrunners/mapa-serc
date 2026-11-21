@@ -113,6 +113,8 @@ export default function OwnerPanel() {
 
   const field = (key: keyof Form) => ({ value: form[key], onChange: (event: { target: { value: string } }) => setForm({ ...form, [key]: event.target.value }) });
   const { public: card } = view;
+  // A keeper may still confirm (they decide about the status), but should not do it by mistake over an old date.
+  const expired = card.items.filter((item) => item.state === "expired");
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -130,6 +132,11 @@ export default function OwnerPanel() {
         <p className="text-sm">
           {card.confirmedAt ? `Ostatnie potwierdzenie: ${date(card.confirmedAt)}${card.confirmedByKeeper ? "" : " (według źródła danych)"}.` : "Urządzenie nie ma jeszcze potwierdzenia."}
         </p>
+        {expired.length > 0 && (
+          <p className="text-sm font-semibold text-danger">
+            Minął termin: {expired.map((item) => `${item.label} (${date(item.date ?? "")})`).join(", ")}. Po wymianie wpisz niżej nową datę, a dopiero potem potwierdź sprawność.
+          </p>
+        )}
         <button type="button" disabled={busy} onClick={confirm} className="w-full rounded bg-ok px-4 py-4 text-lg font-bold text-white hover:opacity-90 disabled:opacity-60 sm:w-auto">
           ✓ Potwierdzam sprawność
         </button>
