@@ -215,6 +215,18 @@ export function parseBoolean(text: string): boolean | null {
   return TRUE.has(value) ? true : FALSE.has(value) ? false : null
 }
 
+/**
+ * Whether the device is inside a building: yes / no, or the words offices use ("Wewnątrz budynku",
+ * "Na zewnątrz budynku"). Anything written after those words is returned as `rest`.
+ */
+export function parseIndoor(text: string): { indoor: boolean; rest: string } | null {
+  const plain = parseBoolean(text)
+  if (plain !== null) return { indoor: plain, rest: '' }
+  const match = text.trim().match(/^(wewnątrz|w środku|na zewnątrz|zewnątrz)(?:\s+(?:budynku|obiektu))?\s*(?:[,;:–-]\s*(.*))?$/i)
+  if (!match) return null
+  return { indoor: !/zewn/i.test(match[1]!), rest: (match[2] ?? '').trim() }
+}
+
 const ACCESS_WORDS: Record<string, Access> = {
   publiczny: 'publiczny',
   yes: 'publiczny',
@@ -281,6 +293,10 @@ export function parseDate(text: string): string | null {
 }
 
 const DAYS: [RegExp, string][] = [
+  // "Dni robocze: poniedziałek 8-18, wtorek-piątek 8-16": the phrase only introduces the days that follow.
+  [/dni (?:powszednie|robocze)[\s\-:(]*(?=poniedzial|pon\b|pn\b)/g, ''],
+  // "Dni powszednie" may or may not include Saturday; Monday to Friday is the reading that never promises too much.
+  [/dni powszednie|dni robocze/g, 'Mo-Fr'],
   [/poniedzial\w*|pon\b\.?|pn\b\.?/g, 'Mo'],
   [/wtor\w*|wt\b\.?/g, 'Tu'],
   [/srod\w*|sr\b\.?/g, 'We'],
@@ -309,16 +325,23 @@ export function parseOpeningHours(text: string): string | null {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/[–—]/g, '-')
-    .replace(/\bw godz(?:inach)?\.?|\bgodz\.?|\bod\b/g, ' ')
+    .replace(/\b(?:w |od )?godz(?:in\w*|\.)?|\bod\b/g, ' ')
     .replace(/\bdo\b/g, '-')
   for (const [pattern, osm] of DAYS) rest = rest.replace(pattern, osm)
-  rest = rest.replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim()
+  rest = rest
+    .replace(/\s*-\s*/g, '-')
+    .replace(/\s+/g, ' ')
+    // "soboty i niedziele" is a list of days, like "sobota, niedziela".
+    .replace(/\b(Mo|Tu|We|Th|Fr|Sa|Su) i (?=(?:Mo|Tu|We|Th|Fr|Sa|Su)\b)/g, '$1,')
+    .trim()
 
   const rules: string[] = []
-  const rule = /((?:Mo|Tu|We|Th|Fr|Sa|Su)(?:[-,](?:Mo|Tu|We|Th|Fr|Sa|Su))*)[ :]*(\d{1,2})(?:[.:](\d{2}))?-(\d{1,2})(?:[.:](\d{2}))?/g
+  const rule = /((?:Mo|Tu|We|Th|Fr|Sa|Su)(?:[-,](?:Mo|Tu|We|Th|Fr|Sa|Su))*)[ :,]*(\d{1,2})(?:[.:](\d{2}))?-(\d{1,2})(?:[.:](\d{2}))?/g
   let match: RegExpExecArray | null
   let consumed = 0
   while ((match = rule.exec(rest)) !== null) {
+    // "Mo-Fr-Mo" is no list of days: the text was not understood, and a guess here could promise an open door.
+    if (!/^\w\w(?:-\w\w)?(?:,\w\w(?:-\w\w)?)*$/.test(match[1]!)) return null
     rules.push(`${match[1]} ${hhmm(match[2]!, match[3])}-${hhmm(match[4]!, match[5])}`)
     consumed += match[0].length
   }
@@ -409,7 +432,16 @@ export function normalizeRow(row: Record<string, string>, mapping: Record<string
         if (digits.length === 7) set(target, digits)
         break
       }
-      case 'wewnatrz_budynku':
+      case 'wewnatrz_budynku': {
+        const parsed = parseIndoor(value)
+        if (parsed === null) unrecognised(target, value)
+        else {
+          set(target, parsed.indoor)
+          // "Wewnątrz budynku, peron w kierunku Kabaty": the words after the answer say where exactly; keep them.
+          if (parsed.rest) set('opis_lokalizacji', [input.opis_lokalizacji, parsed.rest].filter(Boolean).join('; '))
+        }
+        break
+      }
       case 'elektrody_pediatryczne': {
         const parsed = parseBoolean(value)
         if (parsed === null) unrecognised(target, value)

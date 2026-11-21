@@ -8,7 +8,7 @@ import { sourceCoverage, type FieldCoverage } from './coverage'
 import { cluster, type DedupItem } from './dedup'
 import { addressFromPoint, enrich, type Geo } from './geocode'
 import { memberKey, mergeCluster, type MergedAed } from './merge'
-import { checkSource, normalizeSource, parseSource, readSourceBytes, type Origin } from './sources'
+import { checkSource, normalizeSource, parseSource, publicUrl, readSourceBytes, type Origin } from './sources'
 import { PRIORITY, type Fix, type FixCode, type Issue, type IssueCode, type NormalizedRecord, type SourceDef } from './types'
 
 export interface StoredSource {
@@ -24,6 +24,8 @@ export interface PipelineInput {
   rawDir: string | null
   /** Download fresh copies; otherwise use the last downloaded copy or the frozen fixture. */
   refresh: boolean
+  /** Values for the `{NAME}` placeholders in source addresses (API keys). They never leave the download step. */
+  secrets?: Record<string, string>
   /** Registers client; null skips the network step (tests, offline). */
   geo: Geo | null
   /**
@@ -112,7 +114,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
       name: def.name,
       attribution: def.attribution,
       licence: def.licence,
-      url: def.url,
+      url: publicUrl(def),
       landingPage: def.landingPage ?? null,
       origin,
       error,
@@ -130,7 +132,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
 
   for (const def of input.defs) {
     sources.set(def.id, def)
-    const file = await readSourceBytes(def, { rawDir: input.rawDir, refresh: input.refresh })
+    const file = await readSourceBytes(def, { rawDir: input.rawDir, refresh: input.refresh, secrets: input.secrets })
     if (!file) {
       report(def, 'missing', 0, [], 'Źródło nie zostało jeszcze pobrane.')
       continue

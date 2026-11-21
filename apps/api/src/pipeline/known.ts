@@ -18,15 +18,6 @@ export interface KnownSource {
 
 export const KNOWN_SOURCES: KnownSource[] = [
   {
-    id: 'um-warszawa',
-    name: 'Urząd m.st. Warszawy: lokalizacja defibrylatorów',
-    url: 'https://dane.gov.pl/pl/dataset/39512',
-    licence: 'CC BY 4.0',
-    devices: null,
-    scope: 'Zakres pól nieznany do czasu uzyskania dostępu. W OpenStreetMap 113 urządzeń ma odwołanie do identyfikatora z tego zbioru.',
-    reason: 'Zasób w dane.gov.pl jest odnośnikiem do strony, a nie plikiem. Dane wydaje API miasta po rejestracji i z kluczem; czekamy na klucz.',
-  },
-  {
     id: 'ratujzsercem',
     name: 'ratujzsercem.pl',
     url: 'https://ratujzsercem.pl',

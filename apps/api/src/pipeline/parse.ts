@@ -139,14 +139,27 @@ function firstPosition(coordinates: unknown): [number, number] | null {
   return firstPosition(coordinates[0])
 }
 
+/**
+ * The list of features in a document. Besides a FeatureCollection this takes what city services really send:
+ * the list wrapped in `result` (Warsaw's API) or the bare list.
+ */
+function featureList(document: unknown): unknown[] {
+  if (Array.isArray(document)) return document
+  const { features, result } = (document ?? {}) as { features?: unknown; result?: unknown }
+  if (Array.isArray(features)) return features
+  return Array.isArray(result) ? result : []
+}
+
 export function parseGeoJson(input: string | Uint8Array): RawTable {
   const decoded = typeof input === 'string' ? { text: input, fixes: [] as Fix[] } : decodeText(input)
-  const document = JSON.parse(decoded.text) as { type?: string; features?: unknown[] }
-  const features = document.type === 'FeatureCollection' && Array.isArray(document.features) ? document.features : []
+  const features = featureList(JSON.parse(decoded.text))
 
   const headers = new Set<string>([GEO_LON, GEO_LAT])
   const rows = features.map((feature) => {
-    const { properties, geometry } = (feature ?? {}) as { properties?: Record<string, unknown>; geometry?: { coordinates?: unknown } }
+    const item = (feature ?? {}) as { properties?: Record<string, unknown>; geometry?: { coordinates?: unknown } }
+    // A plain list of objects (no `properties`, no `geometry`) is a table whose rows are the objects themselves.
+    const { geometry } = item
+    const properties = item.properties ?? (geometry ? {} : (item as Record<string, unknown>))
     const row: Record<string, string> = {}
     const position = firstPosition(geometry?.coordinates)
     row[GEO_LON] = position ? String(position[0]) : ''
@@ -165,6 +178,6 @@ export function parseGeoJson(input: string | Uint8Array): RawTable {
 /** Picks the reader by what the content looks like, so the wizard does not depend on a file extension. */
 export function parseAny(bytes: Uint8Array): RawTable & { format: 'csv' | 'geojson' } {
   const head = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes.subarray(0, 64)).replace(/^﻿/, '').trimStart()
-  if (head.startsWith('{')) return { ...parseGeoJson(bytes), format: 'geojson' }
+  if (head.startsWith('{') || head.startsWith('[')) return { ...parseGeoJson(bytes), format: 'geojson' }
   return { ...parseCsv(bytes), format: 'csv' }
 }

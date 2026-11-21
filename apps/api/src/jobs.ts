@@ -35,6 +35,7 @@ async function pipelineJob(options: JobOptions) {
     stored: await store.storedSources(),
     rawDir: config.rawDir,
     refresh: options.refresh ?? false,
+    secrets: { WARSAW_API_KEY: config.warsawApiKey },
     geo: options.offline ? null : geo,
     cachedGeo,
     existingIds: store.existingIds(),

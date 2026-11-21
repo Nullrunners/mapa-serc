@@ -15,7 +15,7 @@ import { csvCell, toCsv, toGeoJson } from '../src/publish/files'
 import { harvesterXml, nationalFeed } from '../src/publish/harvester'
 
 const XSD = resolve(import.meta.dirname, 'fixtures/harvester/xml_import_otwarte_dane_1_13.xsd')
-const officialDefs = loadSourceDefs().filter((def) => def.kind === 'official')
+const officialDefs = loadSourceDefs().filter((def) => def.id.startsWith('dane-gov-pl-'))
 
 let result: PipelineResult
 let store: Store

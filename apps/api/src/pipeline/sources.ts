@@ -25,29 +25,67 @@ export type Origin = 'network' | 'snapshot' | 'fixture'
 
 const snapshotPath = (def: SourceDef, rawDir: string) => join(rawDir, def.snapshot ?? `${def.id}.${def.format}`)
 
+/** `{NAME}` in a source address stands for a secret (an API key) that only the running service knows. */
+const SECRET = /\{([A-Z][A-Z0-9_]*)\}/
+
+/** The address as it may be shown and stored: query parameters that carry a secret are left out. */
+export function publicUrl(def: SourceDef): string {
+  const at = def.url.indexOf('?')
+  if (at < 0) return def.url
+  const kept = def.url
+    .slice(at + 1)
+    .split('&')
+    .filter((parameter) => !SECRET.test(parameter))
+  return kept.length > 0 ? `${def.url.slice(0, at)}?${kept.join('&')}` : def.url.slice(0, at)
+}
+
+/** The address to download from, or the name of the secret it needs and was not given. */
+function downloadUrl(def: SourceDef, secrets: Record<string, string>): { url: string } | { missing: string } {
+  let missing: string | undefined
+  const url = def.url.replace(new RegExp(SECRET, 'g'), (_match, name: string) => {
+    const value = secrets[name] ?? ''
+    if (value === '') missing ??= name
+    return encodeURIComponent(value)
+  })
+  return missing ? { missing } : { url }
+}
+
+/** An error text must never carry a secret, whatever the network layer chose to put in it. */
+const withoutSecrets = (text: string, secrets: Record<string, string>) =>
+  Object.values(secrets)
+    .filter((value) => value !== '')
+    .reduce((result, value) => result.replaceAll(value, '…').replaceAll(encodeURIComponent(value), '…'), text)
+
 /**
  * The file of a source. With `refresh` it is downloaded and the copy under `rawDir` replaced; a failed download
  * falls back to the last copy, and a source that was never downloaded to its frozen fixture. Returns null when
- * there is nothing to read (e.g. OSM before the first download).
+ * there is nothing to read (e.g. OSM before the first download). A source whose address needs a secret that
+ * was not given is not downloaded at all.
  */
 export async function readSourceBytes(
   def: SourceDef,
-  options: { rawDir: string | null; refresh: boolean },
+  options: { rawDir: string | null; refresh: boolean; secrets?: Record<string, string> },
 ): Promise<{ bytes: Uint8Array; origin: Origin; error?: string } | null> {
   const snapshot = options.rawDir ? snapshotPath(def, options.rawDir) : null
+  const secrets = options.secrets ?? {}
   let error: string | undefined
   if (options.refresh) {
-    try {
-      const response = await fetch(def.url, { signal: AbortSignal.timeout(60_000), headers: { 'User-Agent': 'aed-hub/0.1' } })
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const bytes = new Uint8Array(await response.arrayBuffer())
-      if (snapshot) {
-        mkdirSync(dirname(snapshot), { recursive: true })
-        writeFileSync(snapshot, bytes)
+    const target = downloadUrl(def, secrets)
+    if ('missing' in target) {
+      error = `Nie pobrano świeżej kopii: brakuje klucza dostępu do tego źródła (${target.missing}).`
+    } else {
+      try {
+        const response = await fetch(target.url, { signal: AbortSignal.timeout(60_000), headers: { 'User-Agent': 'aed-hub/0.1' } })
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const bytes = new Uint8Array(await response.arrayBuffer())
+        if (snapshot) {
+          mkdirSync(dirname(snapshot), { recursive: true })
+          writeFileSync(snapshot, bytes)
+        }
+        return { bytes, origin: 'network' }
+      } catch (cause) {
+        error = withoutSecrets(cause instanceof Error ? cause.message : String(cause), secrets)
       }
-      return { bytes, origin: 'network' }
-    } catch (cause) {
-      error = cause instanceof Error ? cause.message : String(cause)
     }
   }
   if (snapshot && existsSync(snapshot)) return { bytes: readFileSync(snapshot), origin: 'snapshot', error }
