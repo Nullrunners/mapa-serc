@@ -841,7 +841,7 @@ export const GapsMethod = z
 
 export const GapsSummary = z
   .object({
-    ready: z.boolean().openapi({ description: 'false while the national figures are being computed (a few seconds after a start or a new merge)' }),
+    ready: z.boolean().openapi({ description: 'false until the national figures are computed for the first time after a start (half a minute); after a change of the data the figures from before it are given until the new ones are ready, see computedAt' }),
     computedAt: z.string().nullable(),
     tookMs: z.number().int().nullable(),
     totals: GapsTotals,

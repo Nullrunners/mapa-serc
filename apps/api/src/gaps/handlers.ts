@@ -28,7 +28,7 @@ import { areaKm2, parseBbox, parseRing, shapeArea, type Area } from './area'
 import { communeAt, communeByTerc, localitiesNamed } from './commune'
 import { hexPolygon, REACH_M, RES, SENIOR_WEIGHT, type HexState } from './engine'
 import { POPULATION_SOURCE } from './population'
-import { analyseView, hexesNear, MAX_CELLS, overviewFor, supplyFor, type PlaceReport, type TimedOverview } from './state'
+import { analyseView, hexesNear, MAX_CELLS, overviewAtHand, overviewFor, supplyFor, type PlaceReport, type TimedOverview } from './state'
 import { ASSUMED_HOURS } from './supply'
 
 const OSM_SOURCE = {
@@ -54,9 +54,8 @@ function method(store: Store): z.input<typeof GapsMethod> {
 
 export const gapsSummaryHandler: RouteHandler<typeof gapsSummaryRoute> = async (c) => {
   const { store } = await getContext()
-  const pending = overviewFor(store)
-  // Answer at once while the country is still being counted; the page asks again.
-  const overview = await Promise.race([pending, new Promise<null>((done) => setTimeout(() => done(null), 50))])
+  // Answer at once while the country is being counted for the first time; the page asks again.
+  const overview = overviewAtHand(store)
   return ok(c, GapsSummary, {
     ready: overview !== null,
     computedAt: overview?.computedAt ?? null,
@@ -71,7 +70,7 @@ const overviewLayer = new KeptBodies<TimedOverview, typeof GapsOverview>()
 
 export const gapsOverviewHandler: RouteHandler<typeof gapsOverviewRoute> = async (c) => {
   const { store } = await getContext()
-  const overview = await overviewFor(store)
+  const overview = overviewAtHand(store) ?? (await overviewFor(store))
   const kept = await overviewLayer.get('overview', overview, () => {
     const features = [...overview.areas.entries()]
       .sort(([a], [b]) => (a < b ? -1 : 1))
