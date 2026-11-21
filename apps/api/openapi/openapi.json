@@ -645,6 +645,7 @@
                 "hours_closed",
                 "outdoor_no_hours",
                 "no_hours",
+                "assumed_closed",
                 "staff_only",
                 "out_of_service",
                 "method_free",

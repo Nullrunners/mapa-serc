@@ -16,6 +16,7 @@ export type ReachReason =
   | 'hours_closed'
   | 'outdoor_no_hours'
   | 'no_hours'
+  | 'assumed_closed'
   | 'staff_only'
   | 'out_of_service'
   | 'method_free'
@@ -52,6 +53,12 @@ const METHOD_REASON: Record<AccessMethod, ReachReason> = { swobodny: 'method_fre
 /** Seconds added when we do not know whether the device can be reached; a known open door is worth that much. */
 const STATE_PENALTY: Record<Exclude<ReachState, 'closed'>, number> = { open: 0, likely_open: 45, unknown: 120 }
 const PROBLEM_PENALTY = 240
+/**
+ * An indoor device without hours is assumed open on working days 8–16, as in the gap analysis (gaps/supply.ts).
+ * Outside those hours it most likely sits behind a locked door: it goes below every device known to be open nearby.
+ */
+const ASSUMED_HOURS = 'Mo-Fr 08:00-16:00; PH off'
+const ASSUMED_CLOSED_PENALTY = 600
 const PER_FLOOR = 20
 /** Somewhere inside a building nobody described: time to find it. */
 const UNDESCRIBED_INDOORS = 30
@@ -126,6 +133,7 @@ export function reach(record: ReachRecord, distanceM: number, at: Date, options:
     } else {
       state = 'unknown'
       reasons.push('no_hours')
+      if (availabilityAt(ASSUMED_HOURS, at) === 'closed') reasons.push('assumed_closed')
     }
   }
 
@@ -148,7 +156,8 @@ export function reach(record: ReachRecord, distanceM: number, at: Date, options:
 
   const etaS = state === 'closed' ? null : walkS + accessS
   // Closed devices go last, nearest first, so the list still says what is there.
-  const score = etaS === null ? 1_000_000 + walkS : etaS + STATE_PENALTY[state as Exclude<ReachState, 'closed'>] + (options.problem ? PROBLEM_PENALTY : 0)
+  const penalty = reasons.includes('assumed_closed') ? ASSUMED_CLOSED_PENALTY : STATE_PENALTY[state as Exclude<ReachState, 'closed'>]
+  const score = etaS === null ? 1_000_000 + walkS : etaS + penalty + (options.problem ? PROBLEM_PENALTY : 0)
   const change = options.withChange && state !== 'likely_open' && state !== 'unknown' ? nextChange(record.godziny_dostepnosci, at) : null
 
   return { state, etaS, walkS, accessS, method, methodGuessed: guessed, change, reasons, score }

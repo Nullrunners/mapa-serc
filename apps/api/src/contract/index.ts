@@ -77,7 +77,7 @@ export const Reach = z
       .nullable()
       .openapi({ description: 'Najbliższa zmiana: do której czynne albo od kiedy (czas lokalny, days = 0 dziś, 1 jutro)' }),
     reasons: z.array(
-      z.enum(['hours_24_7', 'hours_open', 'hours_closed', 'outdoor_no_hours', 'no_hours', 'staff_only', 'out_of_service', 'method_free', 'method_alarm', 'method_code', 'method_staff', 'outdoor', 'floor', 'reported_problem']),
+      z.enum(['hours_24_7', 'hours_open', 'hours_closed', 'outdoor_no_hours', 'no_hours', 'assumed_closed', 'staff_only', 'out_of_service', 'method_free', 'method_alarm', 'method_code', 'method_staff', 'outdoor', 'floor', 'reported_problem']),
     ),
     score: z.number().int().openapi({ description: 'Klucz sortowania w sekundach (mniej = lepiej)' }),
   })

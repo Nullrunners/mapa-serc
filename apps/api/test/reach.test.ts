@@ -45,6 +45,16 @@ describe('reach', () => {
     expect(outdoor.score).toBeLessThan(indoor.score)
   })
 
+  it('puts an indoor device without hours below a known open one at night, as the gap analysis assumes office hours', () => {
+    const night = new Date('2026-11-22T03:00:00+01:00')
+    const office = reach(device({ wewnatrz_budynku: true }), 200, night)
+    const wall = reach(device({ godziny_dostepnosci: '24/7', wewnatrz_budynku: false }), 480, night)
+    expect(office.reasons).toEqual(['no_hours', 'assumed_closed'])
+    expect(wall.score).toBeLessThan(office.score)
+    // On a working day at noon the same office is a fair bet.
+    expect(reach(device({ wewnatrz_budynku: true }), 200, new Date('2026-11-23T12:00:00+01:00')).reasons).toEqual(['no_hours'])
+  })
+
   it('moves a device with an unresolved problem report down, and leaves withdrawn and staff-only devices out of reach', () => {
     const fine = reach(device({ godziny_dostepnosci: '24/7' }), 100, evening)
     expect(reach(device({ godziny_dostepnosci: '24/7' }), 100, evening, { problem: true }).score).toBeGreaterThan(fine.score)
