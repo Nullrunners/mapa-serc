@@ -42,6 +42,11 @@ CREATE TABLE IF NOT EXISTS outbox (
   created_at VARCHAR, status VARCHAR, error VARCHAR);
 CREATE TABLE IF NOT EXISTS reminders_sent (
   aed_id VARCHAR, item VARCHAR, due_date VARCHAR, win VARCHAR, sent_at VARCHAR);
+ALTER TABLE passport ADD COLUMN IF NOT EXISTS confirmed_by VARCHAR;
+CREATE TABLE IF NOT EXISTS keeper_account (
+  id VARCHAR, provider VARCHAR, subject_key VARCHAR, name VARCHAR, created_at VARCHAR, last_login_at VARCHAR);
+CREATE TABLE IF NOT EXISTS keeper_device (
+  account_id VARCHAR, aed_id VARCHAR, linked_at VARCHAR);
 `
 
 export class Db {

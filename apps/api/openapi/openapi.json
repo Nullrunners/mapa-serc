@@ -37,6 +37,14 @@
       "description": "Radar AED: leads to devices missing from the official dataset"
     },
     {
+      "name": "passport",
+      "description": "Cyfrowy Paszport AED: the page behind the sticker, reports of passers-by, the keeper panel"
+    },
+    {
+      "name": "account",
+      "description": "Keeper account: logging in \"with mObywatel\" (a stand-in in this prototype) and the devices of the account"
+    },
+    {
       "name": "admin",
       "description": "Operator actions (token required)"
     }
@@ -819,6 +827,9 @@
             "type": "boolean",
             "description": "true, gdy datę potwierdził opiekun w paszporcie, a nie tylko podało ją źródło"
           },
+          "confirmedIdentity": {
+            "$ref": "#/components/schemas/IdentityProvider"
+          },
           "items": {
             "type": "array",
             "items": {
@@ -929,12 +940,25 @@
           "status",
           "confirmedAt",
           "confirmedByKeeper",
+          "confirmedIdentity",
           "items",
           "reports",
           "keeperEmail",
           "passportUrl"
         ],
         "description": "Cyfrowy Paszport AED: stan urządzenia widoczny dla każdego, kto zeskanuje naklejkę."
+      },
+      "IdentityProvider": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "demo",
+          "login.gov.pl",
+          null
+        ],
+        "description": "Skąd wiemy, kto potwierdził sprawność: opiekun był wtedy zalogowany. null = wszedł samym linkiem albo potwierdzenia nie ma"
       },
       "ReportKind": {
         "type": "string",
@@ -2806,6 +2830,45 @@
           },
           "stickerUrl": {
             "type": "string"
+          },
+          "keepers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "linkedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "linkedAt"
+              ]
+            },
+            "description": "Osoby, które wchodzą do panelu po zalogowaniu, bez linku"
+          },
+          "viewer": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "linked": {
+                "type": "boolean",
+                "description": "true, gdy to urządzenie jest już przy koncie tej osoby"
+              }
+            },
+            "required": [
+              "name",
+              "linked"
+            ],
+            "description": "Zalogowana osoba, która o to pyta; null, gdy weszła samym linkiem"
           }
         },
         "required": [
@@ -2814,7 +2877,9 @@
           "public",
           "reports",
           "messages",
-          "stickerUrl"
+          "stickerUrl",
+          "keepers",
+          "viewer"
         ]
       },
       "OwnerPassport": {
@@ -2863,6 +2928,14 @@
               "null"
             ]
           },
+          "confirmedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Kto potwierdził, jeśli był zalogowany: imię i pierwsza litera nazwiska",
+            "example": "Anna P."
+          },
           "notifyEmail": {
             "type": [
               "string",
@@ -2884,6 +2957,7 @@
           "batteryExp",
           "status",
           "confirmedAt",
+          "confirmedBy",
           "notifyEmail",
           "notifyPhone"
         ]
@@ -2943,6 +3017,104 @@
             "maxLength": 24
           }
         }
+      },
+      "LoginOptions": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "demo",
+              "off"
+            ],
+            "description": "demo = logowanie pokazowe: wybiera się jedną z przykładowych osób. off = do panelu wchodzi się tylko linkiem"
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ]
+            },
+            "description": "Przykładowe osoby logowania pokazowego"
+          }
+        },
+        "required": [
+          "mode",
+          "people"
+        ]
+      },
+      "KeeperSession": {
+        "type": "object",
+        "properties": {
+          "session": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "account": {
+            "$ref": "#/components/schemas/KeeperAccount"
+          }
+        },
+        "required": [
+          "session",
+          "expiresAt",
+          "account"
+        ]
+      },
+      "KeeperAccount": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Imię i pierwsza litera nazwiska",
+            "example": "Anna P."
+          },
+          "provider": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IdentityProvider"
+              },
+              {
+                "description": "login.gov.pl = tożsamość potwierdzona w aplikacji mObywatel. demo = logowanie pokazowe z przykładowymi osobami, które niczego nie potwierdza."
+              }
+            ]
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PassportPublic"
+            },
+            "description": "Urządzenia przy koncie: do panelu każdego z nich wchodzi się bez linku"
+          }
+        },
+        "required": [
+          "name",
+          "provider",
+          "devices"
+        ]
+      },
+      "DemoLoginRequest": {
+        "type": "object",
+        "properties": {
+          "person": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "person"
+        ]
       },
       "OwnerLinks": {
         "type": "object",
@@ -4866,17 +5038,38 @@
         "tags": [
           "passport"
         ],
-        "summary": "The passport of the device the owner link is for",
+        "summary": "The passport of a device for its keeper: by the owner link, or by a session of an account that has the device",
         "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "Numer urządzenia; potrzebny, gdy zamiast linku jest sesja zalogowanego opiekuna"
+            },
+            "required": false,
+            "description": "Numer urządzenia; potrzebny, gdy zamiast linku jest sesja zalogowanego opiekuna",
+            "name": "id",
+            "in": "query"
+          },
           {
             "schema": {
               "type": "string",
               "minLength": 10,
               "description": "Token z linku dla opiekuna (parametr t)"
             },
-            "required": true,
+            "required": false,
             "description": "Token z linku dla opiekuna (parametr t)",
             "name": "x-owner-token",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "description": "Sesja opiekuna z logowania (POST /v1/auth/login/demo)"
+            },
+            "required": false,
+            "description": "Sesja opiekuna z logowania (POST /v1/auth/login/demo)",
+            "name": "x-keeper-session",
             "in": "header"
           }
         ],
@@ -4892,7 +5085,7 @@
             }
           },
           "401": {
-            "description": "Missing, wrong or revoked owner link",
+            "description": "No owner link and no session, a wrong or revoked link, or a device that is not on the account",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -4934,12 +5127,33 @@
           {
             "schema": {
               "type": "string",
+              "description": "Numer urządzenia; potrzebny, gdy zamiast linku jest sesja zalogowanego opiekuna"
+            },
+            "required": false,
+            "description": "Numer urządzenia; potrzebny, gdy zamiast linku jest sesja zalogowanego opiekuna",
+            "name": "id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 10,
               "description": "Token z linku dla opiekuna (parametr t)"
             },
-            "required": true,
+            "required": false,
             "description": "Token z linku dla opiekuna (parametr t)",
             "name": "x-owner-token",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "description": "Sesja opiekuna z logowania (POST /v1/auth/login/demo)"
+            },
+            "required": false,
+            "description": "Sesja opiekuna z logowania (POST /v1/auth/login/demo)",
+            "name": "x-keeper-session",
             "in": "header"
           }
         ],
@@ -4965,7 +5179,7 @@
             }
           },
           "401": {
-            "description": "Missing, wrong or revoked owner link",
+            "description": "No owner link and no session, a wrong or revoked link, or a device that is not on the account",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -5009,12 +5223,33 @@
           {
             "schema": {
               "type": "string",
+              "description": "Numer urządzenia; potrzebny, gdy zamiast linku jest sesja zalogowanego opiekuna"
+            },
+            "required": false,
+            "description": "Numer urządzenia; potrzebny, gdy zamiast linku jest sesja zalogowanego opiekuna",
+            "name": "id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 10,
               "description": "Token z linku dla opiekuna (parametr t)"
             },
-            "required": true,
+            "required": false,
             "description": "Token z linku dla opiekuna (parametr t)",
             "name": "x-owner-token",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "description": "Sesja opiekuna z logowania (POST /v1/auth/login/demo)"
+            },
+            "required": false,
+            "description": "Sesja opiekuna z logowania (POST /v1/auth/login/demo)",
+            "name": "x-keeper-session",
             "in": "header"
           }
         ],
@@ -5030,7 +5265,325 @@
             }
           },
           "401": {
-            "description": "Missing, wrong or revoked owner link",
+            "description": "No owner link and no session, a wrong or revoked link, or a device that is not on the account",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/auth/login": {
+      "get": {
+        "operationId": "getLoginOptions",
+        "tags": [
+          "account"
+        ],
+        "summary": "How a keeper can log in on this deployment",
+        "responses": {
+          "200": {
+            "description": "Login options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginOptions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/auth/login/demo": {
+      "post": {
+        "operationId": "demoLogin",
+        "tags": [
+          "account"
+        ],
+        "summary": "Stand-in for the login.gov.pl round trip: opens a session for one of the made-up people",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DemoLoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session; send it as X-Keeper-Session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeeperSession"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The stand-in login is switched off",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/account": {
+      "get": {
+        "operationId": "getAccount",
+        "tags": [
+          "account"
+        ],
+        "summary": "The logged-in keeper and their devices",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "description": "Sesja opiekuna z logowania (POST /v1/auth/login/demo)"
+            },
+            "required": true,
+            "description": "Sesja opiekuna z logowania (POST /v1/auth/login/demo)",
+            "name": "x-keeper-session",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeeperAccount"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it has ended",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/account/devices": {
+      "post": {
+        "operationId": "linkAccountDevice",
+        "tags": [
+          "account"
+        ],
+        "summary": "Adds the device of an owner link to the account, so the keeper gets in without the link next time",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "description": "Sesja opiekuna z logowania (POST /v1/auth/login/demo)"
+            },
+            "required": true,
+            "description": "Sesja opiekuna z logowania (POST /v1/auth/login/demo)",
+            "name": "x-keeper-session",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "description": "Token z linku dla opiekuna: dowód, że to urządzenie tej osoby"
+            },
+            "required": true,
+            "description": "Token z linku dla opiekuna: dowód, że to urządzenie tej osoby",
+            "name": "x-owner-token",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeeperAccount"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it has ended",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/account/devices/{id}/remove": {
+      "post": {
+        "operationId": "unlinkAccountDevice",
+        "tags": [
+          "account"
+        ],
+        "summary": "Takes a device off the account; the keeper can still get in by the owner link",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "description": "Sesja opiekuna z logowania (POST /v1/auth/login/demo)"
+            },
+            "required": true,
+            "description": "Sesja opiekuna z logowania (POST /v1/auth/login/demo)",
+            "name": "x-keeper-session",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeeperAccount"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it has ended",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -5069,7 +5622,7 @@
         "tags": [
           "admin"
         ],
-        "summary": "A management link for the keeper of a device; rotate = true revokes the links given out before",
+        "summary": "A management link for the keeper of a device; rotate = true revokes the links given out before and takes the device off every account",
         "security": [
           {
             "operatorToken": []

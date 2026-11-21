@@ -22,6 +22,8 @@ services:
       # Long random strings. ADMIN_TOKEN guards /admin/* and operator actions; LINK_SECRET signs confirmation links.
       ADMIN_TOKEN: ${ADMIN_TOKEN:?a long random string}
       LINK_SECRET: ${LINK_SECRET:?a long random string}
+      # Keeper login "with mObywatel": demo = stand-in with made-up people (shows the flow, protects nothing), off = links only.
+      MOBYWATEL_LOGIN: ${MOBYWATEL_LOGIN:-demo}
       # Optional: Radar extraction and the Warsaw source. Everything else works without them.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-claude-haiku-5-5}

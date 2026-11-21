@@ -2,6 +2,7 @@
 import type { RouteHandler } from '@hono/zod-openapi'
 import { reachableNow } from '@aed/schema'
 import type { Context } from 'hono'
+import { sessionAccount } from '../auth/identity'
 import { config, now, today } from '../config'
 import { getContext } from '../context'
 import type {
@@ -14,6 +15,7 @@ import type {
   passportRoute,
   reportRoute,
 } from '../contract'
+import type { KeeperAccount } from '../db/keepers'
 import type { Store } from '../db/store'
 import { requireOperator } from '../handlers'
 import { ApiError } from '../http/errors'
@@ -65,17 +67,43 @@ export const ownerLinkRequestHandler: RouteHandler<typeof ownerLinkRequestRoute>
 
 // ---------------------------------------------------------------------- owner
 
-async function owner(token: string): Promise<{ store: Store; aed: MergedAed }> {
+/** The device an owner link is for; refuses a link that is not ours, is for something else, or was revoked. */
+export function deviceOfOwnerLink(store: Store, token: string): MergedAed {
   const link = verifyLink('owner', token)
-  const { store } = await getContext()
   const aed = link ? store.get(link.id) : undefined
   if (!link || !aed || link.version !== (store.passports.get(link.id)?.linkVersion ?? 0)) {
     throw new ApiError(401, 'unauthorized', 'Ten link jest nieprawidłowy albo został unieważniony. Poproś o nowy na stronie urządzenia.')
   }
-  return { store, aed }
+  return aed
 }
 
-function ownerView(store: Store, aed: MergedAed) {
+interface KeeperAccess {
+  store: Store
+  aed: MergedAed
+  /** The logged-in person, when there is one; with an owner link nobody has to be. */
+  account: KeeperAccount | null
+}
+
+/**
+ * Who may manage a device: whoever holds its owner link, or a logged-in keeper whose account has the device.
+ * Someone who has both is let in by the link, and their name goes on what they do.
+ */
+async function owner(headers: { 'x-owner-token'?: string; 'x-keeper-session'?: string }, id: string | undefined): Promise<KeeperAccess> {
+  const { store } = await getContext()
+  const account = sessionAccount(store, headers['x-keeper-session'])
+  if (headers['x-owner-token']) return { store, aed: deviceOfOwnerLink(store, headers['x-owner-token']), account }
+  if (!account) throw new ApiError(401, 'unauthorized', 'Zaloguj się jeszcze raz albo otwórz link z wiadomości od nas.')
+  const aed = id ? store.get(id) : undefined
+  if (!aed || !store.keepers.isKeeper(account.id, aed.id)) {
+    throw new ApiError(401, 'unauthorized', 'Tego urządzenia nie ma przy Twoim koncie. Otwórz link z wiadomości od nas i połącz urządzenie z kontem.')
+  }
+  return { store, aed, account }
+}
+
+/** Who did it, for the change log. */
+const actorOf = (account: KeeperAccount | null) => (account ? `keeper:${account.id}` : 'keeper')
+
+function ownerView({ store, aed, account }: KeeperAccess) {
   const passport = store.passports.getOrEmpty(aed.id)
   return {
     aed: { id: aed.id, publication: aed.publication, quality: aed.quality, distanceM: null, availableNow: reachableNow(aed.record, new Date(now())), record: aed.record },
@@ -85,6 +113,7 @@ function ownerView(store: Store, aed: MergedAed) {
       batteryExp: passport.batteryExp,
       status: passport.status,
       confirmedAt: passport.confirmedAt,
+      confirmedBy: (passport.confirmedBy && store.keepers.get(passport.confirmedBy)?.name) || null,
       notifyEmail: passport.notifyEmail,
       notifyPhone: passport.notifyPhone,
     },
@@ -99,6 +128,8 @@ function ownerView(store: Store, aed: MergedAed) {
       .reverse()
       .map((message) => ({ channel: message.channel, recipient: message.recipient, subject: message.subject, reason: message.reason, at: message.at, status: message.status })),
     stickerUrl: stickerUrl(aed.id),
+    keepers: store.keepers.keepersOf(aed.id).map((keeper) => ({ name: keeper.account.name, linkedAt: keeper.linkedAt })),
+    viewer: account ? { name: account.name, linked: store.keepers.isKeeper(account.id, aed.id) } : null,
   }
 }
 
@@ -111,12 +142,12 @@ export function normalisePhone(value: string): string | null {
 }
 
 export const ownerPassportHandler: RouteHandler<typeof ownerPassportRoute> = async (c) => {
-  const { store, aed } = await owner(c.req.valid('header')['x-owner-token'])
-  return c.json(ownerView(store, aed), 200)
+  return c.json(ownerView(await owner(c.req.valid('header'), c.req.valid('query').id)), 200)
 }
 
 export const ownerUpdateHandler: RouteHandler<typeof ownerUpdateRoute> = async (c) => {
-  const { store, aed } = await owner(c.req.valid('header')['x-owner-token'])
+  const access = await owner(c.req.valid('header'), c.req.valid('query').id)
+  const { store, aed } = access
   const body = c.req.valid('json')
   const change: Parameters<typeof updatePassport>[2] = {}
   for (const key of ['electrodesExp', 'electrodesChildExp', 'batteryExp', 'status'] as const) {
@@ -133,14 +164,15 @@ export const ownerUpdateHandler: RouteHandler<typeof ownerUpdateRoute> = async (
     if (raw && !phone) throw new ApiError(422, 'validation_error', 'Numer telefonu wygląda na niepełny.', [{ path: 'notifyPhone', message: 'Wpisz 9 cyfr numeru komórkowego, np. 600 100 200.' }])
     change.notifyPhone = phone
   }
-  await updatePassport(store, aed.id, change, today(), 'keeper', 'passport_updated')
-  return c.json(ownerView(store, aed), 200)
+  await updatePassport(store, aed.id, change, today(), actorOf(access.account), 'passport_updated')
+  return c.json(ownerView(access), 200)
 }
 
 export const ownerConfirmHandler: RouteHandler<typeof ownerConfirmRoute> = async (c) => {
-  const { store, aed } = await owner(c.req.valid('header')['x-owner-token'])
-  await updatePassport(store, aed.id, { confirmedAt: today(), status: 'czynny' }, today(), 'keeper', 'passport_confirmed')
-  return c.json(ownerView(store, aed), 200)
+  const access = await owner(c.req.valid('header'), c.req.valid('query').id)
+  // A confirmation by somebody who came in by the link alone carries no name, also when the one before it did.
+  await updatePassport(access.store, access.aed.id, { confirmedAt: today(), status: 'czynny', confirmedBy: access.account?.id ?? null }, today(), actorOf(access.account), 'passport_confirmed')
+  return c.json(ownerView(access), 200)
 }
 
 // ---------------------------------------------------------------------- admin
@@ -153,7 +185,9 @@ export const adminOwnerLinkHandler: RouteHandler<typeof adminOwnerLinkRoute> = a
   if (rotate) {
     version++
     await store.passports.save({ ...store.passports.getOrEmpty(aed.id), linkVersion: version })
-    await store.log({ actor: 'operator', entity: 'aed', entityId: aed.id, action: 'owner_links_revoked', detail: { version } })
+    // Revoking means nobody gets in the old way, so the accounts that had the device lose it too.
+    const accounts = await store.keepers.unlinkDevice(aed.id)
+    await store.log({ actor: 'operator', entity: 'aed', entityId: aed.id, action: 'owner_links_revoked', detail: { version, accounts } })
   }
   return c.json({ ownerUrl: ownerUrl(aed.id, version), passportUrl: passportUrl(aed.id), stickerUrl: stickerUrl(aed.id) }, 200)
 }

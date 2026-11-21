@@ -14,6 +14,8 @@ export interface Passport {
   status: Status | null
   /** Last "Potwierdzam sprawność" (YYYY-MM-DD). */
   confirmedAt: string | null
+  /** Account of the keeper who made it while logged in; null when they came in by the owner link alone. */
+  confirmedBy: string | null
   /** Private contact for reminders; never published, unlike `email_kontaktowy`. */
   notifyEmail: string | null
   notifyPhone: string | null
@@ -29,6 +31,7 @@ export const emptyPassport = (aedId: string): Passport => ({
   batteryExp: null,
   status: null,
   confirmedAt: null,
+  confirmedBy: null,
   notifyEmail: null,
   notifyPhone: null,
   linkVersion: 0,

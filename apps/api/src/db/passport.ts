@@ -42,6 +42,7 @@ export class PassportBook {
         batteryExp: text(row.battery_exp),
         status: text(row.status) as Passport['status'],
         confirmedAt: text(row.confirmed_at),
+        confirmedBy: text(row.confirmed_by),
         notifyEmail: text(row.notify_email),
         notifyPhone: text(row.notify_phone),
         linkVersion: Number(row.link_version ?? 0),
@@ -80,8 +81,8 @@ export class PassportBook {
     const saved = { ...passport, updatedAt: new Date().toISOString() }
     await this.db.replace(
       'passport',
-      ['aed_id', 'electrodes_exp', 'electrodes_child_exp', 'battery_exp', 'status', 'confirmed_at', 'notify_email', 'notify_phone', 'link_version', 'updated_at'],
-      [[saved.aedId, saved.electrodesExp, saved.electrodesChildExp, saved.batteryExp, saved.status, saved.confirmedAt, saved.notifyEmail, saved.notifyPhone, saved.linkVersion, saved.updatedAt]],
+      ['aed_id', 'electrodes_exp', 'electrodes_child_exp', 'battery_exp', 'status', 'confirmed_at', 'confirmed_by', 'notify_email', 'notify_phone', 'link_version', 'updated_at'],
+      [[saved.aedId, saved.electrodesExp, saved.electrodesChildExp, saved.batteryExp, saved.status, saved.confirmedAt, saved.confirmedBy, saved.notifyEmail, saved.notifyPhone, saved.linkVersion, saved.updatedAt]],
       { sql: 'DELETE FROM passport WHERE aed_id = ?', params: [saved.aedId] },
     )
     this.passports.set(saved.aedId, saved)

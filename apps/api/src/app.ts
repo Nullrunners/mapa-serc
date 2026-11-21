@@ -32,7 +32,7 @@ export function createApp() {
   // and a token in a header is not sent by a browser on its own, so an open origin list is safe for reads.
   app.use('/dane/*', cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'] }))
   app.use('/feeds/*', cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'] }))
-  app.use('/v1/*', cors({ origin: (origin) => (config.corsOrigins.includes(origin) ? origin : null), allowMethods: ['GET', 'POST', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization', 'X-Owner-Token'], maxAge: 86_400 }))
+  app.use('/v1/*', cors({ origin: (origin) => (config.corsOrigins.includes(origin) ? origin : null), allowMethods: ['GET', 'POST', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization', 'X-Owner-Token', 'X-Keeper-Session'], maxAge: 86_400 }))
   app.use('/health', cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'] }))
   app.use('/openapi.json', cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'] }))
 
@@ -104,6 +104,8 @@ export function buildOpenApiDocument(app: OpenAPIHono) {
       { name: 'files', description: 'The dataset as files and the feed for the dane.gov.pl harvester' },
       { name: 'wizard', description: 'Provider wizard: preview a file, then save it' },
       { name: 'radar', description: 'Radar AED: leads to devices missing from the official dataset' },
+      { name: 'passport', description: 'Cyfrowy Paszport AED: the page behind the sticker, reports of passers-by, the keeper panel' },
+      { name: 'account', description: 'Keeper account: logging in "with mObywatel" (a stand-in in this prototype) and the devices of the account' },
       { name: 'admin', description: 'Operator actions (token required)' },
     ],
   })

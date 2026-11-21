@@ -24,7 +24,12 @@ import {
   importPreviewRoute,
   jobRoute,
   jsonldRoute,
+  accountLinkRoute,
+  accountRoute,
+  accountUnlinkRoute,
   adminOwnerLinkRoute,
+  demoLoginRoute,
+  loginOptionsRoute,
   outboxRoute,
   ownerConfirmRoute,
   ownerLinkRequestRoute,
@@ -64,6 +69,7 @@ import {
   tableSchemaHandler,
   templateHandler,
 } from './handlers'
+import { accountHandler, accountLinkHandler, accountUnlinkHandler, demoLoginHandler, loginOptionsHandler } from './auth/handlers'
 import {
   adminOwnerLinkHandler,
   outboxHandler,
@@ -139,6 +145,11 @@ export const endpoints: Endpoint[] = [
   live(ownerPassportRoute, ownerPassportHandler),
   live(ownerUpdateRoute, ownerUpdateHandler),
   live(ownerConfirmRoute, ownerConfirmHandler),
+  live(loginOptionsRoute, loginOptionsHandler),
+  live(demoLoginRoute, demoLoginHandler),
+  live(accountRoute, accountHandler),
+  live(accountLinkRoute, accountLinkHandler),
+  live(accountUnlinkRoute, accountUnlinkHandler),
   live(adminOwnerLinkRoute, adminOwnerLinkHandler),
   live(outboxRoute, outboxHandler),
 

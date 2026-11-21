@@ -18,8 +18,14 @@ export const config = {
   rawDir: dataDir ? join(dataDir, 'raw') : null,
   /** Protects /admin/* and operator actions. Empty = those endpoints refuse every request. */
   adminToken: env.ADMIN_TOKEN ?? '',
-  /** Signs owner confirmation links. */
+  /** Signs owner confirmation links and keeper sessions. */
   linkSecret: env.LINK_SECRET ?? 'dev-only-secret',
+  /**
+   * How a keeper logs in "with mObywatel". demo = a stand-in with made-up people, for showing the flow; anyone may
+   * pick any of them, so it proves nothing about who is logging in. off = keepers come in only by their owner link.
+   * The real thing is login.gov.pl, which a service joins only with the minister's consent (see src/auth/identity.ts).
+   */
+  login: (env.MOBYWATEL_LOGIN === 'off' ? 'off' : 'demo') as 'demo' | 'off',
   corsOrigins: (env.CORS_ORIGINS ?? 'http://localhost:3000')
     .split(',')
     .map((origin) => origin.trim())

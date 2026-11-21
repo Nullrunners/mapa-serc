@@ -46,6 +46,7 @@ export function recipients(passport: Passport | undefined, record: AedRecord): {
 export function publicPassport(store: Store, aed: MergedAed, nowIso: string, today: string) {
   const passport = store.passports.get(aed.id)
   const confirmedAt = passport?.confirmedAt ?? aed.record.data_weryfikacji ?? null
+  const confirmer = passport?.confirmedBy ? store.keepers.get(passport.confirmedBy) : undefined
   return {
     id: aed.id,
     name: deviceName(aed.record),
@@ -53,6 +54,7 @@ export function publicPassport(store: Store, aed: MergedAed, nowIso: string, tod
     status: aed.record.status,
     confirmedAt,
     confirmedByKeeper: passport?.confirmedAt != null,
+    confirmedIdentity: confirmer?.provider ?? null,
     items: ITEMS.map((item) => {
       const date = itemDate(item, passport, aed.record)
       return { item, label: ITEM_TEXT[item], date, ...expiryState(date, today) }

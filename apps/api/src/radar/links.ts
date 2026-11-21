@@ -5,11 +5,12 @@
  *   link is published without a second approval: the operator already vouched for it by sending the invitation.
  * - owner: the keeper of one device manages its passport (expiry dates, "Potwierdzam sprawność"). The version
  *   kept with the passport is part of the payload; raising it revokes every link given out before.
+ * - session: a keeper who logged in. The id is the account, and the number is when the session ends (Unix seconds).
  */
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { config } from '../config'
 
-export type LinkPurpose = 'invite' | 'owner'
+export type LinkPurpose = 'invite' | 'owner' | 'session'
 
 const sign = (payload: string) => createHmac('sha256', config.linkSecret).update(payload).digest('base64url')
 

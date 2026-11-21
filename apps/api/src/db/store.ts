@@ -10,6 +10,7 @@ import type { PipelineResult, ReviewPair, SourceReport, StoredSource } from '../
 import type { NormalizedRecord, SourceDef } from '../pipeline/types'
 import type { Candidate, CandidateStatus } from '../radar/build'
 import type { Db, Param } from './duck'
+import { KeeperBook } from './keepers'
 import { PassportBook } from './passport'
 
 const json = (value: unknown): string => JSON.stringify(value)
@@ -37,9 +38,12 @@ export class Store {
   private geocodes = new Map<string, unknown>()
   /** Device passports: the keeper's values, reports of passers-by, messages sent. */
   readonly passports: PassportBook
+  /** Keepers who logged in, and the devices each of them looks after. */
+  readonly keepers: KeeperBook
 
   constructor(private readonly db: Db) {
     this.passports = new PassportBook(db)
+    this.keepers = new KeeperBook(db)
   }
 
   /** Reads the last persisted state. An empty database is a valid state: the first pipeline run fills it. */
@@ -74,6 +78,7 @@ export class Store {
       status: row.status as CandidateStatus,
     }))
     await this.passports.load()
+    await this.keepers.load()
   }
 
   /** aed id → fields the keeper set through the passport; the pipeline applies them after every merge. */

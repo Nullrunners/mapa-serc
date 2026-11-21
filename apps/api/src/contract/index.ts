@@ -527,6 +527,10 @@ export const candidateDecisionRoute = createRoute({
 
 const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).openapi({ example: '2027-06-30' })
 
+export const IdentityProvider = z.enum(['demo', 'login.gov.pl']).openapi('IdentityProvider', {
+  description: 'login.gov.pl = tożsamość potwierdzona w aplikacji mObywatel. demo = logowanie pokazowe z przykładowymi osobami, które niczego nie potwierdza.',
+})
+
 export const ReportKind = z.enum(['ok', 'locked', 'missing', 'battery_alarm', 'damaged']).openapi('ReportKind', {
   description: 'ok = urządzenie jest na miejscu, zielona dioda miga; locked = szafka zamknięta; missing = brak urządzenia; battery_alarm = sygnał baterii; damaged = uszkodzone',
 })
@@ -539,6 +543,7 @@ export const PassportPublic = z
     status: z.enum(STATUS),
     confirmedAt: z.string().nullable().openapi({ description: 'Ostatnie potwierdzenie sprawności (data weryfikacji)' }),
     confirmedByKeeper: z.boolean().openapi({ description: 'true, gdy datę potwierdził opiekun w paszporcie, a nie tylko podało ją źródło' }),
+    confirmedIdentity: IdentityProvider.nullable().openapi({ description: 'Skąd wiemy, kto potwierdził sprawność: opiekun był wtedy zalogowany. null = wszedł samym linkiem albo potwierdzenia nie ma' }),
     items: z.array(
       z.object({
         item: z.enum(['electrodes', 'electrodes_child', 'battery']),
@@ -613,6 +618,7 @@ export const OwnerPassport = z
     batteryExp: IsoDate.nullable(),
     status: z.enum(STATUS).nullable(),
     confirmedAt: z.string().nullable(),
+    confirmedBy: z.string().nullable().openapi({ description: 'Kto potwierdził, jeśli był zalogowany: imię i pierwsza litera nazwiska', example: 'Anna P.' }),
     notifyEmail: z.string().nullable().openapi({ description: 'Prywatny adres do przypomnień; nie trafia do zbioru' }),
     notifyPhone: z.string().nullable().openapi({ description: 'Numer do przypomnień SMS (+48…); nie trafia do zbioru' }),
   })
@@ -637,19 +643,33 @@ export const OwnerView = z
     reports: z.array(z.object({ kind: ReportKind, note: z.string().nullable(), at: z.string() })),
     messages: z.array(z.object({ channel: z.enum(['email', 'sms']), recipient: z.string(), subject: z.string(), reason: z.string(), at: z.string(), status: z.enum(['sent', 'logged', 'failed']) })),
     stickerUrl: z.string(),
+    keepers: z.array(z.object({ name: z.string(), linkedAt: z.string() })).openapi({ description: 'Osoby, które wchodzą do panelu po zalogowaniu, bez linku' }),
+    viewer: z
+      .object({ name: z.string(), linked: z.boolean().openapi({ description: 'true, gdy to urządzenie jest już przy koncie tej osoby' }) })
+      .nullable()
+      .openapi({ description: 'Zalogowana osoba, która o to pyta; null, gdy weszła samym linkiem' }),
   })
   .openapi('OwnerView')
 
-const ownerHeaders = z.object({ 'x-owner-token': z.string().min(10).openapi({ description: 'Token z linku dla opiekuna (parametr t)' }) })
-const ownerResponses = { 200: json(OwnerView, 'The device as its keeper sees it'), 401: problem('Missing, wrong or revoked owner link'), ...problems }
+const SessionHeader = z.string().min(10).openapi({ description: 'Sesja opiekuna z logowania (POST /v1/auth/login/demo)' })
+const ownerHeaders = z.object({
+  'x-owner-token': z.string().min(10).optional().openapi({ description: 'Token z linku dla opiekuna (parametr t)' }),
+  'x-keeper-session': SessionHeader.optional(),
+})
+const ownerQuery = z.object({ id: z.string().optional().openapi({ description: 'Numer urządzenia; potrzebny, gdy zamiast linku jest sesja zalogowanego opiekuna' }) })
+const ownerResponses = {
+  200: json(OwnerView, 'The device as its keeper sees it'),
+  401: problem('No owner link and no session, a wrong or revoked link, or a device that is not on the account'),
+  ...problems,
+}
 
 export const ownerPassportRoute = createRoute({
   method: 'get',
   path: '/v1/owner/passport',
   operationId: 'getOwnerPassport',
   tags: ['passport'],
-  summary: 'The passport of the device the owner link is for',
-  request: { headers: ownerHeaders },
+  summary: 'The passport of a device for its keeper: by the owner link, or by a session of an account that has the device',
+  request: { headers: ownerHeaders, query: ownerQuery },
   responses: ownerResponses,
 })
 
@@ -659,7 +679,7 @@ export const ownerUpdateRoute = createRoute({
   operationId: 'updateOwnerPassport',
   tags: ['passport'],
   summary: 'The keeper changes expiry dates, status or the private contact for reminders',
-  request: { headers: ownerHeaders, body: { required: true, content: { 'application/json': { schema: OwnerPassportUpdate } } } },
+  request: { headers: ownerHeaders, query: ownerQuery, body: { required: true, content: { 'application/json': { schema: OwnerPassportUpdate } } } },
   responses: ownerResponses,
 })
 
@@ -669,8 +689,81 @@ export const ownerConfirmRoute = createRoute({
   operationId: 'confirmOwnerPassport',
   tags: ['passport'],
   summary: '„Potwierdzam sprawność”: status czynny and today as the verification date, in the published dataset at once',
-  request: { headers: ownerHeaders },
+  request: { headers: ownerHeaders, query: ownerQuery },
   responses: ownerResponses,
+})
+
+// ------------------------------------------------------------- keeper account
+
+export const LoginOptions = z
+  .object({
+    mode: z.enum(['demo', 'off']).openapi({ description: 'demo = logowanie pokazowe: wybiera się jedną z przykładowych osób. off = do panelu wchodzi się tylko linkiem' }),
+    people: z.array(z.object({ id: z.string(), name: z.string() })).openapi({ description: 'Przykładowe osoby logowania pokazowego' }),
+  })
+  .openapi('LoginOptions')
+
+export const loginOptionsRoute = createRoute({
+  method: 'get',
+  path: '/v1/auth/login',
+  operationId: 'getLoginOptions',
+  tags: ['account'],
+  summary: 'How a keeper can log in on this deployment',
+  responses: { 200: json(LoginOptions, 'Login options'), ...problems },
+})
+
+export const KeeperAccount = z
+  .object({
+    name: z.string().openapi({ description: 'Imię i pierwsza litera nazwiska', example: 'Anna P.' }),
+    provider: IdentityProvider,
+    devices: z.array(PassportPublic).openapi({ description: 'Urządzenia przy koncie: do panelu każdego z nich wchodzi się bez linku' }),
+  })
+  .openapi('KeeperAccount')
+
+export const demoLoginRoute = createRoute({
+  method: 'post',
+  path: '/v1/auth/login/demo',
+  operationId: 'demoLogin',
+  tags: ['account'],
+  summary: 'Stand-in for the login.gov.pl round trip: opens a session for one of the made-up people',
+  request: { body: { required: true, content: { 'application/json': { schema: z.object({ person: z.string() }).openapi('DemoLoginRequest') } } } },
+  responses: {
+    200: json(z.object({ session: z.string(), expiresAt: z.string(), account: KeeperAccount }).openapi('KeeperSession'), 'Session; send it as X-Keeper-Session'),
+    409: problem('The stand-in login is switched off'),
+    ...problems,
+  },
+})
+
+const sessionHeaders = z.object({ 'x-keeper-session': SessionHeader })
+const accountResponses = { 200: json(KeeperAccount, 'The account'), 401: problem('No session, or it has ended'), ...problems }
+
+export const accountRoute = createRoute({
+  method: 'get',
+  path: '/v1/account',
+  operationId: 'getAccount',
+  tags: ['account'],
+  summary: 'The logged-in keeper and their devices',
+  request: { headers: sessionHeaders },
+  responses: accountResponses,
+})
+
+export const accountLinkRoute = createRoute({
+  method: 'post',
+  path: '/v1/account/devices',
+  operationId: 'linkAccountDevice',
+  tags: ['account'],
+  summary: 'Adds the device of an owner link to the account, so the keeper gets in without the link next time',
+  request: { headers: sessionHeaders.extend({ 'x-owner-token': z.string().min(10).openapi({ description: 'Token z linku dla opiekuna: dowód, że to urządzenie tej osoby' }) }) },
+  responses: accountResponses,
+})
+
+export const accountUnlinkRoute = createRoute({
+  method: 'post',
+  path: '/v1/account/devices/{id}/remove',
+  operationId: 'unlinkAccountDevice',
+  tags: ['account'],
+  summary: 'Takes a device off the account; the keeper can still get in by the owner link',
+  request: { headers: sessionHeaders, params: AedIdParam },
+  responses: accountResponses,
 })
 
 export const OwnerLinks = z.object({ ownerUrl: z.string(), passportUrl: z.string(), stickerUrl: z.string() }).openapi('OwnerLinks')
@@ -680,7 +773,7 @@ export const adminOwnerLinkRoute = createRoute({
   path: '/admin/aed/{id}/owner-link',
   operationId: 'createOwnerLink',
   tags: ['admin'],
-  summary: 'A management link for the keeper of a device; rotate = true revokes the links given out before',
+  summary: 'A management link for the keeper of a device; rotate = true revokes the links given out before and takes the device off every account',
   security: operatorOnly.security,
   request: {
     params: AedIdParam,
