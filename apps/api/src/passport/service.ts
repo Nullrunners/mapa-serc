@@ -4,6 +4,7 @@
  */
 import { createHash } from 'node:crypto'
 import { UNNAMED_PLACE, type AedRecord } from '@aed/schema'
+import { SIGNATURE, SMS_PREFIX } from '../brand'
 import { config } from '../config'
 import type { Store } from '../db/store'
 import { send } from '../notify'
@@ -122,12 +123,12 @@ async function notifyProblem(store: Store, aed: MergedAed, kind: ReportKind, not
     'Sprawdź urządzenie. Jeśli wszystko jest w porządku, kliknij „Potwierdzam sprawność” na stronie urządzenia:',
     link,
     '',
-    'AED Hub – dane na ratunek',
+    SIGNATURE,
   ]
     .filter((line) => line !== null)
     .join('\n')
   if (to.email) await send(store.passports, { aedId: aed.id, channel: 'email', recipient: to.email, subject, body, reason: 'problem_report' })
-  if (to.phone) await send(store.passports, { aedId: aed.id, channel: 'sms', recipient: to.phone, subject, body: `AED Hub: przy defibrylatorze „${name}” zgłoszono: ${REPORT_TEXT[kind]}. Sprawdź: ${link}`, reason: 'problem_report' })
+  if (to.phone) await send(store.passports, { aedId: aed.id, channel: 'sms', recipient: to.phone, subject, body: `${SMS_PREFIX} przy defibrylatorze „${name}” zgłoszono: ${REPORT_TEXT[kind]}. Sprawdź: ${link}`, reason: 'problem_report' })
 }
 
 /** Sends the owner link to the address the data already gives for the device; never to an address typed in. */
@@ -151,7 +152,7 @@ export async function sendOwnerLink(store: Store, aed: MergedAed, nowIso: string
       'Przypomnimy o wymianie 30 i 7 dni przed terminem. Nie przekazuj tego linku osobom spoza instytucji.',
       'Jeśli to nie Ty prosiłeś o link, zignoruj tę wiadomość.',
       '',
-      'AED Hub – dane na ratunek',
+      SIGNATURE,
     ].join('\n'),
     reason: 'owner_link',
   })
@@ -196,7 +197,7 @@ export async function welcomeProvider(store: Store, email: string, devices: read
       ...devices.flatMap((device) => [device.name, `  naklejka: ${device.stickerUrl}`, `  panel opiekuna: ${device.ownerUrl}`, '']),
       'Nie przekazuj linków do panelu osobom spoza instytucji: każdy z nich pozwala zmieniać dane urządzenia.',
       '',
-      'AED Hub – dane na ratunek',
+      SIGNATURE,
     ].join('\n'),
     reason: 'passports_ready',
   })
@@ -258,14 +259,14 @@ export async function runReminders(store: Store, today: string): Promise<Record<
       'Po wymianie wpisz nowe daty i kliknij „Potwierdzam sprawność”. Urządzenie będzie wtedy oznaczone w otwartym zbiorze danych jako sprawne i sprawdzone:',
       link,
       '',
-      'AED Hub – dane na ratunek',
+      SIGNATURE,
     ].join('\n')
     if (to.email) {
       await send(store.passports, { aedId: aed.id, channel: 'email', recipient: to.email, subject, body, reason: 'reminder' })
       messages++
     }
     if (to.phone) {
-      const sms = `AED Hub: defibrylator „${name}” – ${due.map((entry) => `${ITEM_TEXT[entry.item]} ${WINDOW_TEXT(entry.date, entry.window, today)}`).join('; ')}. Nowe daty: ${link}`
+      const sms = `${SMS_PREFIX} defibrylator „${name}” – ${due.map((entry) => `${ITEM_TEXT[entry.item]} ${WINDOW_TEXT(entry.date, entry.window, today)}`).join('; ')}. Nowe daty: ${link}`
       await send(store.passports, { aedId: aed.id, channel: 'sms', recipient: to.phone, subject, body: sms, reason: 'reminder' })
       messages++
     }
