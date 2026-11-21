@@ -61,21 +61,40 @@ export function supplyFor(store: Store): Supply {
 
 export type TimedOverview = Overview & { tookMs: number; computedAt: string }
 
-let overviewCache: { key: string; promise: Promise<TimedOverview> } | null = null
+let overviewCache: { key: string; promise: Promise<TimedOverview>; counted: TimedOverview | null } | null = null
 /** The national overview for the current dataset; starts computing it on first call. */
 export function overviewFor(store: Store): Promise<TimedOverview> {
   const supply = supplyFor(store)
   if (overviewCache?.key !== supply.key) {
     const started = Date.now()
     const promise = nationalOverview(populationCells(), supply.coverage, isAnswering).then((overview) => ({ ...overview, tookMs: Date.now() - started, computedAt: new Date().toISOString() }))
-    const entry = { key: supply.key, promise }
+    const entry: NonNullable<typeof overviewCache> = { key: supply.key, promise, counted: null }
     overviewCache = entry
-    promise.catch((error) => {
-      console.error('gaps: national overview failed', error)
-      if (overviewCache === entry) overviewCache = null
-    })
+    promise.then(
+      (overview) => {
+        entry.counted = overview
+        // A count overtaken by a newer one still beats having nothing.
+        if (overviewCache === entry || lastCounted?.store !== store) lastCounted = { store, overview }
+      },
+      (error) => {
+        console.error('gaps: national overview failed', error)
+        if (overviewCache === entry) overviewCache = null
+      },
+    )
   }
   return overviewCache.promise
+}
+
+let lastCounted: { store: Store; overview: TimedOverview } | null = null
+/**
+ * The national overview there is to show right now, without waiting: the one for the current dataset once it is
+ * counted, and until then the one before it. A count takes half a minute and one device more or less changes
+ * little on a map of the country, so the page keeps its figures instead of going blank after every change.
+ * Null only until the first count after a start has ended. Asking starts the count that is due.
+ */
+export function overviewAtHand(store: Store): TimedOverview | null {
+  void overviewFor(store)
+  return overviewCache?.counted ?? (lastCounted?.store === store ? lastCounted.overview : null)
 }
 
 // ------------------------------------------------------------------------ view
