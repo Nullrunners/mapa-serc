@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useEffect, useRef, type ReactNode, type Ref } from "react";
 import { api, type AedItem } from "@/lib/api/client";
 import { ACCESS_LABEL, AVAILABLE_NOW, STATUS_WARNING, addressLine, date, distance, hours, title } from "@/lib/aed-text";
+import type { PassportPublic } from "@/lib/passport-text";
 import { googleDirections, type Point } from "@/lib/route";
 import { useLoad } from "@/lib/use-load";
+import PassportNote from "./passport-note";
 
 /** A device picked on the map or in a list. The position comes with it, so the map can fly there before the details arrive. */
 export interface Picked {
@@ -35,17 +37,18 @@ export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClo
   const heading = useRef<HTMLHeadingElement>(null);
 
   const loaded = useLoad(`${picked.id}|${layer}|${onlyAvailable}`, async (signal) => {
-    const [one, near] = await Promise.all([
+    const [one, near, card] = await Promise.all([
       api.GET("/v1/aed/{id}", { params: { path: { id: picked.id } }, signal }),
       api.GET("/v1/aed", {
         params: { query: { layer, near: `${picked.lat},${picked.lon}`, availableNow: onlyAvailable ? "true" : undefined, limit: NEARBY + 1 } },
         signal,
       }),
+      api.GET("/v1/aed/{id}/passport", { params: { path: { id: picked.id } }, signal }),
     ]);
     if (one.error || !one.data) throw new Error("Nie udało się wczytać informacji o tym urządzeniu. Spróbuj ponownie za chwilę.");
-    // The nearby list is a help, not the point: when it fails, the device itself is still shown.
+    // The nearby list and the passport are a help, not the point: when they fail, the device itself is still shown.
     const nearby = near.data ? near.data.items.filter((item) => item.id !== picked.id).slice(0, NEARBY) : null;
-    return { item: one.data, nearby };
+    return { item: one.data, nearby, passport: card.data ?? null };
   });
 
   // Move focus (and the page, on a phone the panel sits above the map) to the device once it is there.
@@ -69,7 +72,7 @@ export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClo
             {loaded.message}
           </p>
         )}
-        {loaded.state === "ready" && <Device item={loaded.data.item} headingRef={heading} from={from} walkNote={walkNote} />}
+        {loaded.state === "ready" && <Device item={loaded.data.item} passport={loaded.data.passport} headingRef={heading} from={from} walkNote={walkNote} />}
       </div>
 
       {loaded.state === "ready" && (
@@ -101,7 +104,19 @@ export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClo
   );
 }
 
-function Device({ item, headingRef, from, walkNote }: { item: AedItem; headingRef: Ref<HTMLHeadingElement>; from: Point | null; walkNote: ReactNode }) {
+function Device({
+  item,
+  passport,
+  headingRef,
+  from,
+  walkNote,
+}: {
+  item: AedItem;
+  passport: PassportPublic | null;
+  headingRef: Ref<HTMLHeadingElement>;
+  from: Point | null;
+  walkNote: ReactNode;
+}) {
   const { record } = item;
   const where = [
     record.opis_lokalizacji,
@@ -119,7 +134,8 @@ function Device({ item, headingRef, from, walkNote }: { item: AedItem; headingRe
     ["Elektrody dla dzieci", record.elektrody_pediatryczne === null ? null : record.elektrody_pediatryczne ? "tak" : "nie"],
     ["Opiekun", record.podmiot_odpowiedzialny],
     ["Telefon", record.telefon_kontaktowy ? <a href={`tel:${record.telefon_kontaktowy.replace(/\s/g, "")}`} className="text-gov underline">{record.telefon_kontaktowy}</a> : null],
-    ["Ostatnio sprawdzony", record.data_weryfikacji ? date(record.data_weryfikacji) : null],
+    // After the keeper's confirmation this is the same date as in the passport note above; say it once.
+    ["Ostatnio sprawdzony", record.data_weryfikacji && !passport?.confirmedByKeeper ? date(record.data_weryfikacji) : null],
     ["Skąd te dane", record.zrodlo],
   ];
 
@@ -129,9 +145,7 @@ function Device({ item, headingRef, from, walkNote }: { item: AedItem; headingRe
         {title(item)}
       </h2>
       {warning && <p className="font-semibold text-danger">{warning}</p>}
-      {item.publication === "community" && (
-        <p className="text-sm font-semibold text-warn">To urządzenie nie zostało jeszcze potwierdzone. Pochodzi z OpenStreetMap, więc informacje mogą być nieaktualne.</p>
-      )}
+      <PassportNote publication={item.publication} passport={passport} />
       <p className={`font-semibold ${AVAILABLE_NOW[item.availableNow].tone}`}>{AVAILABLE_NOW[item.availableNow].label}</p>
 
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
