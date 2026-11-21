@@ -532,7 +532,8 @@ export function normalizeRow(row: Record<string, string>, mapping: Record<string
       }
       case 'data_weryfikacji':
       case 'termin_waznosci_elektrod':
-      case 'termin_waznosci_baterii': {
+      case 'termin_waznosci_baterii':
+      case 'termin_waznosci_elektrod_pediatrycznych': {
         const parsed = parseDate(value)
         if (parsed === null) unrecognised(target, value)
         else {

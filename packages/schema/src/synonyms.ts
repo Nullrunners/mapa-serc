@@ -87,6 +87,7 @@ const table: Record<MappingTarget, string[]> = {
   elektrody_pediatryczne: ['elektrody pediatryczne', 'elektrody dla dzieci', 'tryb pediatryczny'],
   termin_waznosci_elektrod: ['termin waznosci elektrod', 'waznosc elektrod', 'elektrody wazne do'],
   termin_waznosci_baterii: ['termin waznosci baterii', 'waznosc baterii', 'bateria wazna do'],
+  termin_waznosci_elektrod_pediatrycznych: ['termin waznosci elektrod pediatrycznych', 'waznosc elektrod pediatrycznych', 'waznosc elektrod dla dzieci'],
   zrodlo: [],
   id_w_zrodle: ['id w zrodle', 'numer id', 'id', 'lp', 'l p', 'nr inwentarzowy', 'numer inwentarzowy', 'identyfikator', 'numer urzadzenia'],
   licencja: [],
