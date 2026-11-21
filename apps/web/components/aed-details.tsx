@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, type ReactNode, type Ref } from "react";
 import DeviceList, { type Picked } from "@/components/device-list";
+import { GuideIcon } from "@/components/guide";
 import { BackButton, ExternalLink, LoadStatus, Status } from "@/components/ui";
 import { AVAILABILITY, STATUS_WARNING, access, addressLine, hours, spot, title } from "@/lib/aed-text";
 import { api, type AedItem } from "@/lib/api/client";
@@ -24,10 +25,14 @@ export interface AedDetailsProps {
   from?: Point | null;
   /** How far the walk to this device is, shown above the directions button. */
   walkNote?: ReactNode;
+  /** Starts leading the person to this device on our map; there only when the device is within a walk. */
+  onGuide?: () => void;
+  /** Shown above the device while the person is led to it: what to do next on the way. */
+  guidance?: ReactNode;
 }
 
 /** Everything we know about one device, plus the closest other devices in case this one cannot be reached. */
-export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClose, from = null, walkNote }: AedDetailsProps) {
+export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClose, from = null, walkNote, onGuide, guidance }: AedDetailsProps) {
   const heading = useRef<HTMLHeadingElement>(null);
 
   const loaded = useLoad(`${picked.id}|${layer}|${onlyAvailable}`, async (signal) => {
@@ -45,24 +50,27 @@ export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClo
     return { item: one.data, nearby, passport: card.data ?? null };
   });
 
-  // Move focus (and the page, on a phone the panel sits above the map) to the device once it is there.
+  // Move focus (and the page, on a phone the panel sits above the map) to the device once it is there. While the
+  // person is led to it the guidance above keeps the focus, and gives it back here when it ends.
   const ready = loaded.state === "ready";
+  const guided = !!guidance;
   useEffect(() => {
-    if (!ready || !heading.current) return;
+    if (!ready || guided || !heading.current) return;
     heading.current.focus({ preventScroll: true });
     heading.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [ready, picked.id]);
+  }, [ready, guided, picked.id]);
 
   return (
     <section aria-labelledby="urzadzenie-naglowek" className="space-y-5">
       <BackButton onClick={onClose}>Wróć do listy</BackButton>
+      {guidance}
       <div aria-live="polite">
         <LoadStatus of={loaded} />
       </div>
 
       {loaded.state === "ready" && (
         <>
-          <Device item={loaded.data.item} passport={loaded.data.passport} headingRef={heading} from={from} walkNote={walkNote} />
+          <Device item={loaded.data.item} passport={loaded.data.passport} headingRef={heading} from={from} walkNote={walkNote} onGuide={onGuide} guided={guided} />
 
           <section aria-labelledby="najblizsze-naglowek" className="space-y-2 border-t border-line pt-5">
             <h3 id="najblizsze-naglowek" className="font-bold">
@@ -78,7 +86,18 @@ export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClo
   );
 }
 
-function Device({ item, passport, headingRef, from, walkNote }: { item: AedItem; passport: PassportPublic | null; headingRef: Ref<HTMLHeadingElement>; from: Point | null; walkNote: ReactNode }) {
+interface DeviceProps {
+  item: AedItem;
+  passport: PassportPublic | null;
+  headingRef: Ref<HTMLHeadingElement>;
+  from: Point | null;
+  walkNote: ReactNode;
+  onGuide?: () => void;
+  /** The person is being led here on our map, so Google Maps is only the other way to go. */
+  guided: boolean;
+}
+
+function Device({ item, passport, headingRef, from, walkNote, onGuide, guided }: DeviceProps) {
   const { record } = item;
   const warning = STATUS_WARNING[record.status];
   const availability = AVAILABILITY.now[item.availableNow];
@@ -130,7 +149,13 @@ function Device({ item, passport, headingRef, from, walkNote }: { item: AedItem;
 
       {walkNote}
       <div className="flex flex-wrap gap-2">
-        <ExternalLink href={googleDirections(from, { lat: record.szerokosc_geograficzna, lon: record.dlugosc_geograficzna })} className="btn btn-primary">
+        {onGuide && (
+          <button type="button" onClick={onGuide} className="btn btn-primary">
+            <GuideIcon />
+            Prowadź mnie
+          </button>
+        )}
+        <ExternalLink href={googleDirections(from, { lat: record.szerokosc_geograficzna, lon: record.dlugosc_geograficzna })} className={onGuide || guided ? "btn btn-secondary" : "btn btn-primary"}>
           Pokaż drogę w Mapach Google
         </ExternalLink>
         <Link href={`/aed/${item.id}`} className="btn btn-secondary">

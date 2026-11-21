@@ -1,23 +1,33 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import DeviceList, { pickedFrom, type Picked } from "@/components/device-list";
+import { GuideBanner, GuideIcon, GuidePanel } from "@/components/guide";
 import { MapPlaceholder, MapScreen } from "@/components/map-frame";
 import { ExternalLink } from "@/components/ui";
 import { addressLine, title as deviceTitle, type When } from "@/lib/aed-text";
 import { api } from "@/lib/api/client";
 import { count, distance, minutes } from "@/lib/format";
 import { nextSundayNight } from "@/lib/reach-text";
-import { MAX_WALK_M, googleDirections, straightDistance, walkingRoute, type Point, type WalkingRoute } from "@/lib/route";
+import { MAX_WALK_M, OFF_WAY_M, follow, googleDirections, straightDistance, walkingRoute, type Point, type WalkingRoute } from "@/lib/route";
+import { guideWords } from "@/lib/route-text";
 import { useLoad, type Loaded } from "@/lib/use-load";
 import AedDetails from "./aed-details";
-import type { WalkOnMap } from "./aed-map";
+import type { GuideOnMap, WalkOnMap } from "./aed-map";
 
 // MapLibre needs a browser; it is loaded only on the client, after the list is already usable.
 const AedMap = dynamic(() => import("./aed-map"), { ssr: false, loading: () => <MapPlaceholder /> });
 
 const LIMIT = 20;
+
+/** A new way is asked for at most this often: the person keeps moving while the router answers. */
+const REROUTE_MS = 10_000;
+/** Less than this is the GPS wandering, not the person moving. */
+const MOVED_M = 10;
+
+/** A position goes to our API and to the router; 5 decimals is about a metre, more than either needs. */
+const rounded = (lat: number, lon: number): Point => ({ lat: Number(lat.toFixed(5)), lon: Number(lon.toFixed(5)) });
 
 /** The map of all devices with the search, the way to the nearest one and the list; `title` and `lead` head the panel. */
 export default function Finder({ title, lead }: { title: string; lead: string }) {
@@ -31,9 +41,36 @@ export default function Finder({ title, lead }: { title: string; lead: string })
   const [order, setOrder] = useState<"reach" | "distance">("reach");
   const [when, setWhen] = useState<When>("now");
   const [selected, setSelected] = useState<Picked | null>(null);
+  // Leading the person to the device open in the panel: where they are as they walk, and whether we still hear it.
+  const [guiding, setGuiding] = useState(false);
+  const [here, setHere] = useState<Point | null>(null);
+  const [lost, setLost] = useState(false);
   const listHeading = useRef<HTMLHeadingElement>(null);
+  const wayRef = useRef<WalkingRoute | null>(null);
+  const reroutedAt = useRef(0);
+
+  const startGuiding = (picked: Picked) => {
+    reroutedAt.current = 0;
+    setSelected(picked);
+    setGuiding(true);
+  };
+
+  const stopGuiding = () => {
+    setGuiding(false);
+    setHere(null);
+    setLost(false);
+    // The person has walked on: the list and the next way start from where they are now.
+    if (here && near && straightDistance(near, here) > MOVED_M) setNear(rounded(here.lat, here.lon));
+  };
+
+  /** Opens a device in the panel. The person was led to the one open until now, so with another one that ends. */
+  const pick = (picked: Picked) => {
+    if (guiding && picked.id !== selected?.id) stopGuiding();
+    setSelected(picked);
+  };
 
   const closeDetails = () => {
+    if (guiding) stopGuiding();
     setSelected(null);
     // The list comes back in place of the panel; put the keyboard focus where the person left it.
     requestAnimationFrame(() => listHeading.current?.focus());
@@ -77,12 +114,48 @@ export default function Finder({ title, lead }: { title: string; lead: string })
   }, [near, toLat, toLon, routeResult]);
   const walkNote = near && target ? <WalkNote route={route} from={near} to={target} tooFar={!walkable} /> : null;
 
+  // We can lead the person as soon as the device is within a walk; the way itself may still be on its way.
+  const way = route.state === "ready" ? route.data : null;
+  const canGuide = walkable !== null && (route.state === "loading" || way !== null);
+  // Until the first reading comes in, the person is where they last told us they were.
+  const position = guiding ? (here ?? near) : null;
+  const progress = useMemo(() => (way && position ? follow(way, position) : null), [way, position]);
+  const guideOnMap = useMemo<GuideOnMap | null>(
+    () => (position ? { at: progress?.at ?? position, bearing: progress?.bearing ?? null, rest: progress?.rest ?? null } : null),
+    [position, progress],
+  );
+  const words = position ? guideWords(progress, route.state === "loading") : null;
+
+  useEffect(() => {
+    wayRef.current = way;
+  }, [way]);
+
+  useEffect(() => {
+    if (!guiding) return;
+    const watch = navigator.geolocation.watchPosition(
+      ({ coords, timestamp }) => {
+        const fix = { lat: coords.latitude, lon: coords.longitude };
+        setHere(fix);
+        setLost(false);
+        // Off the way by more than the GPS can be wrong: ask for a new way from here.
+        const current = wayRef.current;
+        if (current && timestamp - reroutedAt.current > REROUTE_MS && follow(current, fix).offM > Math.max(OFF_WAY_M, coords.accuracy)) {
+          reroutedAt.current = timestamp;
+          setNear(rounded(fix.lat, fix.lon));
+        }
+      },
+      () => setLost(true),
+      { enableHighAccuracy: true, maximumAge: 1000 },
+    );
+    return () => navigator.geolocation.clearWatch(watch);
+  }, [guiding]);
+
   const locate = () => {
     if (!("geolocation" in navigator)) return setLocating("denied");
     setLocating("asking");
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setNear({ lat: Number(position.coords.latitude.toFixed(5)), lon: Number(position.coords.longitude.toFixed(5)) });
+        setNear(rounded(position.coords.latitude, position.coords.longitude));
         setLocating("idle");
       },
       () => setLocating("denied"),
@@ -134,15 +207,23 @@ export default function Finder({ title, lead }: { title: string; lead: string })
             Droga do najbliższego defibrylatora
           </h2>
           <div>
-            <button type="button" onClick={() => setSelected(pickedFrom(nearest))} className="text-left text-lg leading-snug font-bold text-gov hover:underline">
+            <button type="button" onClick={() => pick(pickedFrom(nearest))} className="text-left text-lg leading-snug font-bold text-gov hover:underline">
               {deviceTitle(nearest)}
             </button>
             {addressLine(nearest) && <p className="text-sm">{addressLine(nearest)}</p>}
           </div>
           {walkNote}
-          <ExternalLink href={googleDirections(near, pickedFrom(nearest))} className="btn btn-primary">
-            Prowadź mnie w Mapach Google
-          </ExternalLink>
+          <div className="flex flex-wrap gap-2">
+            {canGuide && (
+              <button type="button" onClick={() => startGuiding(pickedFrom(nearest))} className="btn btn-primary">
+                <GuideIcon />
+                Prowadź mnie
+              </button>
+            )}
+            <ExternalLink href={googleDirections(near, pickedFrom(nearest))} className={canGuide ? "btn btn-secondary" : "btn btn-primary"}>
+              Otwórz w Mapach Google
+            </ExternalLink>
+          </div>
           <p className="text-xs text-muted">Drogę wyznacza bezpłatny serwis map OpenStreetMap (FOSSGIS). Wysyłamy mu tylko Twoje położenie i miejsce urządzenia.</p>
         </section>
       )}
@@ -211,7 +292,7 @@ export default function Finder({ title, lead }: { title: string; lead: string })
         </p>
       )}
       {list.state === "ready" &&
-        (list.data.total === 0 ? <p>Nic nie znaleźliśmy. Spróbuj innej nazwy albo miejscowości.</p> : <DeviceList items={list.data.items} when={when} onPick={setSelected} />)}
+        (list.data.total === 0 ? <p>Nic nie znaleźliśmy. Spróbuj innej nazwy albo miejscowości.</p> : <DeviceList items={list.data.items} when={when} onPick={pick} />)}
     </section>
   );
 
@@ -221,10 +302,21 @@ export default function Finder({ title, lead }: { title: string; lead: string })
       lead={lead}
       focused={selected !== null}
       view={selected ? `urzadzenie-${selected.id}` : "lista"}
-      map={<AedMap showCommunity={showCommunity} focus={near} walk={walk} selected={selected} onSelect={setSelected} />}
+      tallMap={guiding}
+      map={<AedMap showCommunity={showCommunity} focus={near} walk={walk} guide={guideOnMap} banner={words && <GuideBanner words={words} />} selected={selected} onSelect={pick} />}
     >
       {selected ? (
-        <AedDetails picked={selected} from={near} layer={layer} onlyAvailable={onlyAvailable} onPick={setSelected} onClose={closeDetails} walkNote={walkNote} />
+        <AedDetails
+          picked={selected}
+          from={near}
+          layer={layer}
+          onlyAvailable={onlyAvailable}
+          onPick={pick}
+          onClose={closeDetails}
+          walkNote={guiding ? null : walkNote}
+          onGuide={!guiding && canGuide ? () => startGuiding(selected) : undefined}
+          guidance={words && <GuidePanel words={words} steps={way?.steps ?? []} next={progress && !progress.arrived ? progress.next : null} lost={lost} onStop={stopGuiding} />}
+        />
       ) : (
         <>
           {controls}

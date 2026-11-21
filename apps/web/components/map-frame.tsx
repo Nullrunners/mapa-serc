@@ -10,6 +10,8 @@ export interface MapScreenProps {
   focused?: boolean;
   /** Names what the panel shows; when it changes, the panel starts again from its top. */
   view: string;
+  /** On a phone the map takes more of the screen than the panel: the person is walking by it. */
+  tallMap?: boolean;
   map: ReactNode;
   children: ReactNode;
 }
@@ -19,7 +21,7 @@ export interface MapScreenProps {
  * beside it (on a phone, under it) and scrolls on its own. In the document the panel comes first: the map is an
  * addition, and everything on it can also be reached from the panel with a keyboard.
  */
-export function MapScreen({ title, lead, focused = false, view, map, children }: MapScreenProps) {
+export function MapScreen({ title, lead, focused = false, view, tallMap = false, map, children }: MapScreenProps) {
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     panel.current?.scrollTo({ top: 0 });
@@ -39,7 +41,7 @@ export function MapScreen({ title, lead, focused = false, view, map, children }:
           <FooterNotes />
         </footer>
       </div>
-      <section aria-label="Mapa" className="relative order-first shrink-0 basis-1/2 border-b border-line md:order-none md:flex-1 md:basis-auto md:border-b-0 print:hidden">
+      <section aria-label="Mapa" className={`relative order-first shrink-0 ${tallMap ? "basis-2/3" : "basis-1/2"} border-b border-line md:order-none md:flex-1 md:basis-auto md:border-b-0 print:hidden`}>
         {map}
       </section>
     </div>

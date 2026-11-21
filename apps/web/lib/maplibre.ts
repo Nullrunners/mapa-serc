@@ -139,5 +139,9 @@ export function pointerOver(map: MapLibreMap, layers: string[]): void {
   }
 }
 
-export const pointFeature = (point: { lat: number; lon: number }): SourceData => ({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [point.lon, point.lat] } });
+export const pointFeature = (point: { lat: number; lon: number }, properties: Record<string, number | string> = {}): SourceData => ({
+  type: "Feature",
+  properties,
+  geometry: { type: "Point", coordinates: [point.lon, point.lat] },
+});
 export const lineFeature = (coordinates: [number, number][]): SourceData => ({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates } });
