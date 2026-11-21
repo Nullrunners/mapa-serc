@@ -43,6 +43,11 @@ export interface SourceDef {
    * do not enter the files for dane.gov.pl and cannot change records that are already published.
    */
   pending?: boolean
+  /**
+   * Private address the provider typed in the wizard. Once the devices are published, the sticker and passport
+   * links go there and it becomes the reminder address of each device. Never published.
+   */
+  contactEmail?: string
   /** Reviewed column mapping: header as it appears in the file (trimmed) → target, or null to ignore the column. */
   mapping: Record<string, MappingTarget | null>
   /** Values that hold for every row of this source and are not in the file. */

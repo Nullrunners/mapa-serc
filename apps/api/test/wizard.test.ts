@@ -151,3 +151,36 @@ describe('commit and approval', () => {
     expect((await post('/v1/import/commit', upload(NEW_TOWN, 'aed.csv'))).status).toBe(422)
   })
 })
+
+describe('passports for the provider', () => {
+  // Pattern headers map onto themselves; the electrodes expire 4 days after the tests' fixed "today" (2026-11-21).
+  const FILE = [
+    'nazwa,miejscowosc,kod_terc,szerokosc_geograficzna,dlugosc_geograficzna,termin_waznosci_elektrod',
+    'Szkoła Podstawowa w Próbnej Woli,Białe Błota,0403022,53.1205,17.9604,2026-11-25',
+  ].join('\r\n')
+  const provider = { name: 'Gmina Próbna Wola', email: 'aed@probna.example', licence: 'CC0 1.0' }
+  const outbox = async () => ((await (await app.request('/admin/outbox?limit=500', { headers: OPERATOR })).json()) as any).items as any[]
+
+  it('sends the sticker and passport links once the operator approves, and never publishes the address', async () => {
+    const result = (await (await post('/v1/import/commit', upload(FILE, 'aed-proba.csv', { provider }))).json()) as any
+    expect(result).toMatchObject({ status: 'pending', added: 1, devices: [] })
+    expect((await outbox()).some((message) => message.recipient === provider.email)).toBe(false)
+
+    const approved = (await (await post(`/admin/sources/${result.sourceId}/approve`, {}, OPERATOR)).json()) as any
+    expect(approved.devices).toHaveLength(1)
+    const welcome = (await outbox()).find((message) => message.reason === 'passports_ready')
+    expect(welcome).toMatchObject({ recipient: provider.email, channel: 'email', aedId: approved.devices[0].id })
+    expect(welcome.body).toContain(approved.devices[0].stickerUrl)
+    expect(welcome.body).toContain(approved.devices[0].ownerUrl)
+
+    for (const path of ['/v1/sources', '/dane/aed.csv', '/v1/aed.geojson?layer=all', `/v1/aed/${approved.devices[0].id}`, `/v1/aed/${approved.devices[0].id}/passport`]) {
+      expect(await (await app.request(path)).text()).not.toContain(provider.email)
+    }
+  })
+
+  it('reminds the provider of the expiry date from the file', async () => {
+    expect((await post('/admin/jobs/reminders', {}, OPERATOR)).status).toBe(200)
+    const reminder = (await outbox()).find((message) => message.reason === 'reminder' && message.recipient === provider.email)
+    expect(reminder.body).toContain('elektrody dla dorosłych: ważne do 25.11.2026 (zostało 4 dni)')
+  })
+})

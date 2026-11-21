@@ -1189,7 +1189,10 @@ export interface components {
             provider?: {
                 /** @example Urząd Miasta Marki */
                 name: string;
-                /** Format: email */
+                /**
+                 * Format: email
+                 * @description Prywatny adres dostawcy. Po publikacji wysyłamy tu linki do naklejek i paneli opiekuna, a potem przypomnienia o terminach ważności. Nie jest publikowany.
+                 */
                 email?: string;
                 /**
                  * @default CC0 1.0

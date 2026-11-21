@@ -1819,7 +1819,8 @@
               },
               "email": {
                 "type": "string",
-                "format": "email"
+                "format": "email",
+                "description": "Prywatny adres dostawcy. Po publikacji wysyłamy tu linki do naklejek i paneli opiekuna, a potem przypomnienia o terminach ważności. Nie jest publikowany."
               },
               "licence": {
                 "type": "string",

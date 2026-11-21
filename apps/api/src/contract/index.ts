@@ -368,7 +368,11 @@ export const ImportRequest = z
     provider: z
       .object({
         name: z.string().min(2).max(200).openapi({ example: 'Urząd Miasta Marki' }),
-        email: z.string().email().optional(),
+        email: z
+          .string()
+          .email()
+          .optional()
+          .openapi({ description: 'Prywatny adres dostawcy. Po publikacji wysyłamy tu linki do naklejek i paneli opiekuna, a potem przypomnienia o terminach ważności. Nie jest publikowany.' }),
         licence: z.enum(['CC0 1.0', 'CC BY 4.0']).default('CC0 1.0'),
       })
       .optional(),

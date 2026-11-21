@@ -158,6 +158,51 @@ export async function sendOwnerLink(store: Store, aed: MergedAed, nowIso: string
   return { sentTo: maskEmail(email) }
 }
 
+export interface DeviceLinks {
+  id: string
+  name: string
+  ownerUrl: string
+  passportUrl: string
+  stickerUrl: string
+}
+
+/**
+ * Once a provider's devices are published: each gets a passport whose reminders go to the address the provider
+ * typed in the wizard (a keeper who already set their own contact keeps it), and the provider gets one message
+ * with the sticker and the management link of every device. At most one such message to an address in 10 minutes.
+ */
+export async function welcomeProvider(store: Store, email: string, devices: readonly DeviceLinks[], nowIso: string): Promise<'sent' | 'too_soon' | 'no_devices'> {
+  if (devices.length === 0) return 'no_devices'
+  for (const device of devices) {
+    const passport = store.passports.getOrEmpty(device.id)
+    if (!passport.notifyEmail) await store.passports.save({ ...passport, notifyEmail: email })
+  }
+  if (store.passports.outbox.some((message) => message.reason === 'passports_ready' && message.recipient === email && Date.parse(nowIso) - Date.parse(message.at) < 10 * 60 * 1000)) return 'too_soon'
+  const one = devices.length === 1
+  await send(store.passports, {
+    aedId: one ? devices[0]!.id : null,
+    channel: 'email',
+    recipient: email,
+    subject: one ? `Naklejka i paszport defibrylatora „${devices[0]!.name}”` : `Naklejki i paszporty Twoich defibrylatorów (${devices.length})`,
+    body: [
+      'Dzień dobry,',
+      '',
+      `dziękujemy za zgłoszenie ${one ? 'defibrylatora' : 'defibrylatorów'} do otwartego zbioru danych. ${one ? 'Urządzenie ma' : 'Każde urządzenie ma'} swój paszport.`,
+      '',
+      `1. Wydrukuj ${one ? 'naklejkę' : 'naklejki'} z kodem QR i przyklej przy ${one ? 'urządzeniu' : 'urządzeniach'}. Kto zeskanuje kod, potwierdzi, że defibrylator jest na miejscu, albo zgłosi Ci problem.`,
+      '2. W panelu opiekuna wpisz terminy ważności elektrod i baterii. Przypomnimy o wymianie na ten adres 30 i 7 dni przed terminem.',
+      '3. Po przeglądzie kliknij „Potwierdzam sprawność”. W otwartym zbiorze danych urządzenie będzie wtedy oznaczone jako sprawne i sprawdzone.',
+      '',
+      ...devices.flatMap((device) => [device.name, `  naklejka: ${device.stickerUrl}`, `  panel opiekuna: ${device.ownerUrl}`, '']),
+      'Nie przekazuj linków do panelu osobom spoza instytucji: każdy z nich pozwala zmieniać dane urządzenia.',
+      '',
+      'AED Hub – dane na ratunek',
+    ].join('\n'),
+    reason: 'passports_ready',
+  })
+  return 'sent'
+}
+
 /** Saves the keeper's changes and puts them into the published record at once. */
 export async function updatePassport(store: Store, aedId: string, change: Partial<Passport>, today: string, actor: string, action: string): Promise<Passport> {
   const saved = await store.passports.save({ ...store.passports.getOrEmpty(aedId), ...change, aedId })

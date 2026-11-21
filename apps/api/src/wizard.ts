@@ -9,7 +9,7 @@
 import { createHash } from 'node:crypto'
 import type { RouteHandler } from '@hono/zod-openapi'
 import { COMPOSITE_TARGETS, FIELD_NAMES, type AedRecord, type MappingTarget } from '@aed/schema'
-import { config } from './config'
+import { config, now } from './config'
 import { getContext } from './context'
 import type { ImportRequest, approveSourceRoute, importCommitRoute, importPreviewRoute, sourceCsvRoute } from './contract'
 import type { Store } from './db/store'
@@ -23,7 +23,7 @@ import { checkSource, normalizeSource } from './pipeline/sources'
 import { PRIORITY, type NormalizedRecord, type RawTable, type SourceDef } from './pipeline/types'
 import { isLegacyXls, isXlsx, parseXls, parseXlsx } from './pipeline/xlsx'
 import { toCsv } from './publish/files'
-import { deviceName } from './passport/service'
+import { deviceName, welcomeProvider, type DeviceLinks } from './passport/service'
 import { ownerUrl, passportUrl, stickerUrl, verifyInvitation } from './radar/links'
 import type { z } from '@hono/zod-openapi'
 
@@ -100,6 +100,7 @@ async function prepare(request: Request, pending: boolean): Promise<Prepared> {
     format: table.format,
     mapping: toMapping(columns),
     ...(pending ? { pending: true } : {}),
+    ...(request.provider?.email?.trim() ? { contactEmail: request.provider.email.trim() } : {}),
   }
   const records = normalizeSource(def, table)
   checkSource(def, records)
@@ -169,7 +170,7 @@ function outcome(store: Store, sourceId: string) {
 }
 
 /** Published devices of a submission with the links its keeper needs: passport management and the sticker. */
-function deviceLinks(store: Store, sourceId: string) {
+function deviceLinks(store: Store, sourceId: string): DeviceLinks[] {
   return store.aeds
     .filter((aed) => aed.publication === 'official' && aed.sources.some((ref) => ref.sourceId === sourceId && ref.role === 'values'))
     .map((aed) => ({ id: aed.id, name: deviceName(aed.record), ownerUrl: ownerUrl(aed.id, store.passports.get(aed.id)?.linkVersion ?? 0), passportUrl: passportUrl(aed.id), stickerUrl: stickerUrl(aed.id) }))
@@ -195,9 +196,11 @@ export const importCommitHandler: RouteHandler<typeof importCommitRoute> = async
   await store.log({ actor: prepared.def.name, entity: 'source', entityId: prepared.def.id, action: approved ? 'import_published' : 'import_submitted', detail: { fileName: request.fileName, rows: prepared.records.length, licence: prepared.def.licence } })
   await runJob('pipeline')
   if (lead) await store.setCandidateStatus(lead.id, 'confirmed')
+  const devices = approved ? deviceLinks(store, prepared.def.id) : []
+  if (prepared.def.contactEmail) await welcomeProvider(store, prepared.def.contactEmail, devices, now())
 
   return c.json(
-    { stub: false, status: approved ? ('published' as const) : ('pending' as const), sourceId: prepared.def.id, ...outcome(store, prepared.def.id), files: files(prepared.def.id), devices: approved ? deviceLinks(store, prepared.def.id) : [] },
+    { stub: false, status: approved ? ('published' as const) : ('pending' as const), sourceId: prepared.def.id, ...outcome(store, prepared.def.id), files: files(prepared.def.id), devices },
     200,
   )
 }
@@ -211,7 +214,10 @@ export const approveSourceHandler: RouteHandler<typeof approveSourceRoute> = asy
   if (!(await store.approveSource(id))) throw new ApiError(404, 'not_found', `No submission with id ${id}.`)
   await store.log({ actor: 'operator', entity: 'source', entityId: id, action: 'import_approved', detail: {} })
   await runJob('pipeline')
-  return c.json({ stub: false, status: 'published' as const, sourceId: id, ...outcome(store, id), files: files(id), devices: deviceLinks(store, id) }, 200)
+  const devices = deviceLinks(store, id)
+  const contactEmail = (await store.storedDef(id))?.contactEmail
+  if (contactEmail) await welcomeProvider(store, contactEmail, devices, now())
+  return c.json({ stub: false, status: 'published' as const, sourceId: id, ...outcome(store, id), files: files(id), devices }, 200)
 }
 
 /** A provider's own devices in the data pattern, whatever their publication state. */

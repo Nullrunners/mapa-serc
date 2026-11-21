@@ -16,7 +16,7 @@ export interface OutboxMessage {
   recipient: string
   subject: string
   body: string
-  /** owner_link, reminder, problem_report, test */
+  /** owner_link, passports_ready, reminder, problem_report, test */
   reason: string
   at: string
   status: DeliveryStatus
