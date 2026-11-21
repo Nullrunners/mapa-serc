@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+/* Colours and type follow the Design System Gov.pl: Open Sans, primary blue #0052a5, text contrast above 4.5:1. */
+@theme inline {
+  --font-sans: var(--font-open-sans), "Open Sans", Arial, Helvetica, sans-serif;
+  --color-gov: #0052a5;
+  --color-gov-dark: #003d7a;
+  --color-gov-light: #e8f1fa;
+  --color-ink: #1b1b1b;
+  --color-muted: #4a4a4a;
+  --color-line: #c9ced6;
+  --color-ok: #0b6b3a;
+  --color-warn: #8a4b00;
+  --color-danger: #b00020;
+}
+
+body {
+  background: #ffffff;
+  color: var(--color-ink);
+}
+
+/* One visible focus style for every interactive element (WCAG 2.4.7). */
+:focus-visible {
+  outline: 3px solid #ffbf47;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px #1b1b1b;
+}
+
+.maplibregl-map {
+  font-family: inherit;
+}

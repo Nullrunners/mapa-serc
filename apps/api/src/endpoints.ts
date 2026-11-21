@@ -1,0 +1,103 @@
+/**
+ * The one table that says, for every route of the contract, which implementation serves it.
+ * `stub` answers with sample data in the final shape (and says so in the body); `live` with real data.
+ * To take an endpoint live, replace its stub here and run `pnpm contract`.
+ */
+import type { RouteConfig, RouteHandler } from '@hono/zod-openapi'
+import {
+  aedDetailRoute,
+  aedListRoute,
+  approveSourceRoute,
+  candidateDecisionRoute,
+  candidatesRoute,
+  communityRoute,
+  csvRoute,
+  csvwRoute,
+  feedRoute,
+  geojsonRoute,
+  healthRoute,
+  importCommitRoute,
+  importPreviewRoute,
+  jobRoute,
+  jsonldRoute,
+  mapRoute,
+  patternDocRoute,
+  schemaRoute,
+  sourceCsvRoute,
+  sourcesRoute,
+  statsRoute,
+  tableSchemaRoute,
+  templateRoute,
+} from './contract'
+import {
+  aedDetailHandler,
+  aedListHandler,
+  communityHandler,
+  csvHandler,
+  csvwHandler,
+  feedHandler,
+  geojsonHandler,
+  healthHandler,
+  jobHandler,
+  jsonldHandler,
+  mapHandler,
+  patternDocHandler,
+  schemaHandler,
+  sourcesHandler,
+  statsHandler,
+  tableSchemaHandler,
+  templateHandler,
+} from './handlers'
+import { candidateDecisionHandler, candidatesHandler } from './radar/handlers'
+import { approveSourceHandler, importCommitHandler, importPreviewHandler, sourceCsvHandler } from './wizard'
+
+export type EndpointStatus = 'stub' | 'live'
+
+export interface Endpoint {
+  route: RouteConfig
+  // Handlers are typed against their own route where they are defined; the table itself is heterogeneous.
+  handler: RouteHandler<any>
+  status: EndpointStatus
+}
+
+const live = (route: RouteConfig, handler: RouteHandler<any>): Endpoint => ({ route, handler, status: 'live' })
+// Kept for the next endpoint that enters the contract before its implementation.
+export const stub = (route: RouteConfig, handler: RouteHandler<any>): Endpoint => ({ route, handler, status: 'stub' })
+
+export const endpointId = (endpoint: Endpoint): string => endpoint.route.operationId ?? `${endpoint.route.method.toUpperCase()} ${endpoint.route.path}`
+
+export function endpointStatuses(): Record<string, EndpointStatus> {
+  return Object.fromEntries(endpoints.map((endpoint) => [endpointId(endpoint), endpoint.status]))
+}
+
+export const endpoints: Endpoint[] = [
+  live(healthRoute, healthHandler(endpointStatuses)),
+
+  live(aedListRoute, aedListHandler),
+  // Registered before /v1/aed/{id}, which would otherwise read "aed.geojson"-like paths as an id.
+  live(mapRoute, mapHandler),
+  live(aedDetailRoute, aedDetailHandler),
+  live(statsRoute, statsHandler),
+  live(sourcesRoute, sourcesHandler),
+  live(schemaRoute, schemaHandler),
+
+  live(csvRoute, csvHandler),
+  live(geojsonRoute, geojsonHandler),
+  live(jsonldRoute, jsonldHandler),
+  live(csvwRoute, csvwHandler),
+  live(tableSchemaRoute, tableSchemaHandler),
+  live(patternDocRoute, patternDocHandler),
+  live(templateRoute, templateHandler),
+  live(communityRoute, communityHandler),
+  live(feedRoute, feedHandler),
+
+  live(importPreviewRoute, importPreviewHandler),
+  live(importCommitRoute, importCommitHandler),
+  live(sourceCsvRoute, sourceCsvHandler),
+  live(approveSourceRoute, approveSourceHandler),
+
+  live(candidatesRoute, candidatesHandler),
+  live(candidateDecisionRoute, candidateDecisionHandler),
+
+  live(jobRoute, jobHandler),
+]

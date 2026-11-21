@@ -1,0 +1,60 @@
+# Both services as deployed by Coolify (a "Docker Compose" resource built from this repo).
+# HTTPS and routing come from Coolify's proxy: give the `api` service the domain https://<api host>:8787 and the
+# `web` service https://<web host>:3000. Do not publish ports here.
+# Values in ${...} are set in Coolify's environment variables tab; the ones marked `:?` are required.
+name: aed-hub
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "8787"
+      DATA_DIR: /data
+      # Public https address of this API. The dane.gov.pl harvester feed builds its resource links from it,
+      # and the portal's schema rejects links that are not https.
+      PUBLIC_API_URL: ${PUBLIC_API_URL:?public https address of the API, e.g. https://api.example.org}
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:?public https address of the web app, e.g. https://example.org}
+      # Browser origins allowed to call /v1/*: the web app's address.
+      CORS_ORIGINS: ${PUBLIC_WEB_URL}
+      # Long random strings. ADMIN_TOKEN guards /admin/* and operator actions; LINK_SECRET signs confirmation links.
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?a long random string}
+      LINK_SECRET: ${LINK_SECRET:?a long random string}
+      # Optional: Radar extraction and the Warsaw source. Everything else works without them.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-claude-haiku-5-5}
+      WARSAW_API_KEY: ${WARSAW_API_KEY:-}
+    volumes:
+      # aed.duckdb (submissions, change log, register cache) and downloaded source copies. Survives redeploys.
+      - data:/data
+    expose:
+      - "8787"
+    mem_limit: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL}
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+    expose:
+      - "3000"
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  data:

@@ -1,0 +1,2983 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AED Hub API",
+    "version": "0.1.0",
+    "description": "One nationwide open dataset of AED defibrillators for dane.gov.pl: merged from municipal datasets and owner submissions, published as CSV, GeoJSON and a harvester feed.\n\nA device record uses the column names of the data pattern (`/v1/schema`, `/dane/schema.json`).\nEvery operation carries `x-status`: `stub` endpoints answer with sample data in the final shape and say so with `stub: true`.\n\nRecords with `publication = community` are known only from OpenStreetMap (ODbL) and are not confirmed by their owner; they are not part of the files under `/dane/aed.*`.",
+    "license": {
+      "name": "Apache-2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "This server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "meta",
+      "description": "Liveness and implementation status"
+    },
+    {
+      "name": "data",
+      "description": "The national dataset: devices, map layer, statistics, sources, data pattern"
+    },
+    {
+      "name": "files",
+      "description": "The dataset as files and the feed for the dane.gov.pl harvester"
+    },
+    {
+      "name": "wizard",
+      "description": "Provider wizard: preview a file, then save it"
+    },
+    {
+      "name": "radar",
+      "description": "Radar AED: leads to devices missing from the official dataset"
+    },
+    {
+      "name": "admin",
+      "description": "Operator actions (token required)"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "operatorToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "ADMIN_TOKEN of the deployment"
+      }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "pipelineRanAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the sources were last merged; null before the first run"
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "official": {
+                "type": "integer"
+              },
+              "community": {
+                "type": "integer"
+              },
+              "pending": {
+                "type": "integer"
+              },
+              "incomplete": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "official",
+              "community",
+              "pending",
+              "incomplete"
+            ]
+          },
+          "endpoints": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "stub",
+                "live"
+              ]
+            },
+            "description": "operationId → stub | live"
+          },
+          "time": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version",
+          "pipelineRanAt",
+          "counts",
+          "endpoints",
+          "time"
+        ]
+      },
+      "Problem": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "example": "urn:aed-hub:problem:not_found"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "validation_error",
+              "not_found",
+              "unauthorized",
+              "file_unreadable",
+              "conflict",
+              "unavailable",
+              "internal_error"
+            ]
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "message"
+              ]
+            }
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code",
+          "detail",
+          "issues"
+        ]
+      },
+      "AedListResponse": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AedItem"
+            }
+          }
+        },
+        "required": [
+          "total",
+          "items"
+        ]
+      },
+      "AedItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "publication": {
+            "$ref": "#/components/schemas/Publication"
+          },
+          "quality": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Ocena jakości rekordu 0–100"
+          },
+          "distanceM": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Odległość od punktu z parametru `near`, w metrach"
+          },
+          "record": {
+            "$ref": "#/components/schemas/AedRecord"
+          }
+        },
+        "required": [
+          "id",
+          "publication",
+          "quality",
+          "distanceM",
+          "record"
+        ]
+      },
+      "Publication": {
+        "type": "string",
+        "enum": [
+          "official",
+          "community",
+          "pending",
+          "incomplete"
+        ],
+        "description": "official = dane od opiekuna lub ze zbioru urzędowego, trafia do pliku dla dane.gov.pl. community = znane tylko z OpenStreetMap (ODbL), niepotwierdzone. pending = zgłoszenie z kreatora czeka na zatwierdzenie przez operatora. incomplete = brakuje pola wymaganego, zwykle położenia."
+      },
+      "AedRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stały identyfikator urządzenia w zbiorze krajowym (UUID). Nadaje go system; nie zmienia się przy aktualizacji danych, więc można się na niego powoływać.",
+            "example": "0b6f6a52-6f1e-5c0e-9d0a-3f1f0c9e7a11"
+          },
+          "nazwa": {
+            "type": "string",
+            "description": "Nazwa obiektu, w którym jest urządzenie – taka, po której trafi tam osoba z zewnątrz.",
+            "example": "Urząd Miasta Legionowo"
+          },
+          "cecha_ulicy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Rodzaj ulicy według rejestru TERYT, małymi literami: ulica, aleja, plac, osiedle, rondo itd.",
+            "example": "ulica"
+          },
+          "nazwa_ulicy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Nazwa ulicy bez cechy („Piłsudskiego\", nie „ul. Piłsudskiego\"). Puste, jeśli miejscowość nie ma ulic.",
+            "example": "Piłsudskiego"
+          },
+          "nr_budynku": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Numer porządkowy budynku, razem z literą, jeśli ją ma.",
+            "example": "41"
+          },
+          "nr_lokalu": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Numer lokalu, jeśli urządzenie jest w wydzielonym lokalu.",
+            "example": "2"
+          },
+          "kod_pocztowy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Kod pocztowy w zapisie 00-000.",
+            "example": "05-120"
+          },
+          "miejscowosc": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Nazwa miejscowości.",
+            "example": "Legionowo"
+          },
+          "kod_terc": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Identyfikator gminy w rejestrze TERYT (TERC), 7 cyfr: województwo, powiat, gmina i rodzaj gminy. System uzupełnia go sam na podstawie współrzędnych.",
+            "example": "1408011"
+          },
+          "kod_simc": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Identyfikator miejscowości w rejestrze TERYT (SIMC), 7 cyfr.",
+            "example": "0920806"
+          },
+          "szerokosc_geograficzna": {
+            "type": "number",
+            "description": "Szerokość geograficzna w układzie WGS84, w stopniach dziesiętnych z kropką. W Polsce od 49,0 do 54,9.",
+            "example": 52.395198
+          },
+          "dlugosc_geograficzna": {
+            "type": "number",
+            "description": "Długość geograficzna w układzie WGS84, w stopniach dziesiętnych z kropką. W Polsce od 14,1 do 24,2.",
+            "example": 20.931382
+          },
+          "opis_lokalizacji": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Gdzie dokładnie jest urządzenie: wejście, pomieszczenie, punkt orientacyjny. To zdanie przeczyta osoba, która biegnie po defibrylator.",
+            "example": "Parter, hol główny, na ścianie obok portierni"
+          },
+          "wewnatrz_budynku": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "true, jeśli urządzenie jest w środku budynku; false, jeśli na zewnątrz (np. w kapsule na elewacji).",
+            "example": true
+          },
+          "pietro": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Numer kondygnacji: 0 to parter, -1 to pierwsza kondygnacja podziemna.",
+            "example": "0"
+          },
+          "dostep": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "publiczny",
+              "ograniczony",
+              "prywatny",
+              null
+            ],
+            "description": "Kto ma dostęp do urządzenia.",
+            "example": "publiczny"
+          },
+          "godziny_dostepnosci": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Kiedy można dostać się do urządzenia, w zapisie opening_hours znanym z OpenStreetMap: „24/7\" przez całą dobę, „Mo-Fr 08:00-16:00\" od poniedziałku do piątku, „Mo-Fr 07:30-15:30; Sa 08:00-12:00\" dla różnych dni. Kreator układa ten zapis z wybranych dni i godzin.",
+            "example": "Mo-Fr 08:00-16:00"
+          },
+          "uwagi_dostepu": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Co trzeba zrobić, żeby dostać się do urządzenia: domofon, portier, szafka z plombą. Nie wpisuj tu kodów dostępu.",
+            "example": "Po godzinach pracy urzędu dzwonić domofonem do ochrony"
+          },
+          "podmiot_odpowiedzialny": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Instytucja lub firma, która opiekuje się urządzeniem i potwierdza jego sprawność.",
+            "example": "Urząd Miasta Legionowo"
+          },
+          "telefon_kontaktowy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Numer telefonu instytucji (nie prywatny), pod którym ktoś pomoże dotrzeć do urządzenia. Zapis: +48 i dziewięć cyfr.",
+            "example": "+48227667200"
+          },
+          "email_kontaktowy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Adres e-mail instytucji (nie imienny), na który trafi prośba o potwierdzenie danych.",
+            "example": "kancelaria@um.legionowo.pl"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "czynny",
+              "czasowo_niedostepny",
+              "wycofany",
+              "nieznany"
+            ],
+            "description": "Czy z urządzenia można dziś skorzystać.",
+            "example": "czynny"
+          },
+          "data_weryfikacji": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Dzień, w którym opiekun ostatnio potwierdził, że urządzenie jest na miejscu i sprawne (RRRR-MM-DD).",
+            "example": "2026-10-01"
+          },
+          "producent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Producent urządzenia.",
+            "example": "Philips"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model urządzenia.",
+            "example": "HeartStart FRx"
+          },
+          "elektrody_pediatryczne": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "true, jeśli przy urządzeniu są elektrody dla dzieci albo ma ono tryb pediatryczny.",
+            "example": false
+          },
+          "termin_waznosci_elektrod": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Data, do której ważne są elektrody (RRRR-MM-DD). Pozwala systemowi przypomnieć opiekunowi o wymianie.",
+            "example": "2027-06-30"
+          },
+          "termin_waznosci_baterii": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Data, do której ważna jest bateria (RRRR-MM-DD).",
+            "example": "2028-01-31"
+          },
+          "zrodlo": {
+            "type": "string",
+            "description": "Dostawca lub zbiór, z którego pochodzi rekord. Przy licencji CC BY 4.0 jest to zarazem wymagane oznaczenie autorstwa.",
+            "example": "Urząd Miasta Legionowo (dane.gov.pl, zbiór 40593)"
+          },
+          "id_w_zrodle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Identyfikator, pod którym urządzenie występuje u dostawcy (np. numer inwentarzowy albo numer z pliku).",
+            "example": "12"
+          },
+          "licencja": {
+            "type": "string",
+            "enum": [
+              "CC0 1.0",
+              "CC BY 4.0",
+              "ODbL 1.0"
+            ],
+            "description": "Licencja, na której dostawca udostępnił rekord.",
+            "example": "CC0 1.0"
+          },
+          "data_aktualizacji": {
+            "type": "string",
+            "description": "Dzień ostatniej zmiany rekordu w zbiorze krajowym (RRRR-MM-DD).",
+            "example": "2026-11-21"
+          }
+        },
+        "required": [
+          "id",
+          "nazwa",
+          "cecha_ulicy",
+          "nazwa_ulicy",
+          "nr_budynku",
+          "nr_lokalu",
+          "kod_pocztowy",
+          "miejscowosc",
+          "kod_terc",
+          "kod_simc",
+          "szerokosc_geograficzna",
+          "dlugosc_geograficzna",
+          "opis_lokalizacji",
+          "wewnatrz_budynku",
+          "pietro",
+          "dostep",
+          "godziny_dostepnosci",
+          "uwagi_dostepu",
+          "podmiot_odpowiedzialny",
+          "telefon_kontaktowy",
+          "email_kontaktowy",
+          "status",
+          "data_weryfikacji",
+          "producent",
+          "model",
+          "elektrody_pediatryczne",
+          "termin_waznosci_elektrod",
+          "termin_waznosci_baterii",
+          "zrodlo",
+          "id_w_zrodle",
+          "licencja",
+          "data_aktualizacji"
+        ],
+        "description": "Rekord urządzenia w układzie wzorca danych AED – te same kolumny co w pliku CSV dla dane.gov.pl."
+      },
+      "Layer": {
+        "type": "string",
+        "enum": [
+          "official",
+          "community",
+          "all"
+        ],
+        "default": "official",
+        "description": "Which devices: official (default), community (OSM only) or all"
+      },
+      "MapFeatureCollection": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "FeatureCollection"
+            ]
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "Feature"
+                  ]
+                },
+                "geometry": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "Point"
+                      ]
+                    },
+                    "coordinates": {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "coordinates"
+                  ]
+                },
+                "properties": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "nazwa": {
+                      "type": "string"
+                    },
+                    "publication": {
+                      "$ref": "#/components/schemas/Publication"
+                    },
+                    "dostep": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "godziny_dostepnosci": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "quality": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "nazwa",
+                    "publication",
+                    "dostep",
+                    "godziny_dostepnosci",
+                    "status",
+                    "quality"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "geometry",
+                "properties"
+              ]
+            }
+          }
+        },
+        "required": [
+          "type",
+          "features"
+        ]
+      },
+      "AedDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AedItem"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "provenance": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "pole → identyfikator źródła, z którego pochodzi wartość"
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "sourceKey": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "licence": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "values",
+                        "corroborates",
+                        "pending"
+                      ],
+                      "description": "values = dostarcza wartości pól; corroborates = tylko potwierdza istnienie urządzenia; pending = zgłoszenie czeka na zatwierdzenie"
+                    }
+                  },
+                  "required": [
+                    "sourceId",
+                    "sourceKey",
+                    "name",
+                    "licence",
+                    "role"
+                  ]
+                }
+              },
+              "issues": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Issue"
+                }
+              },
+              "history": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "at": {
+                      "type": "string"
+                    },
+                    "actor": {
+                      "type": "string"
+                    },
+                    "action": {
+                      "type": "string"
+                    },
+                    "detail": {}
+                  },
+                  "required": [
+                    "at",
+                    "actor",
+                    "action"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "provenance",
+              "sources",
+              "issues",
+              "history"
+            ]
+          }
+        ]
+      },
+      "Issue": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning"
+            ]
+          },
+          "field": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "description": "Problem, którego system nie naprawił. „error\" wstrzymuje publikację rekordu."
+      },
+      "StatsResponse": {
+        "type": "object",
+        "properties": {
+          "pipelineRanAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "official": {
+            "type": "integer"
+          },
+          "community": {
+            "type": "integer"
+          },
+          "pending": {
+            "type": "integer"
+          },
+          "incomplete": {
+            "type": "integer"
+          },
+          "averageQuality": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Average quality score of official records"
+          },
+          "reviewPairs": {
+            "type": "integer",
+            "description": "Pairs of records that may be the same device and wait for a decision"
+          },
+          "byVoivodeship": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "terc": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "official": {
+                  "type": "integer"
+                },
+                "community": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "terc",
+                "name",
+                "official",
+                "community"
+              ]
+            }
+          },
+          "communesWithOfficial": {
+            "type": "integer",
+            "description": "Communes with at least one official record"
+          },
+          "communesTotal": {
+            "type": "integer",
+            "description": "Communes in Poland",
+            "example": 2479
+          }
+        },
+        "required": [
+          "pipelineRanAt",
+          "official",
+          "community",
+          "pending",
+          "incomplete",
+          "averageQuality",
+          "reviewPairs",
+          "byVoivodeship",
+          "communesWithOfficial",
+          "communesTotal"
+        ]
+      },
+      "SourceList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceReport"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "SourceReport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "official",
+              "osm",
+              "owner",
+              "upload"
+            ]
+          },
+          "awaitingApproval": {
+            "type": "boolean",
+            "description": "Zgłoszenie z kreatora, którego operator jeszcze nie zatwierdził"
+          },
+          "name": {
+            "type": "string"
+          },
+          "attribution": {
+            "type": "string"
+          },
+          "licence": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "landingPage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "network",
+              "snapshot",
+              "fixture",
+              "database",
+              "missing"
+            ],
+            "description": "Where the file was read from in the last run"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "readAt": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "integer"
+          },
+          "official": {
+            "type": "integer"
+          },
+          "community": {
+            "type": "integer"
+          },
+          "pending": {
+            "type": "integer"
+          },
+          "incomplete": {
+            "type": "integer"
+          },
+          "fileFixes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fix"
+            }
+          },
+          "fixes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "example": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "count",
+                "example"
+              ]
+            }
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "example": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "error",
+                    "warning"
+                  ]
+                }
+              },
+              "required": [
+                "code",
+                "count",
+                "example",
+                "severity"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "awaitingApproval",
+          "name",
+          "attribution",
+          "licence",
+          "url",
+          "landingPage",
+          "origin",
+          "error",
+          "readAt",
+          "rows",
+          "official",
+          "community",
+          "pending",
+          "incomplete",
+          "fileFixes",
+          "fixes",
+          "issues"
+        ],
+        "description": "Raport jakości dla dostawcy: co odczytano, co poprawiono, czego nie udało się naprawić."
+      },
+      "Fix": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "before": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "description": "Poprawka, którą system wprowadził sam."
+      },
+      "SchemaResponse": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ]
+            }
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "group": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "date"
+                  ]
+                },
+                "requirement": {
+                  "type": "string",
+                  "enum": [
+                    "required",
+                    "recommended",
+                    "optional"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "example": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "enum": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "enumLabels": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "pattern": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "osm": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "geoDae": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "group",
+                "type",
+                "requirement",
+                "title",
+                "description",
+                "example",
+                "enum",
+                "enumLabels",
+                "pattern",
+                "osm",
+                "geoDae"
+              ]
+            }
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "version",
+          "groups",
+          "fields"
+        ]
+      },
+      "ImportPreview": {
+        "type": "object",
+        "properties": {
+          "stub": {
+            "type": "boolean",
+            "description": "true while this endpoint answers with sample data"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "geojson"
+            ]
+          },
+          "fileFixes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fix"
+            }
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "header": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Pole wzorca albo jedna z kolumn złożonych: adres, ulica, wspolrzedne",
+                  "example": "szerokosc_geograficzna"
+                },
+                "confidence": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "Why the system proposes this target",
+                  "example": "wartości w zakresie szerokości geograficznej Polski"
+                },
+                "samples": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "header",
+                "target",
+                "confidence",
+                "reason",
+                "samples"
+              ]
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "record": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Pola wzorca, które udało się ustalić"
+                },
+                "fixes": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Fix"
+                  }
+                },
+                "issues": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Issue"
+                  }
+                },
+                "duplicateOf": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "nazwa": {
+                      "type": "string"
+                    },
+                    "distanceM": {
+                      "type": "integer"
+                    },
+                    "decision": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "review"
+                      ]
+                    },
+                    "publication": {
+                      "$ref": "#/components/schemas/Publication"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "nazwa",
+                    "distanceM",
+                    "decision",
+                    "publication"
+                  ],
+                  "description": "Urządzenie już znane systemowi, które wygląda na to samo. Przy publication = community zgłoszenie potwierdza urządzenie znane dotąd tylko z OpenStreetMap."
+                }
+              },
+              "required": [
+                "index",
+                "record",
+                "fixes",
+                "issues",
+                "duplicateOf"
+              ]
+            }
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "rows": {
+                "type": "integer"
+              },
+              "ready": {
+                "type": "integer"
+              },
+              "withFixes": {
+                "type": "integer"
+              },
+              "withErrors": {
+                "type": "integer"
+              },
+              "duplicates": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "rows",
+              "ready",
+              "withFixes",
+              "withErrors",
+              "duplicates"
+            ]
+          }
+        },
+        "required": [
+          "stub",
+          "format",
+          "fileFixes",
+          "columns",
+          "rows",
+          "summary"
+        ]
+      },
+      "ImportRequest": {
+        "type": "object",
+        "properties": {
+          "fileName": {
+            "type": "string",
+            "maxLength": 200,
+            "example": "aed-marki.csv"
+          },
+          "contentBase64": {
+            "type": "string",
+            "description": "The file, base64-encoded (CSV or GeoJSON, up to 5 MB)"
+          },
+          "mapping": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Pole wzorca albo jedna z kolumn złożonych: adres, ulica, wspolrzedne",
+              "example": "szerokosc_geograficzna"
+            },
+            "description": "Column header → target. Omit to let the system propose one; send the corrected proposal back to preview again."
+          },
+          "provider": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 200,
+                "example": "Urząd Miasta Marki"
+              },
+              "email": {
+                "type": "string",
+                "format": "email"
+              },
+              "licence": {
+                "type": "string",
+                "enum": [
+                  "CC0 1.0",
+                  "CC BY 4.0"
+                ],
+                "default": "CC0 1.0"
+              }
+            },
+            "required": [
+              "name"
+            ]
+          },
+          "invitation": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Token z linku zaproszenia wysłanego przez operatora (Radar). Zgłoszenie z ważnym zaproszeniem jest publikowane bez osobnego zatwierdzania."
+          }
+        },
+        "required": [
+          "fileName",
+          "contentBase64"
+        ]
+      },
+      "ImportResult": {
+        "type": "object",
+        "properties": {
+          "stub": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "published",
+              "pending"
+            ],
+            "description": "published = w zbiorze krajowym; pending = czeka na zatwierdzenie przez operatora"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "added": {
+            "type": "integer"
+          },
+          "merged": {
+            "type": "integer",
+            "description": "Rows merged into devices already in the national dataset"
+          },
+          "incomplete": {
+            "type": "integer"
+          },
+          "files": {
+            "type": "object",
+            "properties": {
+              "csv": {
+                "type": "string"
+              },
+              "report": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "csv",
+              "report"
+            ],
+            "description": "Links for the provider: their data in the pattern, and the quality report"
+          }
+        },
+        "required": [
+          "stub",
+          "status",
+          "sourceId",
+          "added",
+          "merged",
+          "incomplete",
+          "files"
+        ]
+      },
+      "CandidateList": {
+        "type": "object",
+        "properties": {
+          "stub": {
+            "type": "boolean"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            }
+          }
+        },
+        "required": [
+          "stub",
+          "total",
+          "items"
+        ]
+      },
+      "Candidate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "osm_gap",
+              "procurement",
+              "web"
+            ],
+            "description": "osm_gap = jest w OSM, brak w danych urzędowych; procurement = ogłoszenie o zakupie; web = strona gminy lub BIP"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "new",
+              "invited",
+              "confirmed",
+              "rejected"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "example": "Gmina Miasto Kołobrzeg kupiła defibrylatory AED do miejsc publicznych"
+          },
+          "organisation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kodTerc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "locality": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "devices": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "How many devices the lead is about, when known"
+          },
+          "registered": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Official records already in that commune"
+          },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string"
+              },
+              "quote": {
+                "type": "string"
+              },
+              "date": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "url",
+              "quote",
+              "date"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "lat": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lon": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "title",
+          "organisation",
+          "nip",
+          "kodTerc",
+          "locality",
+          "devices",
+          "registered",
+          "evidence",
+          "confidence",
+          "lat",
+          "lon"
+        ],
+        "description": "Wskazówka Radaru: urządzenie albo podmiot, którego brakuje w zbiorze urzędowym."
+      },
+      "CandidateDecisionResult": {
+        "type": "object",
+        "properties": {
+          "stub": {
+            "type": "boolean"
+          },
+          "candidate": {
+            "$ref": "#/components/schemas/Candidate"
+          },
+          "confirmationUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "stub",
+          "candidate",
+          "confirmationUrl"
+        ]
+      },
+      "CandidateDecision": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "reject",
+              "invite"
+            ]
+          }
+        },
+        "required": [
+          "decision"
+        ]
+      },
+      "JobResult": {
+        "type": "object",
+        "properties": {
+          "job": {
+            "type": "string"
+          },
+          "tookMs": {
+            "type": "integer"
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "job",
+          "tookMs",
+          "summary"
+        ]
+      },
+      "JobOptions": {
+        "type": "object",
+        "properties": {
+          "refresh": {
+            "type": "boolean",
+            "default": false,
+            "description": "Download fresh copies of the sources first"
+          }
+        }
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "tags": [
+          "meta"
+        ],
+        "summary": "Liveness, dataset size and per-endpoint implementation status",
+        "responses": {
+          "200": {
+            "description": "Service is up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/aed": {
+      "get": {
+        "operationId": "listAed",
+        "tags": [
+          "data"
+        ],
+        "summary": "Devices, filtered by area, commune, text or distance from a point",
+        "parameters": [
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Layer"
+            },
+            "required": false,
+            "description": "Which devices: official (default), community (OSM only) or all",
+            "name": "layer",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?(,-?\\d+(\\.\\d+)?){3}$",
+              "description": "minLon,minLat,maxLon,maxLat",
+              "example": "20.8,52.3,21.2,52.5"
+            },
+            "required": false,
+            "description": "minLon,minLat,maxLon,maxLat",
+            "name": "bbox",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?$",
+              "description": "lat,lon – sorts by distance and fills distanceM",
+              "example": "52.3267,21.1076"
+            },
+            "required": false,
+            "description": "lat,lon – sorts by distance and fills distanceM",
+            "name": "near",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000,
+              "description": "With `near`: only devices within this distance"
+            },
+            "required": false,
+            "description": "With `near`: only devices within this distance",
+            "name": "radiusM",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{2,7}$",
+              "description": "TERC prefix: 2 digits = województwo, 4 = powiat, 7 = gmina",
+              "example": "1434021"
+            },
+            "required": false,
+            "description": "TERC prefix: 2 digits = województwo, 4 = powiat, 7 = gmina",
+            "name": "terc",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100,
+              "description": "Text to find in the name, street or locality"
+            },
+            "required": false,
+            "description": "Text to find in the name, street or locality",
+            "name": "q",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "default": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching devices",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AedListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/aed.geojson": {
+      "get": {
+        "operationId": "getMapLayer",
+        "tags": [
+          "data"
+        ],
+        "summary": "All devices of a layer as a slim GeoJSON for the map (a MapLibre source with clustering)",
+        "parameters": [
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Layer"
+            },
+            "required": false,
+            "name": "layer",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Points with the few properties the map needs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapFeatureCollection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/aed/{id}": {
+      "get": {
+        "operationId": "getAed",
+        "tags": [
+          "data"
+        ],
+        "summary": "One device with the origin of every field and its change history",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AedDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No device with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/stats": {
+      "get": {
+        "operationId": "getStats",
+        "tags": [
+          "data"
+        ],
+        "summary": "Size and coverage of the national dataset",
+        "responses": {
+          "200": {
+            "description": "Counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/sources": {
+      "get": {
+        "operationId": "listSources",
+        "tags": [
+          "data"
+        ],
+        "summary": "Every source of the national dataset with its quality report",
+        "responses": {
+          "200": {
+            "description": "Sources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/schema": {
+      "get": {
+        "operationId": "getSchema",
+        "tags": [
+          "data"
+        ],
+        "summary": "The data pattern as a field catalogue (drives the documentation page and the forms)",
+        "responses": {
+          "200": {
+            "description": "Field catalogue",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/dane/aed.csv": {
+      "get": {
+        "operationId": "downloadCsv",
+        "tags": [
+          "files"
+        ],
+        "summary": "National dataset as CSV (RFC 4180, UTF-8) – the resource dane.gov.pl harvests",
+        "responses": {
+          "200": {
+            "description": "National dataset as CSV (RFC 4180, UTF-8) – the resource dane.gov.pl harvests",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/dane/aed.geojson": {
+      "get": {
+        "operationId": "downloadGeoJson",
+        "tags": [
+          "files"
+        ],
+        "summary": "National dataset as GeoJSON",
+        "responses": {
+          "200": {
+            "description": "National dataset as GeoJSON",
+            "content": {
+              "application/geo+json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/dane/aed.jsonld": {
+      "get": {
+        "operationId": "downloadJsonLd",
+        "tags": [
+          "files"
+        ],
+        "summary": "National dataset as JSON-LD (schema.org)",
+        "responses": {
+          "200": {
+            "description": "National dataset as JSON-LD (schema.org)",
+            "content": {
+              "application/ld+json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/dane/aed.csv-metadata.json": {
+      "get": {
+        "operationId": "downloadCsvw",
+        "tags": [
+          "files"
+        ],
+        "summary": "CSVW metadata of the CSV file",
+        "responses": {
+          "200": {
+            "description": "CSVW metadata of the CSV file",
+            "content": {
+              "application/csvm+json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/dane/schema.json": {
+      "get": {
+        "operationId": "downloadTableSchema",
+        "tags": [
+          "files"
+        ],
+        "summary": "The data pattern as a Frictionless Table Schema",
+        "responses": {
+          "200": {
+            "description": "The data pattern as a Frictionless Table Schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/dane/wzorzec.md": {
+      "get": {
+        "operationId": "downloadPatternDoc",
+        "tags": [
+          "files"
+        ],
+        "summary": "The data pattern as a readable field table",
+        "responses": {
+          "200": {
+            "description": "The data pattern as a readable field table",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/dane/szablon.csv": {
+      "get": {
+        "operationId": "downloadTemplate",
+        "tags": [
+          "files"
+        ],
+        "summary": "Empty CSV template with the header and one example row",
+        "responses": {
+          "200": {
+            "description": "Empty CSV template with the header and one example row",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/dane/aed-osm.geojson": {
+      "get": {
+        "operationId": "downloadCommunity",
+        "tags": [
+          "files"
+        ],
+        "summary": "Unconfirmed devices known only from OpenStreetMap (ODbL) – not part of the dataset for dane.gov.pl",
+        "responses": {
+          "200": {
+            "description": "Unconfirmed devices known only from OpenStreetMap (ODbL) – not part of the dataset for dane.gov.pl",
+            "content": {
+              "application/geo+json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/feeds/dane-gov-pl.xml": {
+      "get": {
+        "operationId": "getHarvesterFeed",
+        "tags": [
+          "files"
+        ],
+        "summary": "Feed for the dane.gov.pl harvester (XML, schema 1.13)",
+        "responses": {
+          "200": {
+            "description": "Feed for the dane.gov.pl harvester (XML, schema 1.13)",
+            "content": {
+              "application/xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/import/preview": {
+      "post": {
+        "operationId": "previewImport",
+        "tags": [
+          "wizard"
+        ],
+        "summary": "Reads a provider file, proposes the column mapping and shows every fix and problem before anything is saved",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What the file would become",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The file could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/import/commit": {
+      "post": {
+        "operationId": "commitImport",
+        "tags": [
+          "wizard"
+        ],
+        "summary": "Saves a previewed file as a source and merges it into the national dataset",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved and merged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The file could not be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/sources/{id}/aed.csv": {
+      "get": {
+        "operationId": "downloadSourceCsv",
+        "tags": [
+          "wizard"
+        ],
+        "summary": "One provider's devices in the data pattern: the file they can publish in their own dane.gov.pl dataset",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV in the data pattern",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No source with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/admin/sources/{id}/approve": {
+      "post": {
+        "operationId": "approveSource",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Approves a wizard submission, so that its devices enter the national dataset",
+        "security": [
+          {
+            "operatorToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approved and merged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong operator token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No submission with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/candidates": {
+      "get": {
+        "operationId": "listCandidates",
+        "tags": [
+          "radar"
+        ],
+        "summary": "Leads to devices missing from the official dataset",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "new",
+                "invited",
+                "confirmed",
+                "rejected"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "osm_gap",
+                "procurement",
+                "web"
+              ]
+            },
+            "required": false,
+            "name": "kind",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Leads",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/candidates/{id}/decision": {
+      "post": {
+        "operationId": "decideCandidate",
+        "tags": [
+          "radar"
+        ],
+        "summary": "Operator decision on a lead: reject it, or invite the owner to confirm",
+        "security": [
+          {
+            "operatorToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated lead",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDecisionResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong operator token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No lead with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/admin/jobs/{name}": {
+      "post": {
+        "operationId": "runJob",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Runs a pipeline job inside the API process (the only process that may open the database)",
+        "security": [
+          {
+            "operatorToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pipeline",
+                "enrich-osm",
+                "radar"
+              ]
+            },
+            "required": true,
+            "name": "name",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobOptions"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Job finished",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong operator token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    }
+  },
+  "webhooks": {}
+}

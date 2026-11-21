@@ -1,0 +1,21 @@
+{
+  "id": "dane-gov-pl-68353",
+  "kind": "official",
+  "name": "Urząd Miasta Marki",
+  "attribution": "Urząd Miasta Marki (dane.gov.pl, zbiór 4955)",
+  "licence": "CC BY 4.0",
+  "url": "https://api.dane.gov.pl/resources/68353/file",
+  "landingPage": "https://dane.gov.pl/pl/dataset/4955",
+  "format": "csv",
+  "fixture": "marki.csv",
+  "keyColumn": "Numer Id",
+  "mapping": {
+    "Długość geograficzna": "dlugosc_geograficzna",
+    "Szerokość geograficzna": "szerokosc_geograficzna",
+    "Nazwa": null,
+    "Lokalizacja": "nazwa",
+    "Adres": "adres",
+    "Numer Id": "id_w_zrodle"
+  },
+  "defaults": { "miejscowosc": "Marki", "kod_terc": "1434021" }
+}

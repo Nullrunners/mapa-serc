@@ -1,0 +1,21 @@
+{
+  "id": "dane-gov-pl-54632",
+  "kind": "official",
+  "name": "Urząd Miasta Krosna",
+  "attribution": "Urząd Miasta Krosna (dane.gov.pl, zbiór 3624)",
+  "licence": "CC0 1.0",
+  "url": "https://api.dane.gov.pl/resources/54632/file",
+  "landingPage": "https://dane.gov.pl/pl/dataset/3624",
+  "format": "csv",
+  "fixture": "krosno.csv",
+  "keyColumn": "Numer Id",
+  "mapping": {
+    "Długość geograficzna": "dlugosc_geograficzna",
+    "Szerokość geograficzna": "szerokosc_geograficzna",
+    "Nazwa": null,
+    "Lokalizacja": "nazwa",
+    "Adres": "adres",
+    "Numer Id": "id_w_zrodle"
+  },
+  "defaults": { "miejscowosc": "Krosno", "kod_terc": "1861011" }
+}
