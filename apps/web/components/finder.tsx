@@ -3,7 +3,8 @@
 import dynamic from "next/dynamic";
 import { useRef, useState } from "react";
 import { ACCESS_LABEL, AVAILABLE_NOW, addressLine, distance, hours, title } from "@/lib/aed-text";
-import { api } from "@/lib/api/client";
+import { api, type AedItem } from "@/lib/api/client";
+import { nextSundayNight, reachSummary } from "@/lib/reach-text";
 import { useLoad } from "@/lib/use-load";
 import AedDetails, { pickedFrom, type Picked } from "./aed-details";
 
@@ -17,6 +18,9 @@ export default function Finder() {
   const [locating, setLocating] = useState<"idle" | "asking" | "denied">("idle");
   const [showCommunity, setShowCommunity] = useState(true);
   const [onlyAvailable, setOnlyAvailable] = useState(false);
+  // With a known position the list is ordered by how soon a device is in hand, not by straight-line distance.
+  const [order, setOrder] = useState<"reach" | "distance">("reach");
+  const [when, setWhen] = useState<"now" | "night">("now");
   const [selected, setSelected] = useState<Picked | null>(null);
   const listHeading = useRef<HTMLHeadingElement>(null);
 
@@ -27,9 +31,19 @@ export default function Finder() {
   };
 
   const layer = showCommunity ? "all" : "official";
-  const list = useLoad(`${layer}|${submitted}|${near?.lat},${near?.lon}|${onlyAvailable}`, async (signal) => {
+  const list = useLoad(`${layer}|${submitted}|${near?.lat},${near?.lon}|${onlyAvailable}|${order}|${when}`, async (signal) => {
     const { data, error } = await api.GET("/v1/aed", {
-      params: { query: { layer, q: submitted || undefined, near: near ? `${near.lat},${near.lon}` : undefined, availableNow: onlyAvailable ? "true" : undefined, limit: 20 } },
+      params: {
+        query: {
+          layer,
+          q: submitted || undefined,
+          near: near ? `${near.lat},${near.lon}` : undefined,
+          availableNow: onlyAvailable ? "true" : undefined,
+          sort: near ? order : undefined,
+          at: when === "night" ? nextSundayNight() : undefined,
+          limit: 20,
+        },
+      },
       signal,
     });
     if (error || !data) throw new Error("Nie udało się pobrać listy urządzeń. Spróbuj ponownie za chwilę.");
@@ -102,11 +116,38 @@ export default function Finder() {
           </span>
         </label>
 
+        {near && (
+          <fieldset className="space-y-1 text-sm">
+            <legend className="font-semibold">Kolejność</legend>
+            <label className="flex items-start gap-2">
+              <input type="radio" name="kolejnosc" checked={order === "reach"} onChange={() => setOrder("reach")} className="mt-1 size-4" />
+              <span>
+                Najszybciej w ręku
+                <span className="block text-muted">Liczymy dojście, godziny otwarcia, święta, szafkę z kodem albo recepcję i piętro. Defibrylator na ścianie 250 m dalej wygrywa z zamkniętym urzędem obok.</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2">
+              <input type="radio" name="kolejnosc" checked={order === "distance"} onChange={() => setOrder("distance")} className="mt-1 size-4" />
+              <span>Najbliżej w linii prostej</span>
+            </label>
+          </fieldset>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <label htmlFor="kiedy" className="font-semibold">
+            Sprawdź dostępność
+          </label>
+          <select id="kiedy" value={when} onChange={(event) => setWhen(event.target.value as "now" | "night")} className="rounded border border-muted px-2 py-1">
+            <option value="now">teraz</option>
+            <option value="night">w nocy z soboty na niedzielę, o 3:00</option>
+          </select>
+        </div>
+
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={onlyAvailable} onChange={(event) => setOnlyAvailable(event.target.checked)} className="mt-1 size-4" />
           <span>
-            Pokaż tylko dostępne teraz
-            <span className="block text-muted">Tylko urządzenia, o których wiemy, że w tej chwili można się do nich dostać.</span>
+            {when === "now" ? "Pokaż tylko dostępne teraz" : "Pokaż tylko dostępne o tej porze"}
+            <span className="block text-muted">Tylko urządzenia, o których wiemy, że wtedy można się do nich dostać.</span>
           </span>
         </label>
 
@@ -135,7 +176,11 @@ export default function Finder() {
                     </div>
                     {addressLine(item) && <p className="text-sm">{addressLine(item)}</p>}
                     {item.record.opis_lokalizacji && <p className="text-sm text-muted">{item.record.opis_lokalizacji}</p>}
-                    <p className={`text-sm font-semibold ${AVAILABLE_NOW[item.availableNow].tone}`}>{AVAILABLE_NOW[item.availableNow].label}</p>
+                    {item.reach ? (
+                      <ReachLine item={item} />
+                    ) : (
+                      <p className={`text-sm font-semibold ${AVAILABLE_NOW[item.availableNow].tone}`}>{AVAILABLE_NOW[item.availableNow].label}</p>
+                    )}
                     <p className="flex flex-wrap gap-x-3 text-sm text-muted">
                       {item.record.godziny_dostepnosci && <span>Godziny: {hours(item.record.godziny_dostepnosci)}</span>}
                       {item.record.dostep && <span>{ACCESS_LABEL[item.record.dostep] ?? item.record.dostep}</span>}
@@ -153,6 +198,20 @@ export default function Finder() {
       <section aria-label="Mapa" className="min-h-[420px] lg:sticky lg:top-4 lg:h-[calc(100vh-8rem)]">
         <AedMap showCommunity={showCommunity} focus={near} selected={selected} onSelect={setSelected} />
       </section>
+    </div>
+  );
+}
+
+/** Whether the device can be reached at the chosen moment, how soon, and why. */
+function ReachLine({ item }: { item: AedItem }) {
+  const summary = reachSummary(item.reach!, item.record.pietro);
+  return (
+    <div className="space-y-0.5 text-sm">
+      <p className={`font-semibold ${summary.tone}`}>
+        {summary.headline}
+        {summary.eta && <span className="font-normal text-ink"> · {summary.eta}</span>}
+      </p>
+      {summary.details.length > 0 && <p className="text-muted">{summary.details.join(" · ")}</p>}
     </div>
   );
 }
