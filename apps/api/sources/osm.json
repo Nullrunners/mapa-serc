@@ -9,6 +9,7 @@
   "format": "geojson",
   "snapshot": "osm/PL.geojson",
   "keyColumn": "@osm_id",
+  "refs": { "ref:api-um-warszawa-pl": "um-warszawa" },
   "fallbackName": ["operator"],
   "mapping": {
     "@lat": "szerokosc_geograficzna",

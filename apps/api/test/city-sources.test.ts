@@ -1,5 +1,6 @@
 /** A city that serves its list through an API with a key (Warsaw), and the words such a list is written in. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cluster, compare, type DedupItem } from '../src/pipeline/dedup'
 import { parseIndoor, parseOpeningHours } from '../src/pipeline/normalize'
 import { parseAny, parseGeoJson } from '../src/pipeline/parse'
 import { checkSource, loadSourceDefs, normalizeSource, parseSource, publicUrl, readSourceBytes } from '../src/pipeline/sources'
@@ -96,6 +97,34 @@ describe('a source behind an API key', () => {
     expect(file!.origin).toBe('fixture')
     expect(file!.error).toContain('connect failed')
     expect(file!.error).not.toContain('s3cret')
+  })
+})
+
+describe('a reference from one source to another', () => {
+  const city: DedupItem = { index: 0, sourceId: 'um-warszawa', key: '1150', priority: 80, lat: 52.2313, lon: 21.0102, name: 'Stacja metra Centrum', street: 'Marszałkowska', number: '100' }
+  // 70 m away and named after the operator: by position and name alone this is not the same device.
+  const mapped = (over: Partial<DedupItem> = {}): DedupItem => ({ index: 1, sourceId: 'osm-pl', key: 'node/1', priority: 40, lat: 52.23193, lon: 21.0102, name: 'Metro Warszawskie', street: '', number: '', ...over })
+  const pointing = { refs: [{ sourceId: 'um-warszawa', key: '1150' }] }
+
+  it('joins the record to the one it points at, whatever the names say', () => {
+    expect(compare(city, mapped()).decision).not.toBe('auto')
+    expect(cluster([city, mapped()]).clusters).toEqual([[0], [1]])
+    expect(cluster([city, mapped(pointing)])).toEqual({ clusters: [[0, 1]], reviews: [] })
+  })
+
+  it('does not believe a reference to a record that lies somewhere else', () => {
+    expect(cluster([city, mapped({ ...pointing, lat: 52.25 })]).clusters).toEqual([[0], [1]])
+  })
+
+  it('ignores a reference to a record nobody has, and keeps two records of one source apart', () => {
+    expect(cluster([city, mapped({ refs: [{ sourceId: 'um-warszawa', key: '9999' }] })]).clusters).toEqual([[0], [1]])
+    const second = mapped({ ...pointing, index: 2, key: 'node/2' })
+    expect(cluster([city, mapped(pointing), second]).clusters).toEqual([[0, 1], [2]])
+  })
+
+  it('is declared for OpenStreetMap, whose mappers note the number the city gave the device', () => {
+    const osm = loadSourceDefs().find((def) => def.kind === 'osm')!
+    expect(osm.refs).toEqual({ 'ref:api-um-warszawa-pl': warsaw.id })
   })
 })
 
