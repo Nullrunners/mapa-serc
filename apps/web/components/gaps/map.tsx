@@ -7,23 +7,10 @@ import { MapFrame, MapLegend, MapUnavailable } from "@/components/map-frame";
 import { API_URL, type GapsPlace, type GapsView } from "@/lib/api/client";
 import { count } from "@/lib/format";
 import { EMPTY, pointerOver, setData, useMapLibre, whenLoaded, type SourceData } from "@/lib/maplibre";
-
-/** One hue from light to dark, so the scale reads without telling red from green. */
-export const SCALE = ["#fde0dd", "#fbb4b9", "#f768a1", "#c51b8a", "#7a0177"] as const;
-/** Residents of a small hexagon (about 0.1 km²) without a device in reach, counting the hours of the week. */
-export const HEX_STEPS = [10, 50, 150, 400, 800] as const;
-/** Residents of a large hexagon (about 36 km²) without a device they can reach at night. */
-export const AREA_STEPS = [500, 2000, 5000, 15000, 50000] as const;
-/** Below this zoom the country is shown in large hexagons. */
-export const DETAIL_ZOOM = 10;
+import { AREA_STEPS, DETAIL_ZOOM, HEX_STEPS, SCALE, type MapView } from "./shared";
 
 const ramp = (property: ExpressionSpecification, steps: readonly number[]): ExpressionSpecification =>
   ["step", property, "rgba(0,0,0,0)", steps[0]!, SCALE[0], steps[1]!, SCALE[1], steps[2]!, SCALE[2], steps[3]!, SCALE[3], steps[4]!, SCALE[4]] as ExpressionSpecification;
-
-export interface MapView {
-  bbox: [number, number, number, number];
-  zoom: number;
-}
 
 export interface GapsMapProps {
   hexes: GapsView["hexes"] | null;

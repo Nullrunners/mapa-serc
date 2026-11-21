@@ -1,32 +1,18 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MapPlaceholder, MapScreen } from "@/components/map-frame";
 import { LoadStatus } from "@/components/ui";
-import { api, API_URL, type GapsMethod, type GapsTotals } from "@/lib/api/client";
-import { count } from "@/lib/format";
-import { coverageNow, people, placeName, share } from "@/lib/gaps-text";
+import { api, API_URL } from "@/lib/api/client";
+import { coverageNow, people, placeName } from "@/lib/gaps-text";
 import { useLoad } from "@/lib/use-load";
-import GapReport from "./gap-report";
-import { DETAIL_ZOOM, type MapView } from "./gaps-map";
+import { Method } from "./method";
+import { Totals } from "./national";
+import GapReport from "./report";
+import { CITIES, DETAIL_ZOOM, PLACES, type Bbox, type MapView } from "./shared";
 
-const GapsMap = dynamic(() => import("./gaps-map"), { ssr: false, loading: () => <MapPlaceholder /> });
-
-type Bbox = [number, number, number, number];
-
-/** Quick starts: the biggest cities, each small enough for one analysis. */
-const CITIES: { name: string; bbox: Bbox }[] = [
-  { name: "Warszawa", bbox: [20.85, 52.1, 21.27, 52.37] },
-  { name: "Kraków", bbox: [19.79, 49.97, 20.22, 50.13] },
-  { name: "Łódź", bbox: [19.32, 51.68, 19.64, 51.85] },
-  { name: "Wrocław", bbox: [16.8, 51.04, 17.18, 51.21] },
-  { name: "Poznań", bbox: [16.73, 52.33, 17.07, 52.51] },
-  { name: "Gdańsk", bbox: [18.43, 54.27, 18.95, 54.45] },
-];
-
-const PLACES = 10;
+const GapsMap = dynamic(() => import("./map"), { ssr: false, loading: () => <MapPlaceholder /> });
 
 /** The map of gaps in AED cover with the figures, the best places for new devices and their reports. */
 export default function Gaps({ title, lead }: { title: string; lead: string }) {
@@ -204,62 +190,5 @@ export default function Gaps({ title, lead }: { title: string; lead: string }) {
         </>
       )}
     </MapScreen>
-  );
-}
-
-function Totals({ totals }: { totals: GapsTotals }) {
-  const rows = [
-    { label: "Mieszkańcy", value: people(totals.residents), note: "" },
-    { label: "Bez AED w promieniu 400 m", value: people(totals.noDevice), note: share(totals.noDevice, totals.residents) },
-    { label: "Bez AED dostępnego w nocy", value: people(totals.noNight), note: share(totals.noNight, totals.residents) },
-  ];
-  return (
-    <dl className="divide-y divide-line rounded-lg bg-surface px-4">
-      {rows.map((row) => (
-        <div key={row.label} className="flex items-baseline justify-between gap-4 py-2.5">
-          <dt>
-            {row.label}
-            {row.note && <span className="block text-sm text-muted">{row.note}</span>}
-          </dt>
-          <dd className="shrink-0 text-lg font-bold tabular-nums">{row.value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-function Method({ method }: { method: GapsMethod }) {
-  const { devices } = method;
-  return (
-    <details className="rounded-lg border border-line px-4 py-3 text-sm">
-      <summary className="cursor-pointer font-semibold text-gov">Jak to liczymy</summary>
-      <div className="mt-3 space-y-2">
-        <p>
-          Dzielimy mapę na sześciokąty o powierzchni ok. 0,1 km². Liczbę mieszkańców bierzemy ze spisu powszechnego 2021, który podaje ją w kwadratach 1 × 1 km. Zakładamy, że w każdym kwadracie ludzie
-          mieszkają równomiernie.
-        </p>
-        <p>
-          Defibrylator liczy się dla sześciokąta, jeśli stoi najwyżej {method.reachM} m od jego środka: tyle da się przebiec tam i z powrotem w kilka minut. Liczymy też, przez ile godzin w tygodniu można do
-          niego dojść. Urządzenie w urzędzie czynnym 7:30–15:30 pomaga tylko przez 40 ze 168 godzin. „W nocy” znaczy u nas: w niedzielę o {method.nightHour.replace("niedziela ", "")}.
-        </p>
-        <p>
-          Miejsca na nowe urządzenia wybieramy po kolei. Każde następne stawiamy tam, gdzie defibrylator dostępny całą dobę obejmie najwięcej osób, które dziś go w pobliżu nie mają. Osoby w wieku 65+ liczymy{" "}
-          {method.seniorWeight === 3 ? "potrójnie" : `${method.seniorWeight} razy`}, bo to u nich najczęściej dochodzi do nagłego zatrzymania krążenia.
-        </p>
-        <p>
-          Godziny dostępności znamy dla {count(devices.hours)} z {count(devices.total)} urządzeń. Dla {count(devices.outdoor)} stojących na zewnątrz bez podanych godzin przyjmujemy całą dobę, a dla{" "}
-          {count(devices.assumed)} pozostałych dni robocze 8–16. {count(devices.excluded)} urządzeń nie liczymy: są tylko dla personelu, wycofane, mają przeterminowane elektrody lub baterię albo przechodnie
-          zgłosili, że ich nie ma. Dlatego liczba osób „bez żadnego AED” nie zależy od tych założeń, a liczba „bez AED w nocy” trochę tak.
-        </p>
-        <p>
-          Wyniki są tak dobre jak dane: nie znamy każdego defibrylatora w Polsce, a część urządzeń pochodzi z OpenStreetMap i nie jest potwierdzona. Jeśli znasz defibrylator, którego brakuje,{" "}
-          <Link href="/dostawca" className="link">
-            zgłoś go
-          </Link>
-          .
-        </p>
-        <p className="text-muted">Źródła: {method.sources.map((source) => `${source.name} (${source.licence})`).join("; ")}. Wynik analizy jest na licencji ODbL 1.0 i nie wchodzi do zbioru dla dane.gov.pl.</p>
-      </div>
-    </details>
   );
 }
