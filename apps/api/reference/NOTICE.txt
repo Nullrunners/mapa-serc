@@ -8,7 +8,7 @@ https://gisco-services.ec.europa.eu/census/2021/Eurostat_Census-GRID_2021_V3.zip
 Data for Poland delivered by Główny Urząd Statystyczny (Narodowy Spis Powszechny Ludności i Mieszkań 2021).
 Copyright European Union 2026. Licence: CC BY 4.0. The source must be indicated and modifications stated.
 
-Modifications made by AED Hub (scripts/fetch-population.ts):
+Modifications made by Mapa serc (scripts/fetch-population.ts):
 - kept only cells whose CNTR_ID includes PL and whose total population T is above 0 (197 439 cells,
   37 092 675 residents; 856 border cells also include residents reported by a neighbouring country);
 - kept only the columns: n_km, e_km (south-west corner of the cell in kilometres, taken from GRD_ID),

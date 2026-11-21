@@ -40,7 +40,7 @@ export default function GapReport({ place, method, csvHref, onClose }: GapReport
       <BackButton onClick={onClose}>Wróć do listy miejsc</BackButton>
 
       <div className="space-y-1">
-        <p className="hidden text-sm print:block">AED Hub – raport miejsca na nowy defibrylator, {new Date().toLocaleDateString("pl-PL")}</p>
+        <p className="hidden text-sm print:block">Mapa serc – raport miejsca na nowy defibrylator, {new Date().toLocaleDateString("pl-PL")}</p>
         <h2 id="raport-naglowek" ref={heading} tabIndex={-1} className="text-xl leading-snug font-bold text-balance">
           Miejsce nr {place.rank}: {placeName(place)}
         </h2>

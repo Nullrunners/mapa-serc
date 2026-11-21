@@ -1,4 +1,4 @@
-# AED Hub API. Build context is the repository root (the image needs packages/schema):
+# Mapa serc API. Build context is the repository root (the image needs packages/schema):
 #   docker build -f apps/api/Dockerfile .
 # Debian base on purpose: the DuckDB Node bindings ship glibc binaries.
 FROM node:24-bookworm-slim

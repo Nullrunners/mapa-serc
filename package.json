@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "AED Hub: one nationwide open dataset of AED defibrillators for dane.gov.pl (HackNation 2026, Misja AED)",
+  "description": "Mapa serc: one nationwide open dataset of AED defibrillators for dane.gov.pl (HackNation 2026, Misja AED)",
   "packageManager": "pnpm@11.1.2",
   "engines": {
     "node": ">=22.12"

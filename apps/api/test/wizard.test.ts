@@ -130,7 +130,7 @@ describe('commit and approval', () => {
       godziny_dostepnosci: 'Mo-Fr 07:30-15:30',
       telefon_kontaktowy: '+48523811413',
       opis_lokalizacji: 'Parter, przy kasie',
-      zrodlo: 'Urząd Gminy Testowo (zgłoszenie w AED Hub)',
+      zrodlo: 'Urząd Gminy Testowo (zgłoszenie w Mapie serc)',
       licencja: 'CC0 1.0',
     })
 

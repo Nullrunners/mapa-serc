@@ -1,8 +1,8 @@
-# AED Hub
+# Mapa serc
 
 Rozwiązanie zadania **„Misja AED – dane na ratunek"** (HackNation 2026, Departament Zarządzania Danymi, Ministerstwo Cyfryzacji): jeden ogólnopolski, otwarty zbiór danych o defibrylatorach AED, gotowy do udostępnienia w portalu dane.gov.pl.
 
-Dane urzędowe o AED to dziś pięć samorządowych zbiorów w portalu (782 urządzenia): cztery pliki i lista Warszawy wydawana przez API miasta, każdy w innym układzie. Społeczność OpenStreetMap zna ponad 18 tysięcy urządzeń w 2128 gminach, ale na licencji ODbL, której portal nie ma w swoim słowniku licencji. AED Hub scala to, co już jest, w jednolity zbiór, a przede wszystkim ułatwia pozyskanie reszty: opiekun zgłasza urządzenie w kilku krokach, a system wskazuje, kogo o zgłoszenie poprosić.
+Dane urzędowe o AED to dziś pięć samorządowych zbiorów w portalu (782 urządzenia): cztery pliki i lista Warszawy wydawana przez API miasta, każdy w innym układzie. Społeczność OpenStreetMap zna ponad 18 tysięcy urządzeń w 2128 gminach, ale na licencji ODbL, której portal nie ma w swoim słowniku licencji. Mapa serc scala to, co już jest, w jednolity zbiór, a przede wszystkim ułatwia pozyskanie reszty: opiekun zgłasza urządzenie w kilku krokach, a system wskazuje, kogo o zgłoszenie poprosić.
 
 ## Co działa, a co jest w budowie
 
@@ -114,7 +114,7 @@ Rdzeń adresowy wzorca jest identyczny z plikiem, który Legionowo już publikuj
 
 ## Publikacja w dane.gov.pl
 
-Portal nie ma publicznego API zapisu. Dostawca rejestruje w portalu adres pliku XML, a harvester portalu pobiera go cyklicznie i sam zakłada oraz aktualizuje zbiór i zasoby. AED Hub wystawia taki plik pod `/feeds/dane-gov-pl.xml`; wskazuje on trzy zasoby: `/dane/aed.csv`, `/dane/aed.geojson`, `/dane/aed.jsonld`.
+Portal nie ma publicznego API zapisu. Dostawca rejestruje w portalu adres pliku XML, a harvester portalu pobiera go cyklicznie i sam zakłada oraz aktualizuje zbiór i zasoby. Mapa serc wystawia taki plik pod `/feeds/dane-gov-pl.xml`; wskazuje on trzy zasoby: `/dane/aed.csv`, `/dane/aed.geojson`, `/dane/aed.jsonld`.
 
 Schemat portalu przyjmuje wyłącznie adresy `https`, więc plik jest poprawny dopiero na wdrożeniu z ustawionym `PUBLIC_API_URL`. Lokalnie plik zawiera komentarz z tym ostrzeżeniem.
 

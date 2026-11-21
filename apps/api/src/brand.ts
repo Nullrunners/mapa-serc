@@ -2,7 +2,7 @@
  * Name and slogan of the campaign as messages to keepers sign them. When the final name is chosen, change it here
  * and in apps/web/lib/brand.ts.
  */
-export const BRAND = { name: 'AED Hub', slogan: 'dane na ratunek' } as const
+export const BRAND = { name: 'Mapa serc', slogan: 'dane na ratunek' } as const
 
 /** Last line of every email. */
 export const SIGNATURE = `${BRAND.name} – ${BRAND.slogan}`

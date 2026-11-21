@@ -94,7 +94,7 @@ async function prepare(request: Request, pending: boolean): Promise<Prepared> {
     id: sourceIdFor(providerName, request.fileName),
     kind: 'upload',
     name: providerName,
-    attribution: `${providerName} (zgłoszenie w AED Hub)`,
+    attribution: `${providerName} (zgłoszenie w Mapie serc)`,
     licence: request.provider?.licence ?? 'CC0 1.0',
     url: '',
     format: table.format,

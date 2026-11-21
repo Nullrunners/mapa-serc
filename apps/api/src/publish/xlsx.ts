@@ -159,7 +159,7 @@ const BUILT = new Date(Date.UTC(2026, 10, 21))
 
 async function build(): Promise<Uint8Array<ArrayBuffer>> {
   const workbook = new ExcelJS.Workbook()
-  workbook.creator = 'AED Hub'
+  workbook.creator = 'Mapa serc'
   workbook.title = SCHEMA_TITLE
   workbook.created = BUILT
   workbook.modified = BUILT

@@ -1,4 +1,4 @@
-# AED Hub web app (Next.js). Build context is the repository root:
+# Mapa serc web app (Next.js). Build context is the repository root:
 #   docker build -f apps/web/Dockerfile --build-arg NEXT_PUBLIC_API_URL=https://<api host> .
 # NEXT_PUBLIC_API_URL is compiled into the browser bundle, so it is a build argument, not a runtime setting.
 FROM node:24-bookworm-slim

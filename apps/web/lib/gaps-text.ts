@@ -103,7 +103,7 @@ export function justification(place: GapsPlace, method: GapsMethod): string {
   if (place.nearestAllWeek) lines.push(`Najbliższy defibrylator dostępny całą dobę jest ${distance(place.nearestAllWeek.distanceM)} stąd.`);
   lines.push(
     "Przy nagłym zatrzymaniu krążenia szansa przeżycia spada z każdą minutą bez defibrylacji, a karetka rzadko dojeżdża w kilka minut. Urządzenie dostępne o każdej porze pozwala świadkom zdarzenia działać od razu.",
-    `Źródło analizy: AED Hub, na podstawie danych o defibrylatorach z dane.gov.pl i OpenStreetMap oraz danych GUS o ludności. Stan danych: ${method.datasetRanAt ? new Date(method.datasetRanAt).toLocaleDateString("pl-PL") : "bieżący"}.`,
+    `Źródło analizy: Mapa serc, na podstawie danych o defibrylatorach z dane.gov.pl i OpenStreetMap oraz danych GUS o ludności. Stan danych: ${method.datasetRanAt ? new Date(method.datasetRanAt).toLocaleDateString("pl-PL") : "bieżący"}.`,
   );
   return lines.join(" ");
 }

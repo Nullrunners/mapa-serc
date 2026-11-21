@@ -1,5 +1,5 @@
 {
-  description = "AED Hub (HackNation 2026, Misja AED) dev environment";
+  description = "Mapa serc (HackNation 2026, Misja AED) dev environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

@@ -1,5 +1,5 @@
 /**
- * Typed client of the AED Hub API. The types in ./schema.d.ts are generated from the API's OpenAPI document:
+ * Typed client of the Mapa serc API. The types in ./schema.d.ts are generated from the API's OpenAPI document:
  * after the contract changes run `pnpm contract` (API) and `pnpm --filter @aed/web api:types`.
  */
 import createClient from "openapi-fetch";

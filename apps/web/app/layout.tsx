@@ -5,7 +5,7 @@ import "./globals.css";
 const openSans = Open_Sans({ variable: "--font-open-sans", subsets: ["latin", "latin-ext"] });
 
 export const metadata: Metadata = {
-  title: { default: "AED Hub – defibrylatory w jednym zbiorze", template: "%s – AED Hub" },
+  title: { default: "Mapa serc – defibrylatory w jednym zbiorze", template: "%s – Mapa serc" },
   description: "Znajdź najbliższy defibrylator AED, zgłoś własny albo pobierz otwarte dane o wszystkich urządzeniach w Polsce.",
 };
 

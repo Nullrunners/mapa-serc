@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "AED Hub API",
+    "title": "Mapa serc API",
     "version": "0.1.0",
     "description": "One nationwide open dataset of AED defibrillators for dane.gov.pl: merged from municipal datasets and owner submissions, published as CSV, GeoJSON and a harvester feed.\n\nA device record uses the column names of the data pattern (`/v1/schema`, `/dane/schema.json`).\nEvery operation carries `x-status`: `stub` endpoints answer with sample data in the final shape and say so with `stub: true`.\n\nRecords with `publication = community` are known only from OpenStreetMap (ODbL) and are not confirmed by their owner; they are not part of the files under `/dane/aed.*`.",
     "license": {

@@ -60,7 +60,7 @@ export function createApp() {
   for (const endpoint of endpoints) app.openapi(endpoint.route, endpoint.handler)
 
   app.get('/openapi.json', (c) => c.json(buildOpenApiDocument(app)))
-  app.get('/docs', Scalar({ url: '/openapi.json', pageTitle: 'AED Hub API' }))
+  app.get('/docs', Scalar({ url: '/openapi.json', pageTitle: 'Mapa serc API' }))
   app.get('/', (c) => c.redirect('/docs'))
 
   app.notFound((c) => problemResponse(c, 404, 'not_found', `No route for ${c.req.method} ${c.req.path}. The API reference is at /docs.`))
@@ -85,7 +85,7 @@ export function buildOpenApiDocument(app: OpenAPIHono) {
   const document = app.getOpenAPI31Document({
     openapi: '3.1.0',
     info: {
-      title: 'AED Hub API',
+      title: 'Mapa serc API',
       version: config.version,
       description: [
         'One nationwide open dataset of AED defibrillators for dane.gov.pl: merged from municipal datasets and owner submissions, published as CSV, GeoJSON and a harvester feed.',
