@@ -53,6 +53,17 @@ describe('availabilityAt', () => {
     expect(availabilityAt('Mo-Fr 08:00-16:00', new Date('2026-07-06T14:30:00Z'))).toBe('closed')
     expect(availabilityAt('Mo-Fr 08:00-16:00', new Date('2026-07-06T13:30:00Z'))).toBe('open')
   })
+
+  it('answers for the moment it is asked about, also when two moments are asked in turn', () => {
+    const open = at(monday, '10:00')
+    const closed = at(saturday, '10:00')
+    for (let round = 0; round < 3; round++) {
+      expect(availabilityAt('Mo-Fr 08:00-16:00', open)).toBe('open')
+      expect(availabilityAt('Mo-Fr 08:00-16:00', closed)).toBe('closed')
+      // A holiday on a Wednesday right after an ordinary Monday: the day kept from the last question must not leak.
+      expect(availabilityAt('Mo-Fr 08:00-16:00; PH off', new Date('2026-11-11T10:00:00+01:00'))).toBe('closed')
+    }
+  })
 })
 
 describe('public holidays', () => {
@@ -82,6 +93,13 @@ describe('nextChange', () => {
     expect(nextChange('Mo-Fr 08:00-16:00; PH off', new Date('2026-11-10T17:00:00+01:00'))).toMatchObject({ open: false, time: '08:00', days: 2 })
     expect(nextChange('24/7', at(monday, '10:00'))).toBeNull()
     expect(nextChange('sunrise-sunset', at(monday, '10:00'))).toBeNull()
+  })
+
+  it('follows a range past midnight and finds nothing when the hours never change', () => {
+    // Open since Saturday 20:00; on Sunday at 02:00 it closes at 04:00 and stays closed until Friday evening.
+    expect(nextChange('Fr,Sa 20:00-04:00', at(sunday, '02:00'))).toEqual({ open: true, minutes: 120, time: '04:00', days: 0 })
+    expect(nextChange('Fr,Sa 20:00-04:00', at(sunday, '05:00'))).toMatchObject({ open: false, time: '20:00', days: 5 })
+    expect(nextChange('Mo-Su 00:00-24:00', at(monday, '10:00'))).toBeNull()
   })
 })
 
