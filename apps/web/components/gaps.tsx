@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MapLayout, MapPlaceholder } from "@/components/map-frame";
+import { MapPlaceholder, MapScreen } from "@/components/map-frame";
 import { LoadStatus } from "@/components/ui";
 import { api, API_URL, type GapsMethod, type GapsTotals } from "@/lib/api/client";
 import { count } from "@/lib/format";
@@ -28,7 +28,8 @@ const CITIES: { name: string; bbox: Bbox }[] = [
 
 const PLACES = 10;
 
-export default function Gaps() {
+/** The map of gaps in AED cover with the figures, the best places for new devices and their reports. */
+export default function Gaps({ title, lead }: { title: string; lead: string }) {
   const [view, setView] = useState<MapView | null>(null);
   const [analysed, setAnalysed] = useState<{ bbox: Bbox; label: string } | null>(null);
   const [fitTo, setFitTo] = useState<{ bbox: Bbox; seq: number } | null>(null);
@@ -79,10 +80,6 @@ export default function Gaps() {
   const method = result?.method ?? (summary.state === "ready" ? summary.data.method : null);
   const csvHref = `${API_URL}/v1/gaps.csv?bbox=${bboxText}&n=${PLACES}`;
   const canAnalyseView = view !== null && view.zoom >= DETAIL_ZOOM;
-
-  const map = <GapsMap hexes={result && !result.tooLarge ? result.hexes : null} places={places} selected={selected} onSelect={setSelected} onView={onView} fitTo={fitTo} />;
-
-  if (place && method) return <MapLayout controls={<GapReport place={place} method={method} csvHref={csvHref} onClose={closeReport} />} map={map} />;
 
   const controls = (
     <div className="space-y-8">
@@ -189,7 +186,25 @@ export default function Gaps() {
     </div>
   );
 
-  return <MapLayout controls={controls} map={map} results={results} />;
+  const report = place && method;
+  return (
+    <MapScreen
+      title={title}
+      lead={lead}
+      focused={!!report}
+      view={report ? `miejsce-${place.rank}` : "lista"}
+      map={<GapsMap hexes={result && !result.tooLarge ? result.hexes : null} places={places} selected={selected} onSelect={setSelected} onView={onView} fitTo={fitTo} />}
+    >
+      {report ? (
+        <GapReport place={place} method={method} csvHref={csvHref} onClose={closeReport} />
+      ) : (
+        <>
+          {controls}
+          {results}
+        </>
+      )}
+    </MapScreen>
+  );
 }
 
 function Totals({ totals }: { totals: GapsTotals }) {

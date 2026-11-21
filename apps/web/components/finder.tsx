@@ -3,9 +3,9 @@
 import dynamic from "next/dynamic";
 import { useMemo, useRef, useState } from "react";
 import DeviceList, { pickedFrom, type Picked } from "@/components/device-list";
-import { MapLayout, MapPlaceholder } from "@/components/map-frame";
+import { MapPlaceholder, MapScreen } from "@/components/map-frame";
 import { ExternalLink } from "@/components/ui";
-import { addressLine, title, type When } from "@/lib/aed-text";
+import { addressLine, title as deviceTitle, type When } from "@/lib/aed-text";
 import { api } from "@/lib/api/client";
 import { count, distance, minutes } from "@/lib/format";
 import { nextSundayNight } from "@/lib/reach-text";
@@ -19,7 +19,8 @@ const AedMap = dynamic(() => import("./aed-map"), { ssr: false, loading: () => <
 
 const LIMIT = 20;
 
-export default function Finder() {
+/** The map of all devices with the search, the way to the nearest one and the list; `title` and `lead` head the panel. */
+export default function Finder({ title, lead }: { title: string; lead: string }) {
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("");
   const [near, setNear] = useState<Point | null>(null);
@@ -89,17 +90,6 @@ export default function Finder() {
     );
   };
 
-  const map = <AedMap showCommunity={showCommunity} focus={near} walk={walk} selected={selected} onSelect={setSelected} />;
-
-  if (selected) {
-    return (
-      <MapLayout
-        controls={<AedDetails picked={selected} from={near} layer={layer} onlyAvailable={onlyAvailable} onPick={setSelected} onClose={closeDetails} walkNote={walkNote} />}
-        map={map}
-      />
-    );
-  }
-
   const controls = (
     <div className="space-y-4">
       <form
@@ -145,7 +135,7 @@ export default function Finder() {
           </h2>
           <div>
             <button type="button" onClick={() => setSelected(pickedFrom(nearest))} className="text-left text-lg leading-snug font-bold text-gov hover:underline">
-              {title(nearest)}
+              {deviceTitle(nearest)}
             </button>
             {addressLine(nearest) && <p className="text-sm">{addressLine(nearest)}</p>}
           </div>
@@ -225,7 +215,24 @@ export default function Finder() {
     </section>
   );
 
-  return <MapLayout controls={controls} map={map} results={results} />;
+  return (
+    <MapScreen
+      title={title}
+      lead={lead}
+      focused={selected !== null}
+      view={selected ? `urzadzenie-${selected.id}` : "lista"}
+      map={<AedMap showCommunity={showCommunity} focus={near} walk={walk} selected={selected} onSelect={setSelected} />}
+    >
+      {selected ? (
+        <AedDetails picked={selected} from={near} layer={layer} onlyAvailable={onlyAvailable} onPick={setSelected} onClose={closeDetails} walkNote={walkNote} />
+      ) : (
+        <>
+          {controls}
+          {results}
+        </>
+      )}
+    </MapScreen>
+  );
 }
 
 /** How far the walk is and how long it takes; the way itself is drawn on the map. */

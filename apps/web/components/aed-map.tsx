@@ -112,7 +112,7 @@ export default function AedMap({ showCommunity, focus, walk, selected, onSelect 
     walkRef.current = walk;
   }, [onSelect, walk]);
 
-  const { container, map: mapRef, drawable } = useMapLibre((map) => addLayers(map, (picked) => selectRef.current(picked)));
+  const { frame, container, map: mapRef, drawable } = useMapLibre((map) => addLayers(map, (picked) => selectRef.current(picked)));
 
   useEffect(() => {
     const map = mapRef.current;
@@ -160,7 +160,7 @@ export default function AedMap({ showCommunity, focus, walk, selected, onSelect 
   if (!drawable) return <MapUnavailable>Ta przeglądarka nie potrafi wyświetlić mapy. Lista urządzeń działa bez niej: wpisz miejscowość albo ulicę w wyszukiwarce.</MapUnavailable>;
 
   return (
-    <MapFrame containerRef={container} label="Mapa defibrylatorów AED. Te same urządzenia są na liście obok.">
+    <MapFrame frameRef={frame} containerRef={container} label="Mapa defibrylatorów AED. Te same urządzenia są na liście obok.">
       <MapLegend>
         <ul className="flex flex-wrap gap-x-3 gap-y-0.5">
           {LAYERS.filter((layer) => layer.id === "official" || showCommunity).map((layer) => (

@@ -2,7 +2,7 @@
  * Shared MapLibre setup. Import this module before creating a map, from every component that draws one,
  * so the map works whichever page a person opens first.
  */
-import { Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
+import { FullscreenControl, Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
 
 // maplibre-gl 6 looks for its worker next to its own module (import.meta.url). Once Turbopack bundles it
@@ -11,20 +11,20 @@ import { useEffect, useRef, useState } from "react";
 setWorkerUrl(new URL("../node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs", import.meta.url).href);
 
 export const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+/** Poland as the map first shows it. */
 export const POLAND: [number, number, number, number] = [14.1, 49.0, 24.2, 54.9];
 
 export type SourceData = Parameters<GeoJSONSource["setData"]>[0];
 export const EMPTY: SourceData = { type: "FeatureCollection", features: [] };
 
-/** Polish names of the map's own buttons and hints; they are read out by screen readers. */
+/** Polish names of the map's own buttons; they are read out by screen readers. */
 const LOCALE = {
   "Map.Title": "Mapa",
   "NavigationControl.ZoomIn": "Przybliż",
   "NavigationControl.ZoomOut": "Oddal",
+  "FullscreenControl.Enter": "Pokaż mapę na pełnym ekranie",
+  "FullscreenControl.Exit": "Zamknij pełny ekran",
   "AttributionControl.ToggleAttribution": "Pokaż lub ukryj źródła mapy",
-  "CooperativeGesturesHandler.WindowsHelpText": "Przytrzymaj Ctrl i przewiń, żeby przybliżyć mapę",
-  "CooperativeGesturesHandler.MacHelpText": "Przytrzymaj ⌘ i przewiń, żeby przybliżyć mapę",
-  "CooperativeGesturesHandler.MobileHelpText": "Przesuń mapę dwoma palcami",
 };
 
 /** MapLibre needs WebGL2. Without it the constructor throws, and an uncaught error would take the page down too. */
@@ -37,26 +37,19 @@ export function canDrawMap(): boolean {
 }
 
 /**
- * A map of Poland with our style, zoom buttons and Polish labels, or null when the browser refuses WebGL
- * (blocked driver, too many open maps). On a touch screen one finger scrolls the page and two move the map,
- * so a map in the middle of a phone page does not trap the scroll.
+ * A map of Poland with our style and Polish labels on its buttons, or null when the browser refuses WebGL (blocked
+ * driver, too many open maps). The full-screen button takes `frame` there, so the legend drawn over the map goes with it.
  */
-export function createMap(container: HTMLElement): MapLibreMap | null {
+export function createMap(container: HTMLElement, frame: HTMLElement | null): MapLibreMap | null {
   let map: MapLibreMap;
   try {
-    map = new MapLibreMap({
-      container,
-      style: MAP_STYLE,
-      bounds: POLAND,
-      fitBoundsOptions: { padding: 16 },
-      locale: LOCALE,
-      cooperativeGestures: window.matchMedia("(pointer: coarse)").matches,
-    });
+    map = new MapLibreMap({ container, style: MAP_STYLE, bounds: POLAND, fitBoundsOptions: { padding: 16 }, locale: LOCALE });
   } catch {
     return null;
   }
   ignoreMissingStyleIcons(map);
   map.addControl(new NavigationControl({ showCompass: false }), "top-right");
+  map.addControl(new FullscreenControl(frame ? { container: frame } : {}), "top-right");
   return map;
 }
 
@@ -77,6 +70,7 @@ function ignoreMissingStyleIcons(map: MapLibreMap): void {
  * component's own effects: they run in order, so by then `map.current` is set (or the map could not be drawn).
  */
 export function useMapLibre(onLoad: (map: MapLibreMap) => void) {
+  const frame = useRef<HTMLDivElement>(null);
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   const load = useRef(onLoad);
@@ -84,7 +78,7 @@ export function useMapLibre(onLoad: (map: MapLibreMap) => void) {
 
   useEffect(() => {
     if (!drawable || !container.current) return;
-    const created = createMap(container.current);
+    const created = createMap(container.current, frame.current);
     if (!created) {
       // The browser reported WebGL2 and still refused a context.
       setDrawable(false);
@@ -98,7 +92,7 @@ export function useMapLibre(onLoad: (map: MapLibreMap) => void) {
     };
   }, [drawable]);
 
-  return { container, map, drawable };
+  return { frame, container, map, drawable };
 }
 
 /** Runs `apply` now if `source` (added on "load") is on the map, otherwise right after the map has loaded. */

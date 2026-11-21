@@ -89,7 +89,7 @@ export default function GapsMap({ hexes, places, selected, onSelect, onView, fit
   }, [onSelect, onView]);
   const [zoom, setZoom] = useState(5);
 
-  const { container, map: mapRef, drawable } = useMapLibre((map) => addLayers(map, handlers, setZoom));
+  const { frame, container, map: mapRef, drawable } = useMapLibre((map) => addLayers(map, handlers, setZoom));
 
   useEffect(() => {
     const map = mapRef.current;
@@ -125,7 +125,7 @@ export default function GapsMap({ hexes, places, selected, onSelect, onView, fit
   const detail = zoom >= DETAIL_ZOOM;
   const steps = detail ? HEX_STEPS : AREA_STEPS;
   return (
-    <MapFrame containerRef={container} label="Mapa luk w dostępie do defibrylatorów. Te same liczby i miejsca są na liście obok.">
+    <MapFrame frameRef={frame} containerRef={container} label="Mapa luk w dostępie do defibrylatorów. Te same liczby i miejsca są na liście obok.">
       <MapLegend>
         <p className="mb-1 font-semibold">{detail ? "Mieszkańcy bez AED w pobliżu, z uwzględnieniem godzin" : "Mieszkańcy bez AED dostępnego w nocy"}</p>
         <ul className="flex flex-wrap gap-x-2 gap-y-0.5">
@@ -136,7 +136,8 @@ export default function GapsMap({ hexes, places, selected, onSelect, onView, fit
             </li>
           ))}
         </ul>
-        <p className="mt-1 text-muted">{detail ? "Sześciokąt ma ok. 0,1 km². Niebieskie kropki to znane defibrylatory." : "Sześciokąt ma ok. 36 km². Przybliż, żeby zobaczyć ulice."}</p>
+        {/* On a phone the map has half the screen; the note would cover too much of it. */}
+        <p className="mt-1 hidden text-muted md:block">{detail ? "Sześciokąt ma ok. 0,1 km². Niebieskie kropki to znane defibrylatory." : "Sześciokąt ma ok. 36 km². Przybliż, żeby zobaczyć ulice."}</p>
       </MapLegend>
     </MapFrame>
   );

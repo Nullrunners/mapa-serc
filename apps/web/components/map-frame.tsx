@@ -1,29 +1,55 @@
-import type { ReactNode, Ref } from "react";
+"use client";
+
+import { useEffect, useRef, type ReactNode, type Ref } from "react";
+import { FooterNotes } from "@/components/site-footer";
+
+export interface MapScreenProps {
+  title: string;
+  lead: string;
+  /** The panel shows one thing (a device, a report) instead of the list, and the lead gives way to it. */
+  focused?: boolean;
+  /** Names what the panel shows; when it changes, the panel starts again from its top. */
+  view: string;
+  map: ReactNode;
+  children: ReactNode;
+}
 
 /**
- * The panel and the map side by side on a wide screen, the map staying in view while the panel scrolls.
- * On a phone the map sits between the controls and the results, so what the controls change is in sight at once.
- * The map is an addition: everything on it can also be reached from the panel with a keyboard.
+ * A page that is a map. The map fills the screen under the header; the panel with the controls and the list stands
+ * beside it (on a phone, under it) and scrolls on its own. In the document the panel comes first: the map is an
+ * addition, and everything on it can also be reached from the panel with a keyboard.
  */
-export function MapLayout({ controls, map, results }: { controls: ReactNode; map: ReactNode; results?: ReactNode }) {
+export function MapScreen({ title, lead, focused = false, view, map, children }: MapScreenProps) {
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    panel.current?.scrollTo({ top: 0 });
+  }, [view]);
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,27rem)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:gap-x-8">
-      <div className="min-w-0 lg:col-start-1 lg:row-start-1">{controls}</div>
-      <section
-        aria-label="Mapa"
-        className="h-[55vh] max-h-112 min-h-72 lg:sticky lg:top-6 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:h-[calc(100dvh-7.5rem)] lg:max-h-none lg:self-start print:hidden"
-      >
+    <div className="flex min-h-0 flex-1 flex-col md:flex-row print:block">
+      <div ref={panel} className="flex min-h-0 flex-1 flex-col overflow-y-auto md:w-80 md:flex-none md:border-r md:border-line lg:w-108 print:w-auto print:overflow-visible print:border-0">
+        <div className="flex-1 space-y-6 px-4 py-5 lg:px-6">
+          <div className="space-y-1 print:hidden">
+            <h1 className="text-2xl leading-tight font-bold tracking-tight text-balance">{title}</h1>
+            {!focused && <p className="text-sm text-muted">{lead}</p>}
+          </div>
+          {children}
+        </div>
+        <footer className="space-y-2 border-t border-line bg-surface px-4 py-4 text-xs text-muted lg:px-6 print:hidden">
+          <FooterNotes />
+        </footer>
+      </div>
+      <section aria-label="Mapa" className="relative order-first shrink-0 basis-1/2 border-b border-line md:order-none md:flex-1 md:basis-auto md:border-b-0 print:hidden">
         {map}
       </section>
-      {results && <div className="min-w-0 lg:col-start-1 lg:row-start-2">{results}</div>}
     </div>
   );
 }
 
-/** The box a MapLibre map is drawn in, with room for a legend on top of it. */
-export function MapFrame({ containerRef, label, children }: { containerRef: Ref<HTMLDivElement>; label: string; children?: ReactNode }) {
+/** The MapLibre map fills the whole field; the legend is drawn over it, and goes full screen with it. */
+export function MapFrame({ frameRef, containerRef, label, children }: { frameRef: Ref<HTMLDivElement>; containerRef: Ref<HTMLDivElement>; label: string; children?: ReactNode }) {
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-lg border border-line">
+    <div ref={frameRef} className="absolute inset-0 overflow-hidden bg-surface">
       {/* MapLibre's own CSS sets `.maplibregl-map { position: relative }` outside any cascade layer, so it beats
           Tailwind's layered `absolute` and the map collapses to 0 px. The positioning lives on a wrapper instead. */}
       <div className="absolute inset-0">
@@ -35,8 +61,8 @@ export function MapFrame({ containerRef, label, children }: { containerRef: Ref<
 }
 
 /**
- * In the top left corner: the zoom buttons take the top right, and on a narrow map MapLibre keeps the credits
- * unfolded along the bottom until the map is first moved.
+ * In the top left corner: the zoom and full-screen buttons take the top right, and on a narrow map MapLibre keeps the
+ * credits unfolded along the bottom until the map is first moved.
  */
 export function MapLegend({ children }: { children: ReactNode }) {
   return (
@@ -48,13 +74,13 @@ export function MapLegend({ children }: { children: ReactNode }) {
 
 /** Shown while the map's code loads. */
 export function MapPlaceholder() {
-  return <div aria-hidden className="h-full w-full rounded-lg bg-surface" />;
+  return <div aria-hidden className="absolute inset-0 bg-surface" />;
 }
 
 /** Shown instead of the map in a browser without WebGL2. */
 export function MapUnavailable({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-full w-full items-center justify-center rounded-lg bg-surface p-6 text-center">
+    <div className="absolute inset-0 flex items-center justify-center bg-surface p-6 text-center">
       <p className="max-w-sm">{children}</p>
     </div>
   );

@@ -4,10 +4,11 @@ import { LogoMark } from "@/components/logo";
 import { CurrentNav, Nav } from "@/components/site-nav";
 import { BRAND } from "@/lib/brand";
 
-export default function SiteHeader() {
+/** `wide` spans the whole screen, like the full-screen map under it; otherwise it lines up with the page column. */
+export default function SiteHeader({ wide = false }: { wide?: boolean }) {
   return (
-    <header className="relative border-b border-line bg-white print:hidden">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-4 py-3">
+    <header className="relative shrink-0 border-b border-line bg-white print:hidden">
+      <div className={`flex items-center justify-between gap-6 px-4 py-3 ${wide ? "lg:px-6" : "mx-auto max-w-6xl"}`}>
         <Link href="/" className="flex shrink-0 items-center gap-2.5 rounded-md">
           <LogoMark className="size-9" />
           <span className="leading-tight">
