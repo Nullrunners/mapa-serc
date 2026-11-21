@@ -4,15 +4,22 @@ import type { GeoJSONSource, Map as MapLibreMap, MapMovementEvent } from "maplib
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { Picked } from "@/components/device-list";
+import { AED_ICON_IMAGE, AED_ICON_ORDER, AED_KINDS, AedIcon, aedImage, aedImageId, FADED } from "@/components/aed-icon";
 import { MapFrame, MapLegend, MapUnavailable } from "@/components/map-frame";
 import { API_URL } from "@/lib/api/client";
 import { EMPTY, lineFeature, pointFeature, pointerOver, setData, useMapLibre, whenLoaded } from "@/lib/maplibre";
 import { bearing, type Point } from "@/lib/route";
 
+/** Drawn in this order, so the confirmed devices lie on top; the unconfirmed ones are paler. */
 const LAYERS = [
-  { id: "official", color: "#0052a5", label: "urzędowe" },
-  { id: "community", color: "#6b7280", label: "niepotwierdzone" },
+  { id: "community", opacity: FADED },
+  { id: "official", opacity: 1 },
 ] as const;
+
+/** A group of devices may hold any kind, so it takes the colour of the defibrillator sign. */
+const CLUSTER_COLOR = AED_KINDS[0].color;
+/** The way to a device lies under all of them, so the devices on it stay clickable. */
+const UNDER_DEVICES = `${LAYERS[0].id}-clusters`;
 
 const WALK_COLOR = "#b00020";
 
@@ -56,10 +63,14 @@ export interface AedMapProps {
 }
 
 /**
- * Devices as two clustered GeoJSON sources straight from the API, the way to one of them, where the person is,
- * and a ring around the device open in the panel.
+ * Devices as two clustered GeoJSON sources straight from the API, each one an icon in the colour of who can reach
+ * it, the way to one of them, where the person is, and a ring around the device open in the panel.
  */
 function addLayers(map: MapLibreMap, onSelect: (picked: Picked) => void) {
+  for (const kind of AED_KINDS) {
+    const image = aedImage(kind);
+    if (image) map.addImage(aedImageId(kind), image, { pixelRatio: 2 });
+  }
   for (const layer of LAYERS) {
     map.addSource(layer.id, { type: "geojson", data: `${API_URL}/v1/aed.geojson?layer=${layer.id}`, cluster: true, clusterRadius: 45, clusterMaxZoom: 13 });
     map.addLayer({
@@ -67,7 +78,7 @@ function addLayers(map: MapLibreMap, onSelect: (picked: Picked) => void) {
       type: "circle",
       source: layer.id,
       filter: ["has", "point_count"],
-      paint: { "circle-color": layer.color, "circle-opacity": 0.85, "circle-radius": ["step", ["get", "point_count"], 14, 50, 18, 500, 24], "circle-stroke-width": 2, "circle-stroke-color": "#ffffff" },
+      paint: { "circle-color": CLUSTER_COLOR, "circle-opacity": 0.85 * layer.opacity, "circle-radius": ["step", ["get", "point_count"], 14, 50, 18, 500, 24], "circle-stroke-width": 2, "circle-stroke-color": "#ffffff" },
     });
     map.addLayer({
       id: `${layer.id}-count`,
@@ -79,10 +90,11 @@ function addLayers(map: MapLibreMap, onSelect: (picked: Picked) => void) {
     });
     map.addLayer({
       id: `${layer.id}-points`,
-      type: "circle",
+      type: "symbol",
       source: layer.id,
       filter: ["!", ["has", "point_count"]],
-      paint: { "circle-color": layer.color, "circle-radius": 7, "circle-stroke-width": 2, "circle-stroke-color": "#ffffff" },
+      layout: { "icon-image": AED_ICON_IMAGE, "symbol-sort-key": AED_ICON_ORDER, "icon-allow-overlap": true, "icon-ignore-placement": true },
+      paint: { "icon-opacity": layer.opacity },
     });
 
     map.on("click", `${layer.id}-clusters`, async (event) => {
@@ -103,16 +115,16 @@ function addLayers(map: MapLibreMap, onSelect: (picked: Picked) => void) {
     pointerOver(map, [`${layer.id}-clusters`, `${layer.id}-points`]);
   }
 
-  // The way to the device, under the points so the devices on it stay clickable.
+  // The way to the device.
   const lineLayout = { "line-cap": "round", "line-join": "round" } as const;
   map.addSource("walk", { type: "geojson", data: EMPTY });
-  map.addLayer({ id: "walk-casing", type: "line", source: "walk", layout: lineLayout, paint: { "line-color": "#ffffff", "line-width": 9 } }, "official-clusters");
-  map.addLayer({ id: "walk-line", type: "line", source: "walk", layout: lineLayout, paint: { "line-color": WALK_COLOR, "line-width": 5 } }, "official-clusters");
+  map.addLayer({ id: "walk-casing", type: "line", source: "walk", layout: lineLayout, paint: { "line-color": "#ffffff", "line-width": 9 } }, UNDER_DEVICES);
+  map.addLayer({ id: "walk-line", type: "line", source: "walk", layout: lineLayout, paint: { "line-color": WALK_COLOR, "line-width": 5 } }, UNDER_DEVICES);
   // When no route was found only the direction is shown, dashed so it does not pass for a path.
   map.addSource("walk-straight", { type: "geojson", data: EMPTY });
   map.addLayer(
     { id: "walk-straight", type: "line", source: "walk-straight", layout: lineLayout, paint: { "line-color": WALK_COLOR, "line-width": 4, "line-dasharray": [1, 2] } },
-    "official-clusters",
+    UNDER_DEVICES,
   );
 
   // Where the person is.
@@ -133,7 +145,7 @@ function addLayers(map: MapLibreMap, onSelect: (picked: Picked) => void) {
 
   // A ring around the device shown in the panel, drawn above both layers.
   map.addSource("selected", { type: "geojson", data: EMPTY });
-  map.addLayer({ id: "selected-ring", type: "circle", source: "selected", paint: { "circle-radius": 12, "circle-opacity": 0, "circle-stroke-width": 4, "circle-stroke-color": "#1b1b1b" } });
+  map.addLayer({ id: "selected-ring", type: "circle", source: "selected", paint: { "circle-radius": 20, "circle-opacity": 0, "circle-stroke-width": 4, "circle-stroke-color": "#1b1b1b" } });
 }
 
 /** A round badge with an arrow pointing up, twice the size it is drawn at so it stays sharp on dense screens. */
@@ -247,12 +259,18 @@ export default function AedMap({ showCommunity, focus, walk, guide, banner, sele
       {banner ?? (
         <MapLegend>
           <ul className="flex flex-wrap gap-x-3 gap-y-0.5">
-            {LAYERS.filter((layer) => layer.id === "official" || showCommunity).map((layer) => (
-              <li key={layer.id} className="flex items-center gap-1.5">
-                <Dot color={layer.color} />
-                {layer.label}
+            {AED_KINDS.map((kind) => (
+              <li key={kind.id} className="flex items-center gap-1.5">
+                <AedIcon kind={kind} />
+                {kind.label}
               </li>
             ))}
+            {showCommunity && (
+              <li className="flex items-center gap-1.5">
+                <AedIcon kind={AED_KINDS[0]} faded />
+                bledsze: niepotwierdzone
+              </li>
+            )}
             {focus && (
               <li className="flex items-center gap-1.5">
                 <Dot color={WALK_COLOR} />
