@@ -469,9 +469,15 @@ export type Access = (typeof ACCESS)[number]
 export type Status = (typeof STATUS)[number]
 export type Licence = (typeof LICENCES)[number]
 
+/** Columns the system fills in on its own; a provider leaves them empty. */
+export const SYSTEM_FIELDS = ['id', 'zrodlo', 'licencja', 'data_aktualizacji'] as const satisfies readonly AedFieldName[]
+
 /** What a source or an owner can tell us about a device: any subset of the fields, before the system adds its own. */
-export type AedInput = Partial<Omit<AedRecord, 'id' | 'zrodlo' | 'licencja' | 'data_aktualizacji'>>
+export type AedInput = Partial<Omit<AedRecord, (typeof SYSTEM_FIELDS)[number]>>
 
 export const FIELD_NAMES: readonly AedFieldName[] = FIELDS.map((field) => field.name)
+
+/** The fields a source can deliver: the pattern without the system's own columns. */
+export const INPUT_FIELD_NAMES = FIELD_NAMES.filter((name) => !(SYSTEM_FIELDS as readonly string[]).includes(name)) as readonly (keyof AedInput)[]
 
 export const fieldByName = (name: string): FieldDef | undefined => (FIELDS as readonly FieldDef[]).find((field) => field.name === name)

@@ -13,6 +13,15 @@ export type MappingTarget = AedFieldName | 'adres' | 'ulica' | 'wspolrzedne'
 
 export const COMPOSITE_TARGETS = ['adres', 'ulica', 'wspolrzedne'] as const
 
+const COMPOSITE_FIELDS: Record<(typeof COMPOSITE_TARGETS)[number], AedFieldName[]> = {
+  adres: ['cecha_ulicy', 'nazwa_ulicy', 'nr_budynku', 'kod_pocztowy', 'miejscowosc'],
+  ulica: ['cecha_ulicy', 'nazwa_ulicy', 'nr_budynku'],
+  wspolrzedne: ['szerokosc_geograficzna', 'dlugosc_geograficzna'],
+}
+
+/** The pattern fields a mapped column can fill: itself, or the parts of a composite. */
+export const targetFields = (target: MappingTarget): AedFieldName[] => (target in COMPOSITE_FIELDS ? COMPOSITE_FIELDS[target as keyof typeof COMPOSITE_FIELDS] : [target as AedFieldName])
+
 /** Normalises a header so that "Szerokość geograficzna", " szerokosc_geograficzna" and "SZEROKOŚĆ GEOGR." meet. */
 export function headerKey(header: string): string {
   return header
