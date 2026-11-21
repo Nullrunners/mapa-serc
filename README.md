@@ -4,6 +4,10 @@ Rozwiązanie zadania **„Misja AED – dane na ratunek"** (HackNation 2026, Dep
 
 Dane urzędowe o AED to dziś pięć samorządowych zbiorów w portalu (782 urządzenia): cztery pliki i lista Warszawy wydawana przez API miasta, każdy w innym układzie. Społeczność OpenStreetMap zna ponad 18 tysięcy urządzeń w 2128 gminach, ale na licencji ODbL, której portal nie ma w swoim słowniku licencji. Mapa serc scala to, co już jest, w jednolity zbiór, a przede wszystkim ułatwia pozyskanie reszty: opiekun zgłasza urządzenie w kilku krokach, a system wskazuje, kogo o zgłoszenie poprosić.
 
+Każdy dysponent publikuje w portalu własny zbiór i sam za niego odpowiada. Jedną listę dla całej Polski składa sam portal, podobnie jak dziś składa „Wykaz chronionych danych” (DGA). Zmiana w kodzie portalu jest w [portal/](portal/README.md).
+
+**Dla jury:** [INSTRUKCJA-DLA-JURY.md](INSTRUKCJA-DLA-JURY.md).
+
 ## Co działa, a co jest w budowie
 
 | Element | Stan |
@@ -18,8 +22,10 @@ Dane urzędowe o AED to dziś pięć samorządowych zbiorów w portalu (782 urz�
 | Paszport: logowanie opiekuna przez mObywatel (`/logowanie`, `/opiekun`). Opiekun, który wszedł do panelu linkiem, dodaje urządzenie do swojego konta i potem wchodzi już samym logowaniem, także prosto ze strony urządzenia po zeskanowaniu naklejki; „Moje defibrylatory” pokazują wszystkie jego urządzenia. Przy potwierdzeniu sprawności widać, że zrobiła to zalogowana osoba, a współopiekunowie widzą kto (imię i pierwsza litera nazwiska) | **wersja pokazowa**: zamiast login.gov.pl jest ekran z trzema zmyślonymi osobami do wyboru, więc logowanie niczego nie chroni i nie potwierdza tożsamości. Reszta (konta, sesje, urządzenia przy koncie, odłączanie) działa w testach API i była przeklikana w przeglądarce. Samo logowanie nie daje dostępu do urządzenia: potrzebny jest jeszcze link opiekuna |
 | Naklejka NFC | na stronie naklejki przycisk zapisuje ten sam adres co w kodzie QR na naklejce NFC (Chrome na Androidzie), w innych przeglądarkach można skopiować adres; nie testowaliśmy tego na telefonie z prawdziwą naklejką |
 | Potok scalania: odczyt plików w dowolnym dialekcie, automatyczne poprawki (także współrzędne w metrach, w układach PUWG 1992 i PUWG 2000), kody TERYT i geokodowanie z rejestrów GUGiK, deduplikacja, pochodzenie każdego pola, ocena jakości | działa |
-| Pliki zbioru krajowego: CSV (RFC 4180), GeoJSON, JSON-LD, metadane CSVW | działa |
-| Plik XML dla harvestera dane.gov.pl, zgodny z oficjalnym XSD 1.13 (sprawdzany w testach) | działa |
+| Pliki dla dane.gov.pl osobno dla każdego dostawcy: CSV we wzorcu i XML dla harvestera, zgodny z oficjalnym XSD 1.13 (sprawdzany w testach), z tagiem `wykaz-aed` | działa |
+| Wykaz zbiorczy AED w portalu dane.gov.pl: zmiana w kodzie portalu ([portal/](portal/README.md)), która co noc scala zbiory wszystkich dostawców z tagiem `wykaz-aed` w jeden plik CSV, z dostawcą przy każdym wierszu | rdzeń działa w testach (14) i na naszych 782 urządzeniach; części portalowej nie uruchomiliśmy w pełnym środowisku portalu |
+| Podgląd scalonej listy: CSV (RFC 4180), GeoJSON, JSON-LD, metadane CSVW | działa |
+| Panel administratora (`/admin`): zatwierdzanie zgłoszeń z kreatora i decyzje w Radarze | działa; w przeglądarce sprawdzona lista zgłoszeń i odmowa przy złym tokenie |
 | Raport jakości dla każdego dostawcy | działa |
 | Mapa z listą najbliższych urządzeń, strona wzorca, strona źródeł | działa; obejrzane na zrzutach ekranu w szerokości komputera i telefonu. W przeglądarce bez WebGL2 zamiast mapy jest komunikat, a lista działa dalej |
 | Droga pieszo do defibrylatora na mapie „Znajdź AED": po podaniu położenia mapa obraca się i pochyla tak, żeby urządzenie było przed użytkownikiem, a „Prowadź mnie" prowadzi krok po kroku jak nawigacja (najbliższy zakręt i odległość do niego, następny manewr, ile zostało, strzałka w miejscu użytkownika, nowa droga po zejściu z trasy, cała droga jako lista). Trasę i zakręty wyznacza publiczny router OSRM (FOSSGIS) na danych OpenStreetMap | działa; sprawdzone w przeglądarce z podstawionym położeniem, na komputerze i w szerokości telefonu. Nie sprawdzaliśmy tego w terenie, z prawdziwym GPS-em w telefonie |
@@ -93,8 +99,9 @@ apps/api/          Hono + TypeScript + DuckDB
   src/reach/       ranking „Najszybciej w ręku”
   src/gaps/        analiza luk: ludność w H3, godziny tygodnia urządzeń, wybór miejsc (zachłanny MCLP)
   reference/       ludność ze spisu 2021 w siatce 1 km (wycinek dla Polski)
-apps/web/          Next.js: mapa z listą, kreator, wzorzec, źródła i jakość, Radar, mapa luk
-zgloszenie/        pliki do zgłoszenia: wzorzec danych w XLSX
+apps/web/          Next.js: mapa z listą, kreator, wzorzec, źródła i jakość, Radar, mapa luk, panel administratora
+portal/            zmiana w kodzie portalu dane.gov.pl: wykazy zbiorcze, pierwszy to wykaz AED
+zgloszenie/        pliki do zgłoszenia: wzorzec danych w XLSX, przykładowy plik urzędu do kreatora
 ```
 
 Front korzysta wyłącznie z API, przez klienta generowanego z OpenAPI. Po zmianie kontraktu: `pnpm contract`, potem `pnpm --filter @aed/web api:types`.
@@ -115,9 +122,16 @@ Rdzeń adresowy wzorca jest identyczny z plikiem, który Legionowo już publikuj
 
 ## Publikacja w dane.gov.pl
 
-Portal nie ma publicznego API zapisu. Dostawca rejestruje w portalu adres pliku XML, a harvester portalu pobiera go cyklicznie i sam zakłada oraz aktualizuje zbiór i zasoby. Mapa serc wystawia taki plik pod `/feeds/dane-gov-pl.xml`; wskazuje on trzy zasoby: `/dane/aed.csv`, `/dane/aed.geojson`, `/dane/aed.jsonld`.
+Za dane w portalu odpowiada ten, kto je publikuje. Dlatego nie wystawiamy jednego zbioru krajowego pod jednym dostawcą. Każdy dostawca dostaje własne pliki:
 
-Schemat portalu przyjmuje wyłącznie adresy `https`, więc plik jest poprawny dopiero na wdrożeniu z ustawionym `PUBLIC_API_URL`. Lokalnie plik zawiera komentarz z tym ostrzeżeniem.
+- `/v1/sources/{id}/aed.csv`: jego urządzenia we wzorcu danych,
+- `/feeds/dostawcy/{id}/dane-gov-pl.xml`: plik dla harvestera portalu (schemat 1.13) z jednym zbiorem tego dostawcy, tagiem `wykaz-aed` i zasobem CSV.
+
+Portal nie ma publicznego API zapisu. Dostawca rejestruje w portalu adres pliku XML jako źródło swojej instytucji albo wgrywa CSV w panelu i dodaje tag `wykaz-aed`. Pliki ma tylko źródło zatwierdzone, z licencją z listy portalu (CC0 1.0, CC BY 4.0); OpenStreetMap ich nie ma. Linki są na stronie „Skąd te dane”, w ostatnim kroku kreatora i w panelu administratora po zatwierdzeniu.
+
+Zbiory z tagiem `wykaz-aed` portal co noc scala w „Wykaz defibrylatorów AED – wykaz zbiorczy”. To robi zmiana w kodzie portalu opisana w [portal/README.md](portal/README.md). Pliki `/dane/aed.*` pokazują, jak taka scalona lista wygląda dziś.
+
+Schemat portalu przyjmuje wyłącznie adresy `https`, więc plik XML jest poprawny dopiero na wdrożeniu z ustawionym `PUBLIC_API_URL`. Lokalnie plik zawiera komentarz z tym ostrzeżeniem.
 
 ## Źródła danych i licencje
 
