@@ -176,7 +176,7 @@ export default function GapsMap(props: GapsMapProps) {
   }, [mapRef, selected, places]);
 
   if (!drawable)
-    return <MapUnavailable>Ta przeglądarka nie potrafi wyświetlić mapy. Wybierz miasto z listy obok albo znajdź gminę po nazwie: liczby i miejsca na nowe defibrylatory pokażemy bez mapy.</MapUnavailable>;
+    return <MapUnavailable>Ta przeglądarka nie wyświetli mapy. Wybierz miasto albo gminę w panelu obok.</MapUnavailable>;
 
   const steps = overview ? AREA_STEPS : HEX_STEPS;
   return (
@@ -201,7 +201,7 @@ export default function GapsMap(props: GapsMapProps) {
           </ul>
           {/* On a phone the map has a part of the screen only; the note would cover too much of it. */}
           <p className="mt-1 hidden text-muted md:block">
-            {overview ? "Sześciokąt ma ok. 36 km². Przybliż, a pokażemy małe sześciokąty." : "Sześciokąt ma ok. 0,1 km², liczymy też godziny otwarcia. Bez koloru: wszyscy mają AED w pobliżu."}
+            {overview ? "Przybliż, żeby zobaczyć szczegóły." : "Bez koloru: wszyscy mają AED w pobliżu."}
           </p>
         </div>
       </div>

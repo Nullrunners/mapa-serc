@@ -44,14 +44,14 @@ export const placeName = (place: GapsPlace) => place.address ?? (place.commune ?
 
 /** Why a device near the place counts (or not) for the analysis. */
 export const BASIS: Record<GapsNearbyDevice["basis"], string> = {
-  hours: "Godziny podane w danych",
-  outdoor: "Na zewnątrz, godzin brak: liczymy całą dobę",
-  assumed: "Godzin brak: przyjęliśmy dni robocze 8–16",
-  excluded: "Tylko dla personelu albo niedostępne: nie liczymy",
+  hours: "Godziny z danych",
+  outdoor: "Na zewnątrz, liczymy całą dobę",
+  assumed: "Bez godzin, liczymy pn–pt 8–16",
+  excluded: "Niedostępny, nie liczymy",
 };
 
 export const coverageNow = (hoursPerWeek: number, reachM: number) =>
-  hoursPerWeek === 0 ? `brak defibrylatora w promieniu ${reachM} m` : hoursPerWeek === 168 ? "defibrylator w pobliżu dostępny całą dobę" : `defibrylator w pobliżu dostępny przez ${hoursPerWeek} ze 168 godzin tygodnia`;
+  hoursPerWeek === 0 ? `brak AED w promieniu ${reachM} m` : hoursPerWeek === 168 ? "AED w pobliżu całą dobę" : `AED w pobliżu przez ${hoursPerWeek} ze 168 godzin tygodnia`;
 
 /**
  * The few sentences worth reading first about an analysed area: how many have no device near, how the night compares,
@@ -59,33 +59,25 @@ export const coverageNow = (hoursPerWeek: number, reachM: number) =>
  */
 export function conclusions({ totals, places, method }: GapsView, poland: GapsTotals | null): string[] {
   const { residents, noDevice, noNight, coveredShare } = totals;
-  if (residents === 0) return ["Według spisu powszechnego 2021 na tym obszarze nikt nie mieszka."];
+  if (residents === 0) return ["Według spisu nikt tu nie mieszka."];
   const lines: string[] = [];
 
-  if (noDevice === 0) lines.push(`Każdy mieszkaniec ma w promieniu ${method.reachM} m przynajmniej jeden znany defibrylator.`);
+  if (noDevice === 0) lines.push(`Każdy ma AED w promieniu ${method.reachM} m.`);
   else {
     const here = percent(noDevice, residents);
     const country = poland && poland.residents > 0 ? percent(poland.noDevice, poland.residents) : null;
-    const against =
-      country === null ? "." : here > country + 2 ? `. To więcej niż średnio w Polsce (${country}%).` : here < country - 2 ? `. To mniej niż średnio w Polsce (${country}%).` : `, podobnie jak średnio w Polsce (${country}%).`;
-    lines.push(`${here}% mieszkańców (${persons(noDevice)}) nie ma żadnego znanego defibrylatora w promieniu ${method.reachM} m${against}`);
+    const against = country === null ? "" : here > country + 2 ? `, więcej niż średnio w Polsce (${country}%)` : here < country - 2 ? `, mniej niż średnio w Polsce (${country}%)` : `, tyle co średnio w Polsce (${country}%)`;
+    lines.push(`${here}% mieszkańców (${persons(noDevice)}) nie ma AED w promieniu ${method.reachM} m${against}.`);
   }
-  if (noNight > noDevice) lines.push(`W nocy jest gorzej: bez dostępnego defibrylatora zostaje ${percent(noNight, residents)}% mieszkańców, bo wiele urządzeń stoi w budynkach, które są wtedy zamknięte.`);
-  lines.push(`Przeciętny mieszkaniec ma defibrylator w zasięgu przez ${Math.round(coveredShare * 168)} ze 168 godzin tygodnia.`);
+  if (noNight > noDevice) lines.push(`W nocy bez AED zostaje ${percent(noNight, residents)}%, bo wiele budynków jest zamkniętych.`);
+  lines.push(`Przeciętnie AED jest w zasięgu przez ${Math.round(coveredShare * 168)} ze 168 godzin tygodnia.`);
 
   if (places.length > 0) {
     const gained = places.reduce((sum, place) => sum + place.gained.residents, 0);
     const night = places.reduce((sum, place) => sum + place.gained.noNight, 0);
-    const where = places.length === 1 ? "Defibrylator dostępny całą dobę w polecanym miejscu objąłby" : `Defibrylatory dostępne całą dobę w ${places.length} polecanych miejscach objęłyby`;
-    const fewer =
-      noNight > 0 && night >= noNight
-        ? " Wtedy nikt na tym obszarze nie zostałby w nocy bez defibrylatora w pobliżu."
-        : noNight > 0 && night > 0
-          ? ` Liczba osób bez AED dostępnego w nocy spadłaby o ${percent(night, noNight)}%.`
-          : "";
-    lines.push(`${where} ${persons(gained, true)}, które dziś nie mają takiego w pobliżu.${fewer}`);
-    const [best] = places;
-    if (places.length > 1 && best) lines.push(`Najwięcej osób, ${people(best.gained.residents)}, obejmie miejsce nr 1: ${placeName(best)}.`);
+    const where = places.length === 1 ? "Całodobowy AED w polecanym miejscu obejmie" : `Całodobowe AED w ${places.length} polecanych miejscach obejmą`;
+    const fewer = noNight > 0 && night >= noNight ? " W nocy nikt nie zostanie bez AED." : noNight > 0 && night > 0 ? ` W nocy bez AED będzie o ${percent(night, noNight)}% mniej osób.` : "";
+    lines.push(`${where} ${persons(gained, true)} bez AED w pobliżu.${fewer}`);
   }
   return lines;
 }

@@ -31,7 +31,7 @@ export default function GapReport({ place, method, csvHref, onClose }: GapReport
       await navigator.clipboard.writeText(text);
       setCopied({ text: "Skopiowano do schowka.", tone: "ok" });
     } catch {
-      setCopied({ text: "Nie udało się skopiować. Zaznacz tekst i skopiuj go ręcznie.", tone: "danger" });
+      setCopied({ text: "Nie udało się skopiować. Zaznacz tekst ręcznie.", tone: "danger" });
     }
   };
 
@@ -68,7 +68,7 @@ export default function GapReport({ place, method, csvHref, onClose }: GapReport
       />
       <p className="text-sm">
         Teraz w tym miejscu: <strong>{coverageNow(place.coveredHoursNow, method.reachM)}</strong>.{" "}
-        {place.nearestAllWeek ? `Najbliższy dostępny całą dobę: ${distance(place.nearestAllWeek.distanceM)}.` : "W okolicy nie znamy żadnego defibrylatora dostępnego całą dobę."}
+        {place.nearestAllWeek ? `Najbliższy całodobowy: ${distance(place.nearestAllWeek.distanceM)}.` : "W okolicy brak całodobowego AED."}
       </p>
 
       <section aria-labelledby="uzasadnienie-naglowek" className="space-y-3">
@@ -76,7 +76,7 @@ export default function GapReport({ place, method, csvHref, onClose }: GapReport
           <h3 id="uzasadnienie-naglowek" className="font-bold">
             Gotowe uzasadnienie do wniosku
           </h3>
-          <p className="hint print:hidden">Na przykład do budżetu obywatelskiego. Skopiuj i popraw według potrzeby.</p>
+          <p className="hint print:hidden">Np. do budżetu obywatelskiego.</p>
         </div>
         <p className="rounded-lg bg-surface p-4 text-sm leading-relaxed">{text}</p>
         <div className="flex flex-wrap gap-2 print:hidden">
@@ -84,14 +84,13 @@ export default function GapReport({ place, method, csvHref, onClose }: GapReport
             Skopiuj tekst
           </button>
           <button type="button" onClick={() => window.print()} className="btn btn-secondary">
-            Zapisz jako PDF
+            Drukuj / PDF
           </button>
           <a href={csvHref} className="btn btn-secondary">
-            Pobierz listę miejsc (CSV)
+            Lista miejsc (CSV)
           </a>
         </div>
         <LiveMessage message={copied} className="text-sm" />
-        <p className="hint print:hidden">„Zapisz jako PDF” otwiera okno drukowania. Wybierz w nim „Zapisz jako PDF” zamiast drukarki.</p>
       </section>
 
       <section aria-labelledby="w-poblizu-naglowek" className="space-y-2">
@@ -99,7 +98,7 @@ export default function GapReport({ place, method, csvHref, onClose }: GapReport
           Defibrylatory w promieniu 600 m
         </h3>
         {place.nearby.length === 0 ? (
-          <p className="hint">Nie znamy tu żadnego defibrylatora.</p>
+          <p className="hint">Brak znanych defibrylatorów.</p>
         ) : (
           <ol className="divide-y divide-line border-y border-line text-sm">
             {place.nearby.map((device) => (
@@ -111,7 +110,7 @@ export default function GapReport({ place, method, csvHref, onClose }: GapReport
                 <p className="text-muted">
                   {device.hours ? `Godziny: ${hours(device.hours)}. ` : ""}
                   {BASIS[device.basis]}. {device.basis === "excluded" ? "" : device.atNight ? "Dostępny w nocy." : "W nocy niedostępny."}
-                  {device.publication === "community" && <span className="font-semibold text-warn"> Niepotwierdzony (OpenStreetMap).</span>}
+                  {device.publication === "community" && <span className="font-semibold text-warn"> Niepotwierdzony.</span>}
                 </p>
               </li>
             ))}
@@ -123,10 +122,7 @@ export default function GapReport({ place, method, csvHref, onClose }: GapReport
         <h3 id="zrodla-raportu" className="font-bold text-ink">
           Skąd te liczby
         </h3>
-        <p>
-          Mieszkańcy: spis powszechny 2021 w kwadratach 1 × 1 km. Przyjmujemy, że w każdym kwadracie mieszkają równomiernie, więc liczby dla małego obszaru są szacunkiem. Defibrylatory: dane urzędowe i
-          OpenStreetMap. Nie znamy każdego urządzenia w Polsce, dlatego piszemy „według znanych danych”.
-        </p>
+        <p>Mieszkańcy: spis powszechny 2021 (kwadraty 1 × 1 km), więc dla małego obszaru to szacunek. Defibrylatory: dane urzędowe i OpenStreetMap, tylko znane urządzenia.</p>
         <ul className="list-disc pl-5">
           {method.sources.map((source) => (
             <li key={source.name}>

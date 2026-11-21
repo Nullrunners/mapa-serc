@@ -11,9 +11,9 @@ const icon = (path: ReactNode) => (
 
 const TOOLS: { tool: Tool; label: string; hint: string; icon: ReactNode }[] = [
   { tool: "move", label: "Przesuwaj", hint: "Przesuwaj i przybliżaj mapę", icon: icon(<path d="M10 2v16M2 10h16M10 2 7.5 4.5M10 2l2.5 2.5M10 18l-2.5-2.5M10 18l2.5-2.5M2 10l2.5-2.5M2 10l2.5 2.5M18 10l-2.5-2.5M18 10l-2.5 2.5" />) },
-  { tool: "rect", label: "Prostokąt", hint: "Przeciągnij po mapie, żeby zaznaczyć prostokąt", icon: icon(<rect x="3" y="4.5" width="14" height="11" rx="1" strokeDasharray="3 2" />) },
-  { tool: "lasso", label: "Lasso", hint: "Przeciągnij po mapie dookoła obszaru, żeby go obrysować", icon: icon(<path d="M6 15c-2.5-1-3.5-3.5-2.5-6C5 5 10 3 14 4.5s3.5 6 0 8c-2.5 1.5-6 1.5-8 .5Zm0 0c0 1.5-1 2.5-2 3" />) },
-  { tool: "commune", label: "Gmina", hint: "Kliknij na mapie gminę, którą chcesz policzyć", icon: icon(<path d="M3 6.5 7.5 3l5 2.5L17 4v10l-4.5 3-5-2.5L3 16Zm4.5-3.5v11.5m5-9V17" />) },
+  { tool: "rect", label: "Prostokąt", hint: "Przeciągnij po mapie", icon: icon(<rect x="3" y="4.5" width="14" height="11" rx="1" strokeDasharray="3 2" />) },
+  { tool: "lasso", label: "Lasso", hint: "Obrysuj obszar na mapie", icon: icon(<path d="M6 15c-2.5-1-3.5-3.5-2.5-6C5 5 10 3 14 4.5s3.5 6 0 8c-2.5 1.5-6 1.5-8 .5Zm0 0c0 1.5-1 2.5-2 3" />) },
+  { tool: "commune", label: "Gmina", hint: "Kliknij gminę na mapie", icon: icon(<path d="M3 6.5 7.5 3l5 2.5L17 4v10l-4.5 3-5-2.5L3 16Zm4.5-3.5v11.5m5-9V17" />) },
 ];
 
 export interface DrawToolbarProps {
@@ -32,7 +32,7 @@ export interface DrawToolbarProps {
  */
 export function DrawToolbar({ tool, onTool, hasArea, onClear, note }: DrawToolbarProps) {
   const active = TOOLS.find((item) => item.tool === tool);
-  const hint = note ?? (tool !== "move" && active ? `${active.hint}. Esc albo „Przesuwaj” kończy.` : null);
+  const hint = note ?? (tool !== "move" && active ? `${active.hint}. Esc anuluje.` : null);
   return (
     <>
       <div role="toolbar" aria-label="Zaznaczanie obszaru na mapie" className="pointer-events-auto flex flex-wrap overflow-hidden rounded-md border border-field bg-white text-sm font-semibold shadow-sm">
@@ -53,7 +53,7 @@ export function DrawToolbar({ tool, onTool, hasArea, onClear, note }: DrawToolba
           </button>
         ))}
         {hasArea && (
-          <button type="button" aria-label="Usuń zaznaczenie" title="Usuń zaznaczenie i wróć do mapy Polski" onClick={onClear} className="flex items-center gap-1.5 px-2.5 py-2 text-danger hover:bg-danger/5">
+          <button type="button" aria-label="Usuń zaznaczenie" title="Usuń zaznaczenie" onClick={onClear} className="flex items-center gap-1.5 px-2.5 py-2 text-danger hover:bg-danger/5">
             {icon(<path d="m5 5 10 10M15 5 5 15" />)}
             <span aria-hidden className="hidden @lg:inline">
               Usuń

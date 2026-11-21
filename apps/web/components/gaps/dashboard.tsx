@@ -43,7 +43,7 @@ export function Dashboard({ area, analysis, poland, csvHref, onClear, onRetry, o
       </div>
 
       <div aria-live="polite" className="space-y-3">
-        {analysis.state === "loading" && <p className="text-muted">Liczę, ilu mieszkańców ma defibrylator w pobliżu, i szukam najlepszych miejsc na nowe…</p>}
+        {analysis.state === "loading" && <p className="text-muted">Liczę…</p>}
         {analysis.state === "error" && (
           <div role="alert" className="space-y-2">
             <p className="text-danger">{analysis.message}</p>
@@ -54,7 +54,7 @@ export function Dashboard({ area, analysis, poland, csvHref, onClear, onRetry, o
         )}
         {result?.tooLarge && (
           <p role="alert" className="text-danger">
-            Ten obszar jest za duży, żeby policzyć go dokładnie: mieszka w nim za dużo osób na jedną analizę. Zaznacz mniejszy obszar, na przykład miasto albo dzielnicę.
+            Za duży obszar. Zaznacz mniejszy, np. miasto albo dzielnicę.
           </p>
         )}
       </div>
@@ -63,7 +63,7 @@ export function Dashboard({ area, analysis, poland, csvHref, onClear, onRetry, o
         <>
           <section aria-labelledby="wnioski-naglowek" className="space-y-2 rounded-lg border-l-4 border-gov bg-gov-light px-4 py-3">
             <h3 id="wnioski-naglowek" className="text-lg font-bold">
-              Najważniejsze wnioski
+              Wnioski
             </h3>
             <ul className="list-disc space-y-1.5 pl-5">
               {conclusions(counted, poland).map((line) => (
@@ -91,8 +91,8 @@ export function Dashboard({ area, analysis, poland, csvHref, onClear, onRetry, o
             ) : (
               <p>
                 {counted.totals.residents > 0
-                  ? `Na tym obszarze każdy mieszkaniec ma defibrylator dostępny całą dobę w promieniu ${counted.method.reachM} m. Nie mamy czego polecić.`
-                  : "Nie mamy tu czego polecić: według spisu nikt tu nie mieszka."}
+                  ? `Każdy ma tu AED dostępny całą dobę w promieniu ${counted.method.reachM} m.`
+                  : "Według spisu nikt tu nie mieszka."}
               </p>
             )}
           </div>

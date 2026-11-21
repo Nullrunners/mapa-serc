@@ -5,9 +5,6 @@ export const metadata: Metadata = { title: "Gdzie brakuje defibrylatorów" };
 
 export default function GapsPage() {
   return (
-    <Gaps
-      title="Gdzie brakuje defibrylatorów"
-      lead="Sprawdź, ilu mieszkańców ma defibrylator w zasięgu kilku minut biegu, także w nocy i w weekend. Wskażemy, gdzie nowe urządzenie pomoże najwięcej osobom, i przygotujemy uzasadnienie do wniosku, na przykład do budżetu obywatelskiego."
-    />
+    <Gaps title="Gdzie brakuje defibrylatorów" lead="Zobacz, kto nie ma defibrylatora w pobliżu i gdzie nowy pomoże najbardziej." />
   );
 }

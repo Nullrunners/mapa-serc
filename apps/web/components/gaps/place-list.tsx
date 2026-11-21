@@ -20,7 +20,7 @@ export function PlaceList({ places, reachM, csvHref, onSelect, headingRef }: Pla
         <h3 id="miejsca-naglowek" ref={headingRef} tabIndex={-1} className="text-lg font-bold">
           {places.length} {plural(places.length, "miejsce", "miejsca", "miejsc")} na nowe defibrylatory
         </h3>
-        <p className="hint">Najpierw tam, gdzie nowy defibrylator dostępny całą dobę obejmie najwięcej osób, które dziś go w pobliżu nie mają. Kliknij miejsce, żeby zobaczyć raport.</p>
+        <p className="hint">Od najbardziej potrzebnego. Kliknij, żeby zobaczyć raport.</p>
       </div>
       <ol className="grid gap-3 @xl:grid-cols-2">
         {places.map((place) => (
@@ -36,7 +36,7 @@ export function PlaceList({ places, reachM, csvHref, onSelect, headingRef }: Pla
                 </button>
               </h4>
               <p className="text-sm">
-                {persons(place.gained.residents)} zyska defibrylator dostępny całą dobę, w tym {people(place.gained.seniors)} w wieku 65+.
+                {persons(place.gained.residents)} zyska AED w pobliżu, w tym {people(place.gained.seniors)} w wieku 65+.
               </p>
               <div aria-hidden className="h-1.5 rounded-full bg-surface">
                 <div className="h-full rounded-full bg-gov" style={{ width: `${(place.gained.residents / best) * 100}%` }} />
@@ -48,9 +48,8 @@ export function PlaceList({ places, reachM, csvHref, onSelect, headingRef }: Pla
       </ol>
       <p className="text-sm">
         <a href={csvHref} className="link">
-          Pobierz listę miejsc jako plik CSV
-        </a>{" "}
-        <span className="text-muted">(otworzysz go w Excelu)</span>
+          Pobierz listę miejsc (CSV do Excela)
+        </a>
       </p>
     </section>
   );

@@ -9,31 +9,27 @@ export function Method({ method }: { method: GapsMethod }) {
     <details className="rounded-lg border border-line px-4 py-3 text-sm">
       <summary className="cursor-pointer font-semibold text-gov">Jak to liczymy</summary>
       <div className="mt-3 space-y-2">
-        <p>
-          Dzielimy mapę na sześciokąty o powierzchni ok. 0,1 km². Liczbę mieszkańców bierzemy ze spisu powszechnego 2021, który podaje ją w kwadratach 1 × 1 km. Zakładamy, że w każdym kwadracie ludzie
-          mieszkają równomiernie.
-        </p>
-        <p>
-          Defibrylator liczy się dla sześciokąta, jeśli stoi najwyżej {method.reachM} m od jego środka: tyle da się przebiec tam i z powrotem w kilka minut. Liczymy też, przez ile godzin w tygodniu można do
-          niego dojść. Urządzenie w urzędzie czynnym 7:30–15:30 pomaga tylko przez 40 ze 168 godzin. „W nocy” znaczy u nas: w niedzielę o {method.nightHour.replace("niedziela ", "")}.
-        </p>
-        <p>
-          Miejsca na nowe urządzenia wybieramy po kolei. Każde następne stawiamy tam, gdzie defibrylator dostępny całą dobę obejmie najwięcej osób, które dziś go w pobliżu nie mają. Osoby w wieku 65+ liczymy{" "}
-          {method.seniorWeight === 3 ? "potrójnie" : `${method.seniorWeight} razy`}, bo to u nich najczęściej dochodzi do nagłego zatrzymania krążenia.
-        </p>
-        <p>
-          Godziny dostępności znamy dla {count(devices.hours)} z {count(devices.total)} urządzeń. Dla {count(devices.outdoor)} stojących na zewnątrz bez podanych godzin przyjmujemy całą dobę, a dla{" "}
-          {count(devices.assumed)} pozostałych dni robocze 8–16. {count(devices.excluded)} urządzeń nie liczymy: są tylko dla personelu, wycofane, mają przeterminowane elektrody lub baterię albo przechodnie
-          zgłosili, że ich nie ma. Dlatego liczba osób „bez żadnego AED” nie zależy od tych założeń, a liczba „bez AED w nocy” trochę tak.
-        </p>
-        <p>
-          Wyniki są tak dobre jak dane: nie znamy każdego defibrylatora w Polsce, a część urządzeń pochodzi z OpenStreetMap i nie jest potwierdzona. Jeśli znasz defibrylator, którego brakuje,{" "}
-          <Link href="/dostawca" className="link">
-            zgłoś go
-          </Link>
-          .
-        </p>
-        <p className="text-muted">Źródła: {method.sources.map((source) => `${source.name} (${source.licence})`).join("; ")}. Wynik analizy jest na licencji ODbL 1.0 i nie wchodzi do zbioru dla dane.gov.pl.</p>
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>Mieszkańcy: spis powszechny 2021 (kwadraty 1 × 1 km), rozłożeni po równo na sześciokąty ok. 0,1 km².</li>
+          <li>
+            AED liczy się, jeśli stoi do {method.reachM} m od środka sześciokąta (kilka minut biegu tam i z powrotem) i jest wtedy dostępny. „W nocy” to niedziela, {method.nightHour.replace("niedziela ", "")}.
+          </li>
+          <li>
+            Nowe miejsca wybieramy tam, gdzie całodobowy AED obejmie najwięcej osób bez AED w pobliżu. Osoby 65+ liczymy {method.seniorWeight === 3 ? "potrójnie" : `${method.seniorWeight} razy`}.
+          </li>
+          <li>
+            Godziny znamy dla {count(devices.hours)} z {count(devices.total)} urządzeń. Bez godzin: na zewnątrz całą dobę ({count(devices.outdoor)}), w budynku pn–pt 8–16 ({count(devices.assumed)}). Nie
+            liczymy {count(devices.excluded)} niedostępnych.
+          </li>
+          <li>
+            Znamy tylko część defibrylatorów. Brakuje jakiegoś?{" "}
+            <Link href="/dostawca" className="link">
+              Zgłoś go
+            </Link>
+            .
+          </li>
+        </ul>
+        <p className="text-muted">Źródła: {method.sources.map((source) => `${source.name} (${source.licence})`).join("; ")}. Wynik: licencja ODbL 1.0, poza zbiorem dla dane.gov.pl.</p>
       </div>
     </details>
   );
