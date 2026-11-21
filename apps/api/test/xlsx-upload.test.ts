@@ -3,7 +3,8 @@ import ExcelJS from 'exceljs'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { FIELD_NAMES } from '@aed/schema'
 import { createApp } from '../src/app'
-import { declaredUnpackedSize, isXlsx, parseXlsx } from '../src/pipeline/xlsx'
+import * as XLSX from 'xlsx'
+import { declaredUnpackedSize, isLegacyXls, isXlsx, parseXls, parseXlsx } from '../src/pipeline/xlsx'
 import { PATTERN_SHEETS, patternWorkbook } from '../src/publish/xlsx'
 
 const app = createApp()
@@ -74,15 +75,61 @@ describe('wizard preview of a workbook', () => {
     expect(office.record).toMatchObject({ szerokosc_geograficzna: 53.0951, dlugosc_geograficzna: 17.9172, kod_pocztowy: '86-005', miejscowosc: 'Białe Błota', nazwa_ulicy: 'Długa', nr_budynku: '12', telefon_kontaktowy: '+48523811413' })
   })
 
-  it('explains what to do with an old .xls file and refuses a broken archive', async () => {
+  it('refuses a broken workbook, old or new, and an empty one', async () => {
     const legacy = await post('/v1/import/preview', upload(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0, 0, 0]), 'aed.xls'))
     expect(legacy.status).toBe(400)
-    expect(((await legacy.json()) as any).detail).toContain('.xlsx')
+    expect(((await legacy.json()) as any).code).toBe('file_unreadable')
 
     const broken = await post('/v1/import/preview', upload(new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3, 4, 5, 6, 7, 8]), 'aed.xlsx'))
     expect(broken.status).toBe(400)
 
     const empty = await post('/v1/import/preview', upload(await patternWorkbook(), 'wzorzec-danych-aed.xlsx'))
     expect(empty.status).toBe(400)
+  })
+})
+
+/**
+ * A list as a city office publishes it: Excel 97–2003, a title above the table, a numbering column without a
+ * header, addresses instead of coordinates, opening hours in words. The rows are made up.
+ */
+function cityOfficeXls(): Uint8Array {
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ['Wykaz defibrylatorów AED w obiektach miejskich'],
+    [],
+    ['', 'Podmiot', 'Obiekt', 'Adres', 'Lokalizacja w obiekcie ', 'Godz. dostępu', 'Data przeglądu', 'Szer.'],
+    [1, 'Dom Pomocy Społecznej nr 9', 'Dom Pomocy Społecznej nr 9', 'ul. Długa 12, 86-005 Białe Błota', 'wewnątrz, parter – dyżurka pielęgniarek', 'całodobowe', new Date(Date.UTC(2026, 7, 17)), 53.0951234567],
+    [2, 'Miejski Ośrodek Sportu', 'Pływalnia miejska', 'ul. Centralna 27, 86-005 Białe Błota', 'hol przy kasach', 'pon.-pt. 6.00-22.00', null, null],
+  ], { UTC: true })
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Arkusz1')
+  return new Uint8Array(XLSX.write(workbook, { type: 'array', bookType: 'biff8' }) as ArrayBuffer)
+}
+
+describe('an old Excel file (.xls)', () => {
+  it('is read like any other workbook: title skipped, digits and dates kept', () => {
+    const bytes = cityOfficeXls()
+    expect(isLegacyXls(bytes)).toBe(true)
+
+    const table = parseXls(bytes)
+    expect(table.headers).toEqual(['kolumna_1', 'Podmiot', 'Obiekt', 'Adres', 'Lokalizacja w obiekcie', 'Godz. dostępu', 'Data przeglądu', 'Szer.'])
+    expect(table.rows).toHaveLength(2)
+    expect(table.rows[0]).toMatchObject({ kolumna_1: '1', Obiekt: 'Dom Pomocy Społecznej nr 9', 'Godz. dostępu': 'całodobowe', 'Data przeglądu': '2026-08-17', 'Szer.': '53.0951234567' })
+    expect(table.rows[1]).toMatchObject({ Obiekt: 'Pływalnia miejska', 'Data przeglądu': '', 'Szer.': '' })
+  })
+
+  it('goes through the wizard: columns matched by their headers, address split, hours in the pattern syntax', async () => {
+    const response = await post('/v1/import/preview', upload(cityOfficeXls(), 'Defibrylatory2026.xls'))
+    expect(response.status).toBe(200)
+    const preview = (await response.json()) as any
+    expect(preview.format).toBe('xls')
+    expect(preview.summary.rows).toBe(2)
+
+    const target = Object.fromEntries(preview.columns.map((column: any) => [column.header, column.target]))
+    expect(target).toMatchObject({ Podmiot: 'podmiot_odpowiedzialny', Obiekt: 'nazwa', Adres: 'adres', 'Lokalizacja w obiekcie': 'opis_lokalizacji', 'Godz. dostępu': 'godziny_dostepnosci' })
+
+    const home = preview.rows.find((row: any) => row.record.nazwa === 'Dom Pomocy Społecznej nr 9')
+    expect(home.record).toMatchObject({ nazwa_ulicy: 'Długa', nr_budynku: '12', kod_pocztowy: '86-005', miejscowosc: 'Białe Błota', godziny_dostepnosci: '24/7', podmiot_odpowiedzialny: 'Dom Pomocy Społecznej nr 9' })
+    const pool = preview.rows.find((row: any) => row.record.nazwa === 'Pływalnia miejska')
+    expect(pool.record).toMatchObject({ godziny_dostepnosci: 'Mo-Fr 06:00-22:00', opis_lokalizacji: 'hol przy kasach' })
   })
 })

@@ -359,7 +359,7 @@ export const ImportRequest = z
 export const ImportPreview = z
   .object({
     stub: z.boolean().openapi({ description: 'true while this endpoint answers with sample data' }),
-    format: z.enum(['csv', 'geojson', 'xlsx']),
+    format: z.enum(['csv', 'geojson', 'xlsx', 'xls']),
     fileFixes: z.array(FixSchema),
     columns: z.array(
       z.object({

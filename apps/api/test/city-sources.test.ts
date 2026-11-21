@@ -1,7 +1,7 @@
 /** A city that serves its list through an API with a key (Warsaw), and the words such a list is written in. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cluster, compare, type DedupItem } from '../src/pipeline/dedup'
-import { parseIndoor, parseOpeningHours } from '../src/pipeline/normalize'
+import { parseIndoor, parseOpeningHours, splitAddress, splitStreet } from '../src/pipeline/normalize'
 import { parseAny, parseGeoJson } from '../src/pipeline/parse'
 import { checkSource, loadSourceDefs, normalizeSource, parseSource, publicUrl, readSourceBytes } from '../src/pipeline/sources'
 import type { SourceDef } from '../src/pipeline/types'
@@ -154,5 +154,60 @@ describe('words offices use', () => {
     expect(parseOpeningHours('pon. do piąt 6:00 do 21:00 , sob i niedz. 9:00 do 21:00')).toBe('Mo-Fr 06:00-21:00; Sa,Su 09:00-21:00')
     expect(parseOpeningHours('dni robocze- poniedziałek w godz.08.00-18.00, wtorek-piątek 08.00-16.00')).toBe('Mo 08:00-18:00; Tu-Fr 08:00-16:00')
     expect(parseOpeningHours('W godzinach otwarcia stacji metra')).toBeNull()
+  })
+
+  it('reads hours written before the days, and after a leftover colon', () => {
+    expect(parseOpeningHours('godz: 7:45 do 18:30 w dni robocze')).toBe('Mo-Fr 07:45-18:30')
+    expect(parseOpeningHours('7:30 - 18:00, pon. - pt.')).toBe('Mo-Fr 07:30-18:00')
+    expect(parseOpeningHours('w godz: 7.00-18.00')).toBe('Mo-Su 07:00-18:00')
+    expect(parseOpeningHours('24/h')).toBe('24/7')
+    expect(parseOpeningHours('w godzinach pracy obiektu')).toBeNull()
+  })
+
+  it('takes the town that follows a building number, and nothing else for a town', () => {
+    expect(splitAddress('ul. Bydgoska 17/21 Łódź')).toEqual({ cecha_ulicy: 'ulica', nazwa_ulicy: 'Bydgoska', nr_budynku: '17/21', miejscowosc: 'Łódź' })
+    expect(splitAddress('ul. 3 Maja 12 Łódź')).toEqual({ cecha_ulicy: 'ulica', nazwa_ulicy: '3 Maja', nr_budynku: '12', miejscowosc: 'Łódź' })
+    expect(splitAddress('ul. 3 Maja 12')).toEqual({ cecha_ulicy: 'ulica', nazwa_ulicy: '3 Maja', nr_budynku: '12' })
+    expect(splitAddress('ul. Długa 12 parter').miejscowosc).toBeUndefined()
+  })
+
+  it('reads building numbers and postcodes the way they get typed', () => {
+    expect(splitAddress('ul. Ratajska 2/ 4, 91-231 Łódź')).toMatchObject({ nazwa_ulicy: 'Ratajska', nr_budynku: '2/4', kod_pocztowy: '91-231' })
+    expect(splitAddress('ul. Maratońska 47 b, 94-102 Łódź')).toMatchObject({ nazwa_ulicy: 'Maratońska', nr_budynku: '47b' })
+    expect(splitAddress('ul. Małachowskiego 5/7/9 Łódź')).toMatchObject({ nazwa_ulicy: 'Małachowskiego', nr_budynku: '5/7/9', miejscowosc: 'Łódź' })
+    expect(splitAddress('ul. Kilińskiego 102/102a, 90 – 012 Łódź')).toMatchObject({ nazwa_ulicy: 'Kilińskiego', nr_budynku: '102/102a', kod_pocztowy: '90-012', miejscowosc: 'Łódź' })
+    expect(splitStreet('Aleja 3 Maja')).toEqual({ cecha_ulicy: 'aleja', nazwa_ulicy: '3 Maja' })
+    expect(splitStreet('ul. 11 Listopada 4')).toEqual({ cecha_ulicy: 'ulica', nazwa_ulicy: '11 Listopada', nr_budynku: '4' })
+  })
+})
+
+describe('a list that names the town in some rows only', () => {
+  const office: SourceDef = { id: 'upload-test', kind: 'upload', name: 'Urząd', attribution: 'Urząd', licence: 'CC0 1.0', url: '', format: 'csv', mapping: { Obiekt: 'nazwa', Adres: 'adres' } }
+  const rows = (addresses: string[]) => normalizeSource(office, { headers: ['Obiekt', 'Adres'], rows: addresses.map((Adres, index) => ({ Obiekt: `Obiekt ${index + 1}`, Adres })), fixes: [] })
+  const named = ['ul. Długa 1, 86-005 Białe Błota', 'ul. Długa 3 Białe Błota', 'ul. Krótka 5, Białe Błota', 'ul. Polna 7, 86-005 Białe Błota', 'ul. Leśna 9 Białe Błota']
+
+  it('puts the other rows in the same town and says so', () => {
+    const records = rows([...named, 'ul. Centralna 27', 'mobilny'])
+    checkSource(office, records)
+    expect(records[5]!.input.miejscowosc).toBe('Białe Błota')
+    expect(records[5]!.fixes.map((fix) => fix.code)).toContain('locality_from_file')
+    // A row without a street and a number is not an address; nothing is made up for it.
+    expect(records[6]!.input.miejscowosc).toBeUndefined()
+  })
+
+  it('is not put off by one row with a typo in the town', () => {
+    const records = rows([...named, ...named, 'ul. Długa 5, 86-005 Białe Błot', 'ul. Centralna 27'])
+    checkSource(office, records)
+    expect(records.at(-1)!.input.miejscowosc).toBe('Białe Błota')
+  })
+
+  it('makes no guess when the rows name different towns or too few name any', () => {
+    const mixed = rows([...named.slice(0, 4), 'ul. Długa 2, 86-005 Kruszyn', 'ul. Centralna 27'])
+    checkSource(office, mixed)
+    expect(mixed[5]!.input.miejscowosc).toBeUndefined()
+
+    const few = rows([...named.slice(0, 2), 'ul. Centralna 27'])
+    checkSource(office, few)
+    expect(few[2]!.input.miejscowosc).toBeUndefined()
   })
 })

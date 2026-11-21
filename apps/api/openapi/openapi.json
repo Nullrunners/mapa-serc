@@ -1278,7 +1278,8 @@
             "enum": [
               "csv",
               "geojson",
-              "xlsx"
+              "xlsx",
+              "xls"
             ]
           },
           "fileFixes": {
