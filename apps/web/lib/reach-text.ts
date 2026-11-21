@@ -60,6 +60,13 @@ export function reachSummary(reach: Reach, pietro: string | null) {
   };
 }
 
+/** The answer for a chosen moment other than now. */
+export const AVAILABLE_AT_NIGHT = {
+  yes: { label: "Dostępny o tej porze", tone: "text-ok" },
+  no: { label: "Niedostępny o tej porze", tone: "text-danger" },
+  unknown: { label: "Nie wiadomo, czy dostępny o tej porze: dane nie podają godzin", tone: "text-muted" },
+} as const;
+
 /** The coming night from Saturday to Sunday, 3:00 in the browser's time zone (people using this are in Poland). */
 export function nextSundayNight(from = new Date()): string {
   const date = new Date(from);

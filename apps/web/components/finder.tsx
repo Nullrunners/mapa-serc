@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useRef, useState } from "react";
 import { ACCESS_LABEL, AVAILABLE_NOW, addressLine, distance, hours, title } from "@/lib/aed-text";
 import { api, type AedItem } from "@/lib/api/client";
-import { nextSundayNight, reachSummary } from "@/lib/reach-text";
+import { AVAILABLE_AT_NIGHT, nextSundayNight, reachSummary } from "@/lib/reach-text";
 import { useLoad } from "@/lib/use-load";
 import AedDetails, { pickedFrom, type Picked } from "./aed-details";
 
@@ -179,7 +179,9 @@ export default function Finder() {
                     {item.reach ? (
                       <ReachLine item={item} />
                     ) : (
-                      <p className={`text-sm font-semibold ${AVAILABLE_NOW[item.availableNow].tone}`}>{AVAILABLE_NOW[item.availableNow].label}</p>
+                      <p className={`text-sm font-semibold ${(when === "now" ? AVAILABLE_NOW : AVAILABLE_AT_NIGHT)[item.availableNow].tone}`}>
+                        {(when === "now" ? AVAILABLE_NOW : AVAILABLE_AT_NIGHT)[item.availableNow].label}
+                      </p>
                     )}
                     <p className="flex flex-wrap gap-x-3 text-sm text-muted">
                       {item.record.godziny_dostepnosci && <span>Godziny: {hours(item.record.godziny_dostepnosci)}</span>}
