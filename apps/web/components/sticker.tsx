@@ -2,7 +2,9 @@
 
 import QRCode from "qrcode";
 import { api, type AedItem } from "@/lib/api/client";
+import { LogoMark } from "@/components/logo";
 import { addressLine, title } from "@/lib/aed-text";
+import { BRAND } from "@/lib/brand";
 import { shortCode } from "@/lib/passport-text";
 import { useLoad } from "@/lib/use-load";
 
@@ -76,8 +78,13 @@ export default function Sticker({ id }: { id: string }) {
         )}
         <div className="mt-[2mm] flex items-center justify-between border-t-2 border-danger px-[4mm] py-[2mm]">
           <span className="text-[4.2mm] font-extrabold text-danger">Nagły wypadek? Dzwoń 112</span>
-          {/* Slot for the campaign logo; until it exists the service name stands in. */}
-          <span className="text-[3mm] font-bold text-gov">AED Hub</span>
+          <span className="flex items-center gap-[1.5mm]">
+            <LogoMark className="h-[7mm] w-[7mm]" />
+            <span className="text-[3mm] font-bold leading-tight text-gov">
+              {BRAND.name}
+              <span className="block text-[2.4mm] font-semibold text-muted">{BRAND.slogan}</span>
+            </span>
+          </span>
         </div>
       </figure>
 

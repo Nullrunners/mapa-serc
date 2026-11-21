@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Open_Sans } from "next/font/google";
 import Link from "next/link";
+import { LogoMark } from "@/components/logo";
+import { BRAND } from "@/lib/brand";
 import "./globals.css";
 
 const openSans = Open_Sans({ variable: "--font-open-sans", subsets: ["latin", "latin-ext"] });
@@ -28,9 +30,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </a>
         <header className="border-b-4 border-gov bg-white print:hidden">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-8 gap-y-2 px-4 py-3">
-            <Link href="/" className="text-xl font-bold text-gov">
-              AED Hub
-              <span className="ml-2 text-sm font-normal text-muted">dane na ratunek</span>
+            <Link href="/" className="flex items-center gap-2 text-xl font-bold text-gov">
+              <LogoMark className="size-8" />
+              {BRAND.name}
+              <span className="text-sm font-normal text-muted">{BRAND.slogan}</span>
             </Link>
             <nav aria-label="Główna nawigacja">
               <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm font-semibold">
