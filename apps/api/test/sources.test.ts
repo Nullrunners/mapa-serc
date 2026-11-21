@@ -1,5 +1,7 @@
 /** The four official files, exactly as dane.gov.pl serves them, must come out clean. */
 import { describe, expect, it } from 'vitest'
+import { UNNAMED_PLACE } from '@aed/schema'
+import { addressFromPoint, createGeo, memoryCache } from '../src/pipeline/geocode'
 import { parseOpeningHours, parsePhone, puwg1992ToWgs84, resolveCoordinates, splitAddress } from '../src/pipeline/normalize'
 import { parseCsv } from '../src/pipeline/parse'
 import { checkSource, loadSourceDefs, normalizeSource, parseSource, readSourceBytes } from '../src/pipeline/sources'
@@ -130,5 +132,82 @@ describe('normalisation rules', () => {
     expect(table.headers).toEqual(['nazwa', 'szerokość', 'długość'])
     expect(table.rows[0]).toEqual({ nazwa: 'Szkoła', szerokość: '52,1', długość: '21,0' })
     expect(table.fixes.map((fix) => fix.code)).toContain('encoding_windows_1250')
+  })
+})
+
+describe('OpenStreetMap', () => {
+  const osm = defs.find((candidate) => candidate.kind === 'osm')!
+  const device = (tags: Record<string, string>) => normalizeSource(osm, { headers: [], rows: [{ '@osm_id': '1', '@lat': '49.7838', '@lon': '22.7678', ...tags }], fixes: [] })[0]!.input
+
+  it('names a device after its place or keeper, never after the words about its spot', () => {
+    expect(device({ name: 'Ratusz', operator: 'Urząd Miejski' }).nazwa).toBe('Ratusz')
+    expect(device({ operator: 'Urząd Miejski', 'defibrillator:location': 'przy wejściu' })).toMatchObject({ nazwa: 'Urząd Miejski', opis_lokalizacji: 'przy wejściu' })
+    expect(device({ 'defibrillator:location': 'Na ścianie budynku', description: 'Po godzinach dzwonić do ochrony' })).toMatchObject({
+      nazwa: UNNAMED_PLACE,
+      opis_lokalizacji: 'Na ścianie budynku',
+      uwagi_dostepu: 'Po godzinach dzwonić do ochrony',
+    })
+  })
+
+  describe('address from the position', () => {
+    // Answers of the address register (UUG, GetAddressReverse), cut down to the fields that are read.
+    const REGISTER: Record<string, Record<string, string | null> | null> = {
+      'POINT(22.7678 49.7838)': { city: 'Przemyśl', street: 'Tadeusza Kościuszki', number: '7', code: '37-700', simc: '0971672', x: '22.76764', y: '49.78362' },
+      'POINT(21.0122 52.2297)': { city: 'Warszawa', street: 'ulica Marszałkowska', number: '94/98', code: '00-510', simc: '0918123', x: '21.01267', y: '52.22925' },
+      'POINT(21.47 50.03)': { city: 'Latoszyn', street: null, number: '12', code: '39-200', simc: '0650470', x: '21.4701', y: '50.0301' },
+      'POINT(20.622 49.96)': null,
+    }
+    let asked = 0
+    const register: typeof fetch = async (url) => {
+      asked++
+      const found = REGISTER[new URL(String(url)).searchParams.get('location')!]
+      return new Response(JSON.stringify({ results: found ? { '1': found } : null }))
+    }
+    const point = (lat: number, lon: number, input: NormalizedRecord['input'] = {}, fixes: NormalizedRecord['fixes'] = []): NormalizedRecord => ({
+      sourceId: 'osm-pl',
+      sourceKey: `${lat},${lon}`,
+      input: { szerokosc_geograficzna: lat, dlugosc_geograficzna: lon, ...input },
+      raw: {},
+      fixes,
+      issues: [],
+    })
+
+    it('fills the street, number, postcode and locality of the nearest address point', async () => {
+      const town = point(49.7838, 22.7678, { miejscowosc: 'Przemyśl' })
+      const avenue = point(52.2297, 21.0122)
+      // The commune is Dębica; the device stands in one of its villages, which has no street names.
+      const village = point(50.03, 21.47, { miejscowosc: 'Dębica' }, [{ code: 'locality_from_commune', field: 'miejscowosc', message: '', after: 'Dębica' }])
+      const nowhere = point(49.96, 20.622, { miejscowosc: 'Zakliczyn' })
+      await addressFromPoint([town, avenue, village, nowhere], createGeo(memoryCache(), register))
+
+      expect(town.input).toMatchObject({ nazwa_ulicy: 'Tadeusza Kościuszki', nr_budynku: '7', kod_pocztowy: '37-700', miejscowosc: 'Przemyśl', kod_simc: '0971672' })
+      expect(town.fixes.map((fix) => fix.code)).toEqual(['address_from_coordinates', 'postcode_from_register', 'simc_from_register'])
+      expect(avenue.input).toMatchObject({ cecha_ulicy: 'ulica', nazwa_ulicy: 'Marszałkowska', nr_budynku: '94/98', miejscowosc: 'Warszawa' })
+      expect(village.input).toMatchObject({ nr_budynku: '12', miejscowosc: 'Latoszyn', kod_pocztowy: '39-200' })
+      expect(village.input.nazwa_ulicy).toBeUndefined()
+      expect(village.fixes.map((fix) => fix.code)).not.toContain('locality_from_commune')
+      expect(nowhere.input).toEqual({ szerokosc_geograficzna: 49.96, dlugosc_geograficzna: 20.622, miejscowosc: 'Zakliczyn' })
+    })
+
+    it('leaves alone a record that has an address, names another locality, or was never looked up', async () => {
+      asked = 0
+      const addressed = point(49.7838, 22.7678, { nazwa_ulicy: 'Rynek', nr_budynku: '1' })
+      await addressFromPoint([addressed], createGeo(memoryCache(), register))
+      expect(asked).toBe(0)
+      expect(addressed.input.nr_budynku).toBe('1')
+
+      const elsewhere = point(49.7838, 22.7678, { miejscowosc: 'Ostrów' })
+      await addressFromPoint([elsewhere], createGeo(memoryCache(), register))
+      expect(elsewhere.input).toEqual({ szerokosc_geograficzna: 49.7838, dlugosc_geograficzna: 22.7678, miejscowosc: 'Ostrów' })
+
+      // The pipeline reads OpenStreetMap answers from the cache only; a point the job has not asked about yet stays as it is.
+      const cacheOnly = createGeo(memoryCache(), async () => {
+        throw new Error('cache only')
+      })
+      const unseen = point(49.7838, 22.7678)
+      await addressFromPoint([unseen], cacheOnly)
+      expect(unseen.input.nr_budynku).toBeUndefined()
+      expect(unseen.fixes).toEqual([])
+    })
   })
 })

@@ -57,6 +57,12 @@ export interface FieldDef {
 export const POLAND = { minLat: 49.0, maxLat: 54.9, minLon: 14.1, maxLon: 24.2 } as const
 
 export const ACCESS = ['publiczny', 'ograniczony', 'prywatny'] as const
+/**
+ * `nazwa` of a device whose source names no place (most of OpenStreetMap). Whoever shows the record
+ * should call it by its address instead.
+ */
+export const UNNAMED_PLACE = 'Defibrylator AED'
+
 export const STATUS = ['czynny', 'czasowo_niedostepny', 'wycofany', 'nieznany'] as const
 export const LICENCES = ['CC0 1.0', 'CC BY 4.0', 'ODbL 1.0'] as const
 

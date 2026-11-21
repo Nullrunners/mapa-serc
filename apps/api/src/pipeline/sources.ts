@@ -4,6 +4,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { UNNAMED_PLACE } from '@aed/schema'
 import { distanceM, normalizeRow } from './normalize'
 import { parseCsv, parseGeoJson } from './parse'
 import type { Fix, NormalizedRecord, RawTable, SourceDef } from './types'
@@ -83,7 +84,7 @@ export function normalizeSource(def: SourceDef, table: RawTable): NormalizedReco
     if (def.fallbackName && !(nameColumn && row[nameColumn])) {
       // A tag that holds only punctuation (".", "-") is no name, and a leading dash is a list marker left in the tag.
       const fallback = def.fallbackName.map((column) => (row[column] ?? '').replace(/^[\s\-–—.,;:*]+/, '')).find((value) => /\p{L}/u.test(value))
-      row['@name'] = (fallback ?? 'Defibrylator AED').slice(0, 200)
+      row['@name'] = (fallback ?? UNNAMED_PLACE).slice(0, 200)
       mapping['@name'] = 'nazwa'
     }
 

@@ -3,7 +3,7 @@
  * (so a restart continues where it stopped). Everything that changes state goes through this file.
  */
 import type { AedRecord } from '@aed/schema'
-import type { GeoCache } from '../pipeline/geocode'
+import { communeName, type Commune, type GeoCache } from '../pipeline/geocode'
 import { memberKey, type MergedAed } from '../pipeline/merge'
 import type { PipelineResult, ReviewPair, SourceReport, StoredSource } from '../pipeline/run'
 import type { NormalizedRecord, SourceDef } from '../pipeline/types'
@@ -207,6 +207,16 @@ export class Store {
     this.reviews = result.reviews
     this.ranAt = result.ranAt
     this.links = new Map(links.map(([sourceId, sourceKey, id]) => [memberKey({ sourceId: String(sourceId), sourceKey: String(sourceKey) }), String(id)]))
+  }
+
+  /** TERC → name of the commune, for every commune one of our points was looked up in. */
+  communeNames(): Map<string, string> {
+    const names = new Map<string, string>()
+    for (const [key, value] of this.geocodes) {
+      const commune = key.startsWith('uldk:') ? (value as Commune | null) : null
+      if (commune) names.set(commune.terc, communeName(commune.gmina))
+    }
+    return names
   }
 
   /** Register answers, remembered across runs and restarts. */

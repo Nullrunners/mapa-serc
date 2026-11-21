@@ -27,7 +27,11 @@ export interface SourceDef {
   snapshot?: string
   /** Column that identifies a row within the source. Without it the key is derived from name and address. */
   keyColumn?: string
-  /** Columns to take the place name from, in order, when the mapped name is empty (OSM rarely names an AED). */
+  /**
+   * Columns to take the place name from, in order, when the mapped name is empty (OSM rarely names an AED).
+   * Only columns that name a place belong here: words about the spot ("przy wejściu") are a description, not a
+   * name. A record that none of them names is called UNNAMED_PLACE and goes by its address.
+   */
   fallbackName?: string[]
   /**
    * A submission that an operator has not approved yet. Its records are kept and shown to the provider, but they
@@ -72,6 +76,8 @@ export type FixCode =
   | 'postcode_from_register'
   | 'simc_from_register'
   | 'locality_from_commune'
+  | 'address_from_coordinates'
+  | 'locality_from_register'
 
 export type IssueCode =
   | 'coordinates_missing'

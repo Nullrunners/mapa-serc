@@ -55,6 +55,7 @@ export function osmGapCandidates(store: Store, today: string): Candidate[] {
 
   const candidates: Candidate[] = []
 
+  const communeNames = store.communeNames()
   const byCommune = new Map<string, typeof community>()
   for (const aed of community) {
     if (!aed.record.kod_terc) continue
@@ -64,7 +65,8 @@ export function osmGapCandidates(store: Store, today: string): Candidate[] {
     const registered = officialByTerc.get(terc) ?? 0
     const lat = devices.reduce((sum, aed) => sum + aed.record.szerokosc_geograficzna, 0) / devices.length
     const lon = devices.reduce((sum, aed) => sum + aed.record.dlugosc_geograficzna, 0) / devices.length
-    const locality = devices[0]!.record.miejscowosc ?? null
+    // The commune's own name; a device's locality may be one of its villages.
+    const locality = communeNames.get(terc) ?? devices[0]!.record.miejscowosc ?? null
     candidates.push({
       id: `osm-gmina-${terc}`,
       kind: 'osm_gap',

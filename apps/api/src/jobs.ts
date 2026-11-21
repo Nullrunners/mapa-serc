@@ -4,7 +4,7 @@
  */
 import { config, today } from './config'
 import { getContext } from './context'
-import { enrich } from './pipeline/geocode'
+import { addressFromPoint, enrich } from './pipeline/geocode'
 import { runPipeline } from './pipeline/run'
 import { loadSourceDefs } from './pipeline/sources'
 import type { NormalizedRecord } from './pipeline/types'
@@ -69,26 +69,33 @@ async function pipelineJob(options: JobOptions) {
 }
 
 /**
- * Commune codes for the OpenStreetMap layer: one register lookup per point, about 18 thousand of them
- * (roughly 8 minutes the first time, instant afterwards because every answer is cached). Radar needs
- * them to group unconfirmed devices by commune.
+ * Commune codes and addresses for the OpenStreetMap layer: two register lookups per point, about 18 thousand
+ * points (minutes the first time, instant afterwards because every answer is cached). Radar needs the codes to
+ * group unconfirmed devices by commune; the address is what a device in a place nobody named is called by.
  */
 async function enrichOsmJob() {
   const { store, geo } = await getContext()
-  // Look every point without a code up once; the answers land in the cache that the pipeline reads for OSM.
-  const points: NormalizedRecord[] = store.aeds
-    .filter((aed) => aed.publication === 'community' && !aed.record.kod_terc)
-    .map((aed) => ({
-      sourceId: 'osm-pl',
-      sourceKey: aed.id,
-      input: { szerokosc_geograficzna: aed.record.szerokosc_geograficzna, dlugosc_geograficzna: aed.record.dlugosc_geograficzna },
-      raw: {},
-      fixes: [],
-      issues: [],
-    }))
-  await enrich(points, geo, { geocodeAddresses: false })
-  const resolved = points.filter((point) => point.input.kod_terc).length
-  return { lookedUp: points.length, resolved, pipeline: await pipelineJob({}) }
+  // Look every point that lacks something up once; the answers land in the cache that the pipeline reads for OSM.
+  const community = store.aeds.filter((aed) => aed.publication === 'community')
+  const point = (aed: (typeof community)[number]): NormalizedRecord => ({
+    sourceId: 'osm-pl',
+    sourceKey: aed.id,
+    input: { szerokosc_geograficzna: aed.record.szerokosc_geograficzna, dlugosc_geograficzna: aed.record.dlugosc_geograficzna },
+    raw: {},
+    fixes: [],
+    issues: [],
+  })
+  const uncoded = community.filter((aed) => !aed.record.kod_terc).map(point)
+  await enrich(uncoded, geo, { geocodeAddresses: false })
+  const unaddressed = community.filter((aed) => !aed.record.nazwa_ulicy && !aed.record.nr_budynku).map(point)
+  await addressFromPoint(unaddressed, geo)
+  return {
+    lookedUp: uncoded.length,
+    resolved: uncoded.filter((record) => record.input.kod_terc).length,
+    addressesLookedUp: unaddressed.length,
+    addressesFound: unaddressed.filter((record) => record.input.nr_budynku).length,
+    pipeline: await pipelineJob({}),
+  }
 }
 
 /** Rebuilds the Radar leads from the current dataset and the downloaded procurement notices. */
