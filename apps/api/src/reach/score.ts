@@ -47,6 +47,9 @@ export interface Reach {
 const WALK_SPEED = 2
 const STREET_FACTOR = 1.3
 
+/** Seconds on foot to a device this far away in a straight line. No device has a lower score than this. */
+export const walkSeconds = (distanceM: number): number => Math.round((distanceM * STREET_FACTOR) / WALK_SPEED)
+
 const METHOD_SECONDS: Record<AccessMethod, number> = { swobodny: 0, szafka_z_alarmem: 10, szafka_z_kodem: 60, przez_obsluge: 90 }
 const METHOD_REASON: Record<AccessMethod, ReachReason> = { swobodny: 'method_free', szafka_z_alarmem: 'method_alarm', szafka_z_kodem: 'method_code', przez_obsluge: 'method_staff' }
 
@@ -109,7 +112,7 @@ export type ReachRecord = Pick<
  */
 export function reach(record: ReachRecord, distanceM: number, at: Date, options: { problem?: boolean; withChange?: boolean } = {}): Reach {
   const reasons: ReachReason[] = []
-  const walkS = Math.round((distanceM * STREET_FACTOR) / WALK_SPEED)
+  const walkS = walkSeconds(distanceM)
 
   let state: ReachState
   if (record.status === 'wycofany' || record.status === 'czasowo_niedostepny') {
@@ -161,4 +164,24 @@ export function reach(record: ReachRecord, distanceM: number, at: Date, options:
   const change = options.withChange && state !== 'likely_open' && state !== 'unknown' ? nextChange(record.godziny_dostepnosci, at) : null
 
   return { state, etaS, walkS, accessS, method, methodGuessed: guessed, change, reasons, score }
+}
+
+/**
+ * The first `count` of `nearestFirst` by score, ties to the nearer one: the same list as scoring and sorting them all.
+ * Nobody has a device in hand sooner than they can walk to it, so once `count` devices beat the bare walk to the
+ * next one, nothing farther away can make the list and the rest is not scored. In a town that is a few hundred
+ * devices instead of the whole country.
+ */
+export function soonestInHand<T extends { distance: number }>(nearestFirst: readonly T[], count: number, scoreOf: (item: T) => number): T[] {
+  let best: { item: T; score: number }[] = []
+  let next = 0
+  // Each round looks twice as far as the one before, so a sparse area costs a few rounds, not hundreds.
+  for (let step = Math.max(64, count); next < nearestFirst.length; step *= 2) {
+    const end = Math.min(nearestFirst.length, next + step)
+    for (; next < end; next++) best.push({ item: nearestFirst[next]!, score: scoreOf(nearestFirst[next]!) })
+    best.sort((a, b) => a.score - b.score || a.item.distance - b.item.distance)
+    if (best.length > count) best.length = count
+    if (best.length === count && next < nearestFirst.length && walkSeconds(nearestFirst[next]!.distance) > best[count - 1]!.score) break
+  }
+  return best.map(({ item }) => item)
 }
