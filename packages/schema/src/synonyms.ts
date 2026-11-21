@@ -76,6 +76,7 @@ const table: Record<MappingTarget, string[]> = {
     'godz dostepnosci',
     'godz otwarcia',
   ],
+  sposob_dostepu: ['sposob dostepu', 'jak wyjac urzadzenie', 'rodzaj szafki', 'zabezpieczenie', 'szafka'],
   uwagi_dostepu: ['uwagi dostepu', 'uwagi', 'jak sie dostac', 'informacje dodatkowe'],
   podmiot_odpowiedzialny: ['podmiot odpowiedzialny', 'operator', 'wlasciciel', 'administrator', 'opiekun', 'zarzadca', 'podmiot', 'dysponent'],
   telefon_kontaktowy: ['telefon kontaktowy', 'telefon', 'tel', 'phone', 'nr telefonu', 'numer telefonu', 'kontakt'],

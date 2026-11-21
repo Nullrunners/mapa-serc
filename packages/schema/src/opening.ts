@@ -2,11 +2,13 @@
  * Reads `godziny_dostepnosci` (the subset of OpenStreetMap's `opening_hours` syntax that the pattern uses) and
  * answers one question: can the device be reached at a given moment?
  *
- * Understood: `24/7`, weekday lists and ranges, time ranges (also past midnight), `off`, rules separated by `;`
- * where a later rule replaces an earlier one for the days it names. Anything else (public holidays, months,
- * sunrise, comments) gives "unknown": a wrong "open" would send a rescuer to a locked door.
+ * Understood: `24/7`, weekday lists and ranges, public holidays (`PH`, Polish calendar), time ranges (also past
+ * midnight), `off`, rules separated by `;` where a later rule replaces an earlier one for the days it names.
+ * Anything else (school holidays, months, sunrise, comments) gives "unknown": a wrong "open" would send a rescuer
+ * to a locked door.
  */
 import type { AedRecord } from './fields'
+import { isPolishHoliday } from './holidays'
 
 export type Availability = 'open' | 'closed' | 'unknown'
 
@@ -15,6 +17,8 @@ const DAY_MINUTES = 24 * 60
 
 interface Rule {
   days: Set<number>
+  /** The rule names public holidays (`PH`): on a holiday it applies whatever the day of the week. */
+  holiday: boolean
   /** Minutes from midnight; an end beyond 1440 runs into the next day. */
   ranges: [number, number][]
 }
@@ -26,9 +30,14 @@ function minutes(text: string | undefined): number | null {
   return Number(match[2]) < 60 && value <= DAY_MINUTES ? value : null
 }
 
-function parseDays(text: string): Set<number> | null {
+function parseDays(text: string): { days: Set<number>; holiday: boolean } | null {
   const days = new Set<number>()
+  let holiday = false
   for (const part of text.split(',')) {
+    if (part === 'PH') {
+      holiday = true
+      continue
+    }
     const [first, last, ...rest] = part.split('-')
     const from = DAYS.indexOf(first ?? '')
     const to = last === undefined ? from : DAYS.indexOf(last)
@@ -38,7 +47,7 @@ function parseDays(text: string): Set<number> | null {
       if (day === to) break
     }
   }
-  return days
+  return { days, holiday }
 }
 
 function parseRanges(text: string): [number, number][] | null {
@@ -61,25 +70,37 @@ function parseRule(text: string): Rule | null {
   const [first, second] = tokens
   if (!first || tokens.length > 2) return null
   if (second === undefined) {
-    if (CLOSED.test(first)) return { days: EVERY_DAY, ranges: [] }
+    if (CLOSED.test(first)) return { days: EVERY_DAY, holiday: true, ranges: [] }
     const ranges = parseRanges(first)
-    if (ranges) return { days: EVERY_DAY, ranges }
+    if (ranges) return { days: EVERY_DAY, holiday: true, ranges }
     const days = parseDays(first)
-    return days ? { days, ranges: [[0, DAY_MINUTES]] } : null
+    return days ? { ...days, ranges: [[0, DAY_MINUTES]] } : null
   }
   const days = parseDays(first)
   const ranges = CLOSED.test(second) ? [] : parseRanges(second)
-  return days && ranges ? { days, ranges } : null
+  return days && ranges ? { ...days, ranges } : null
 }
 
-const WARSAW = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Warsaw', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+const WARSAW = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Warsaw',
+  weekday: 'short',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-/** Day of the week (0 = Monday) and minute of the day in Poland, whatever the clock of the machine says. */
-function warsawTime(at: Date): { day: number; minute: number } {
+/** Day of the week (0 = Monday), minute of the day and date (YYYY-MM-DD) in Poland, whatever the machine's clock says. */
+export function warsawTime(at: Date): { day: number; minute: number; date: string } {
   const parts = Object.fromEntries(WARSAW.formatToParts(at).map((part) => [part.type, part.value]))
-  return { day: WEEKDAYS.indexOf(parts.weekday ?? ''), minute: Number(parts.hour) * 60 + Number(parts.minute) }
+  return { day: WEEKDAYS.indexOf(parts.weekday ?? ''), minute: Number(parts.hour) * 60 + Number(parts.minute), date: `${parts.year}-${parts.month}-${parts.day}` }
 }
+
+/** The calendar day `days` after YYYY-MM-DD. */
+const plusDays = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
 
 /** All rules of a value, or null when any part of it is not understood. */
 function parseRules(text: string, prepare: (part: string) => string | null = (part) => part): Rule[] | null {
@@ -92,17 +113,23 @@ function parseRules(text: string, prepare: (part: string) => string | null = (pa
     if (!rule) return null
     rules.push(rule)
   }
-  return rules.length > 0 ? rules : null
+  // Rules about holidays alone say nothing about an ordinary day.
+  return rules.some((rule) => rule.days.size > 0) ? rules : null
 }
 
-/** Whether the rules open the device on `day` (0 = Monday) at `minute` past midnight. */
-function openAt(rules: Rule[], day: number, minute: number): boolean {
-  /** The last rule that names a day decides that day. */
-  const rangesOn = (weekday: number) => rules.findLast((rule) => rule.days.has(weekday))?.ranges ?? []
-  const today = rangesOn(day).some(([from, to]) => from <= minute && minute < to)
-  const sinceYesterday = rangesOn((day + 6) % 7).some(([, to]) => minute + DAY_MINUTES < to)
+/**
+ * Whether the rules open the device on `day` (0 = Monday) at `minute` past midnight. `holiday` tells whether
+ * that day and the day before are public holidays; an ordinary week has none.
+ */
+function openAt(rules: Rule[], day: number, minute: number, holiday: { today: boolean; yesterday: boolean } = { today: false, yesterday: false }): boolean {
+  /** The last rule that names a day (or, on a holiday, names holidays) decides that day. */
+  const rangesOn = (weekday: number, isHoliday: boolean) => rules.findLast((rule) => rule.days.has(weekday) || (isHoliday && rule.holiday))?.ranges ?? []
+  const today = rangesOn(day, holiday.today).some(([from, to]) => from <= minute && minute < to)
+  const sinceYesterday = rangesOn((day + 6) % 7, holiday.yesterday).some(([, to]) => minute + DAY_MINUTES < to)
   return today || sinceYesterday
 }
+
+const holidaysAround = (date: string) => ({ today: isPolishHoliday(date), yesterday: isPolishHoliday(plusDays(date, -1)) })
 
 /** Whether the hours in `godziny_dostepnosci` cover the moment `at`. */
 export function availabilityAt(hours: string | null | undefined, at: Date): Availability {
@@ -110,9 +137,47 @@ export function availabilityAt(hours: string | null | undefined, at: Date): Avai
   if (!text) return 'unknown'
   if (text === '24/7') return 'open'
   const rules = parseRules(text)
-  const { day, minute } = warsawTime(at)
+  const { day, minute, date } = warsawTime(at)
   if (!rules || day < 0) return 'unknown'
-  return openAt(rules, day, minute) ? 'open' : 'closed'
+  return openAt(rules, day, minute, holidaysAround(date)) ? 'open' : 'closed'
+}
+
+export interface HoursChange {
+  /** Whether the device can be reached now. */
+  open: boolean
+  /** Minutes until that changes. */
+  minutes: number
+  /** Local time of the change, "18:00". */
+  time: string
+  /** 0 = today, 1 = tomorrow … (Warsaw calendar). */
+  days: number
+}
+
+const STEP = 5
+
+/**
+ * When the device next opens or closes, looked up to a week ahead in steps of 5 minutes (hours in the data are
+ * whole quarters). Null when the hours are not understood or nothing changes within the week ("24/7").
+ * Local time is advanced as if every day had 24 hours; on the night of a clock change the answer may be an hour off.
+ */
+export function nextChange(hours: string | null | undefined, at: Date): HoursChange | null {
+  const text = hours?.trim()
+  if (!text || text === '24/7') return null
+  const rules = parseRules(text)
+  const start = warsawTime(at)
+  if (!rules || start.day < 0) return null
+  const openNow = openAt(rules, start.day, start.minute, holidaysAround(start.date))
+  let elapsed = STEP - (start.minute % STEP)
+  for (; elapsed <= 7 * DAY_MINUTES; elapsed += STEP) {
+    const total = start.minute + elapsed
+    const days = Math.floor(total / DAY_MINUTES)
+    const minute = total % DAY_MINUTES
+    if (openAt(rules, (start.day + days) % 7, minute, holidaysAround(plusDays(start.date, days))) !== openNow) {
+      const time = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`
+      return { open: openNow, minutes: elapsed, time, days }
+    }
+  }
+  return null
 }
 
 export const WEEK_HOURS = 168

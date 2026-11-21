@@ -57,6 +57,8 @@ export interface FieldDef {
 export const POLAND = { minLat: 49.0, maxLat: 54.9, minLon: 14.1, maxLon: 24.2 } as const
 
 export const ACCESS = ['publiczny', 'ograniczony', 'prywatny'] as const
+/** How the device is taken out: decides how many seconds a rescuer loses on the spot. */
+export const ACCESS_METHODS = ['swobodny', 'szafka_z_alarmem', 'szafka_z_kodem', 'przez_obsluge'] as const
 /**
  * `nazwa` of a device whose source names no place (most of OpenStreetMap). Whoever shows the record
  * should call it by its address instead.
@@ -265,6 +267,22 @@ export const FIELDS = [
     ],
     osm: 'access',
     geoDae: 'acc_lib',
+  },
+  {
+    name: 'sposob_dostepu',
+    group: 'dostepnosc',
+    type: 'string',
+    requirement: 'optional',
+    title: 'Jak wyjąć urządzenie',
+    description: 'Co trzeba zrobić na miejscu, żeby wziąć defibrylator. Od tego zależy, ile sekund straci ratujący. Kodu do szafki nie wpisuj: podaje go dyspozytor 112.',
+    example: 'szafka_z_alarmem',
+    enum: ACCESS_METHODS,
+    enumLabels: [
+      'wisi na ścianie albo w otwartej szafce, wystarczy sięgnąć',
+      'szafka otwiera się bez klucza, otwarcie włącza alarm',
+      'szafka zamknięta na kod, kod podaje dyspozytor 112',
+      'urządzenie wydaje obsługa: recepcja, portier, ochrona albo personel',
+    ],
   },
   {
     name: 'godziny_dostepnosci',
@@ -482,6 +500,7 @@ export type AedRecord = {
 
 export type AedFieldName = Field['name']
 export type Access = (typeof ACCESS)[number]
+export type AccessMethod = (typeof ACCESS_METHODS)[number]
 export type Status = (typeof STATUS)[number]
 export type Licence = (typeof LICENCES)[number]
 
