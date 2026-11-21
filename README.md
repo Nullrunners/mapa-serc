@@ -53,7 +53,10 @@ pnpm install
 cp .env.example .env        # ustaw ADMIN_TOKEN i LINK_SECRET na losowe ciągi
 pnpm dev:api                # http://localhost:8787, dokumentacja pod /docs
 pnpm dev:web                # http://localhost:3000
+pnpm dev:mail               # nieobowiązkowe: lokalna skrzynka na e-maile, http://localhost:8025
 ```
+
+E-maile z paszportu (naklejki, przypomnienia o terminach, zgłoszenia przechodniów) można czytać lokalnie. `pnpm dev:mail` uruchamia [Mailpit](https://mailpit.axllent.org/): serwer pocztowy, który niczego nie wysyła dalej, tylko pokazuje wiadomości w przeglądarce pod http://localhost:8025. W `.env` ustaw `SMTP_URL=smtp://localhost:1025` i uruchom API od nowa.
 
 Przy pierwszym starcie API buduje zbiór z kopii plików urzędowych dołączonych do repozytorium. Kolejne kroki:
 

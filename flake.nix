@@ -31,6 +31,8 @@
               jq
               # xmllint: validates the dane.gov.pl harvester feed against the portal's XSD.
               libxml2
+              # mailpit: local SMTP server with a web inbox for the passport emails (pnpm dev:mail).
+              mailpit
             ];
 
             shellHook = ''

@@ -11,6 +11,7 @@
   "scripts": {
     "dev:api": "pnpm --filter @aed/api dev",
     "dev:web": "pnpm --filter @aed/web dev",
+    "dev:mail": "mailpit --smtp 127.0.0.1:1025 --listen 127.0.0.1:8025 --database data/mailpit.db --disable-version-check",
     "check": "pnpm -r check",
     "test": "pnpm -r test",
     "contract": "pnpm --filter @aed/api contract",
