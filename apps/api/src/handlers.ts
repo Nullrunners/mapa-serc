@@ -28,7 +28,7 @@ import { distanceM } from './pipeline/normalize'
 import type { MergedAed } from './pipeline/merge'
 import { summariseReports } from './passport/model'
 import { csvCell, toCsv, toGeoJson, toJsonLd, toScopeCsv } from './publish/files'
-import { reach } from './reach/score'
+import { reach, soonestInHand } from './reach/score'
 import { harvesterXml, nationalFeed } from './publish/harvester'
 import { patternWorkbook } from './publish/xlsx'
 import type { Context } from 'hono'
@@ -103,44 +103,47 @@ export const aedListHandler: RouteHandler<typeof aedListRoute> = async (c) => {
     return reports.length > 0 && summariseReports(reports, store.passports.get(aed.id)?.confirmedAt ?? null, nowIso).problems.length > 0
   }
 
-  let matches = store.aeds
-    .filter((aed) => inLayer(aed, query.layer))
-    .filter((aed) => {
-      const { record } = aed
-      if (query.availableNow === 'true' && reachableNow(record, at) !== 'yes') return false
-      if (bbox && !(record.dlugosc_geograficzna >= bbox[0] && record.szerokosc_geograficzna >= bbox[1] && record.dlugosc_geograficzna <= bbox[2] && record.szerokosc_geograficzna <= bbox[3])) return false
-      if (query.terc && !(record.kod_terc ?? '').startsWith(query.terc)) return false
-      // The words about the spot count too: for a device nobody named they are where the name of the place ends up.
-      if (text && ![record.nazwa, record.nazwa_ulicy, record.miejscowosc, record.podmiot_odpowiedzialny, record.opis_lokalizacji].some((value) => value?.toLowerCase().includes(text))) return false
-      return true
-    })
-    .map((aed) => ({ aed, distance: near ? Math.round(distanceM(near[0], near[1], aed.record.szerokosc_geograficzna, aed.record.dlugosc_geograficzna)) : null }))
+  const found = store.aeds.filter((aed) => {
+    if (!inLayer(aed, query.layer)) return false
+    const { record } = aed
+    if (query.availableNow === 'true' && reachableNow(record, at) !== 'yes') return false
+    if (bbox && !(record.dlugosc_geograficzna >= bbox[0] && record.szerokosc_geograficzna >= bbox[1] && record.dlugosc_geograficzna <= bbox[2] && record.szerokosc_geograficzna <= bbox[3])) return false
+    if (query.terc && !(record.kod_terc ?? '').startsWith(query.terc)) return false
+    // The words about the spot count too: for a device nobody named they are where the name of the place ends up.
+    if (text && ![record.nazwa, record.nazwa_ulicy, record.miejscowosc, record.podmiot_odpowiedzialny, record.opis_lokalizacji].some((value) => value?.toLowerCase().includes(text))) return false
+    return true
+  })
 
+  const last = query.offset + query.limit
+  let total = found.length
+  let page: { aed: MergedAed; distance: number | null }[]
   if (near) {
-    if (query.radiusM !== undefined) matches = matches.filter((match) => match.distance! <= query.radiusM!)
-    if (query.sort === 'reach') {
-      const scores = new Map(matches.map((match) => [match.aed.id, reach(match.aed.record, match.distance!, at, { problem: problem(match.aed) }).score]))
-      matches.sort((a, b) => scores.get(a.aed.id)! - scores.get(b.aed.id)! || a.distance! - b.distance!)
-    } else matches.sort((a, b) => a.distance! - b.distance!)
+    let measured = found.map((aed) => ({ aed, distance: Math.round(distanceM(near[0], near[1], aed.record.szerokosc_geograficzna, aed.record.dlugosc_geograficzna)) }))
+    if (query.radiusM !== undefined) measured = measured.filter((match) => match.distance <= query.radiusM!)
+    total = measured.length
+    measured.sort((a, b) => a.distance - b.distance)
+    // By reach only the devices that can make this page are scored; see `soonestInHand`.
+    page = (query.sort === 'reach' ? soonestInHand(measured, last, (match) => reach(match.aed.record, match.distance, at, { problem: problem(match.aed) }).score) : measured).slice(query.offset, last)
   } else {
     // Without a point to measure from: devices confirmed by their keeper first, then by name.
     const rank = (aed: MergedAed) => (aed.publication === 'official' ? 0 : 1)
-    matches.sort((a, b) => rank(a.aed) - rank(b.aed) || a.aed.record.nazwa.localeCompare(b.aed.record.nazwa, 'pl') || a.aed.id.localeCompare(b.aed.id))
+    page = found
+      .sort((a, b) => rank(a) - rank(b) || a.record.nazwa.localeCompare(b.record.nazwa, 'pl') || a.id.localeCompare(b.id))
+      .slice(query.offset, last)
+      .map((aed) => ({ aed, distance: null }))
   }
 
   return ok(c, AedListResponse, {
-    total: matches.length,
-    items: matches
-      .slice(query.offset, query.offset + query.limit)
-      .map(({ aed, distance }) => ({
-        id: aed.id,
-        publication: aed.publication,
-        quality: aed.quality,
-        distanceM: distance,
-        availableNow: reachableNow(aed.record, at),
-        record: aed.record,
-        ...(distance === null ? {} : { reach: reach(aed.record, distance, at, { problem: problem(aed), withChange: true }) }),
-      })),
+    total,
+    items: page.map(({ aed, distance }) => ({
+      id: aed.id,
+      publication: aed.publication,
+      quality: aed.quality,
+      distanceM: distance,
+      availableNow: reachableNow(aed.record, at),
+      record: aed.record,
+      ...(distance === null ? {} : { reach: reach(aed.record, distance, at, { problem: problem(aed), withChange: true }) }),
+    })),
   })
 }
 

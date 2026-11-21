@@ -1,7 +1,7 @@
 /** "Dostępny TERAZ": the order of devices by how soon one is in hand, not by straight-line distance. */
 import { beforeAll, describe, expect, it } from 'vitest'
 import { createApp } from '../src/app'
-import { accessMethod, floorsAway, reach, type ReachRecord } from '../src/reach/score'
+import { accessMethod, floorsAway, reach, soonestInHand, walkSeconds, type ReachRecord } from '../src/reach/score'
 
 const device = (fields: Partial<ReachRecord>): ReachRecord => ({
   status: 'czynny',
@@ -72,6 +72,43 @@ describe('reach', () => {
 
   it('reads floors written in different ways', () => {
     expect(['0', 'parter', '-1', '2', 'I piętro', 'III', 'hol'].map(floorsAway)).toEqual([0, 0, 1, 2, 1, 3, null])
+  })
+})
+
+describe('soonestInHand', () => {
+  /** Devices nearest first, each with the time lost on the spot; every fourth one is closed. Seeded, so the run repeats. */
+  const devices = (count: number, spreadM: number, seed: number) => {
+    let state = seed
+    const random = () => (state = (state * 48271) % 2147483647) / 2147483647
+    return Array.from({ length: count }, (_, index) => ({ index, distance: Math.round(random() * spreadM), lostS: Math.round(random() * 4) * 60, closed: index % 4 === 0 })).sort(
+      (a, b) => a.distance - b.distance,
+    )
+  }
+  const scoreOf = (device: { distance: number; lostS: number; closed: boolean }) => (device.closed ? 1_000_000 : device.lostS) + walkSeconds(device.distance)
+
+  it('gives the same list as scoring and sorting every device', () => {
+    for (const [count, spreadM] of [
+      [0, 1000],
+      [5, 1000],
+      [300, 2000],
+      [3000, 400_000],
+      // Many devices at the same distance and score: ties must come out in the same order too.
+      [2000, 40],
+    ] as const) {
+      const all = devices(count, spreadM, count + 7)
+      const sorted = [...all].sort((a, b) => scoreOf(a) - scoreOf(b) || a.distance - b.distance)
+      for (const wanted of [1, 20, 70, 500, 5000]) expect(soonestInHand(all, wanted, scoreOf).map((device) => device.index)).toEqual(sorted.slice(0, wanted).map((device) => device.index))
+    }
+  })
+
+  it('does not score devices too far away to make the list', () => {
+    const all = devices(3000, 400_000, 11)
+    let scored = 0
+    soonestInHand(all, 20, (device) => {
+      scored++
+      return scoreOf(device)
+    })
+    expect(scored).toBeLessThan(all.length / 4)
   })
 })
 
