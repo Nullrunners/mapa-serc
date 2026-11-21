@@ -84,7 +84,7 @@ function DevicePanel({ token, id, connect }: { token: string | null; id: string 
     if (!token && !account) return { view: null, login, refused: { text: "Zaloguj się, żeby wejść do panelu tego urządzenia.", login: true } };
     const { data, error: problem, response } = await api.GET("/v1/owner/passport", { params: access(), signal });
     if (!data && !token && response.status === 401) return { view: null, login, refused: { text: problemMessage(problem, "Tego urządzenia nie ma przy Twoim koncie."), login: false } };
-    if (!data) throw new Error(problemMessage(problem, "Nie udało się wczytać paszportu. Spróbuj ponownie za chwilę."));
+    if (!data) throw new Error(problemMessage(problem, "Nie udało się wczytać raportu. Spróbuj ponownie za chwilę."));
     const view = connect && data.viewer && !data.viewer.linked ? ((await addToAccount()) ?? data) : data;
     return { view, login, refused: null };
   });

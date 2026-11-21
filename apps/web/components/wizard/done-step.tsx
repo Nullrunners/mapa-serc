@@ -31,7 +31,7 @@ export default function DoneStep({ headingRef, result, email }: { headingRef: Re
       {result.devices.length > 0 && (
         <section aria-labelledby="paszporty-naglowek" className="space-y-3 border-t border-line pt-5">
           <h3 id="paszporty-naglowek" className="text-lg font-bold">
-            Paszporty Twoich urządzeń
+            Raporty Twoich urządzeń
           </h3>
           <p>
             Wydrukuj naklejki QR i przyklej je przy urządzeniach. Zachowaj linki do panelu: dają dostęp do zarządzania.

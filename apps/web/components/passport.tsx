@@ -51,7 +51,7 @@ function Card({ item, passport, onPassport }: { item: AedItem; passport: Passpor
   return (
     <>
       <section aria-labelledby="paszport-naglowek" className="space-y-2">
-        <p className="text-sm font-semibold tracking-wide text-gov uppercase">Paszport defibrylatora</p>
+        <p className="text-sm font-semibold tracking-wide text-gov uppercase">Raport defibrylatora</p>
         <h1 id="paszport-naglowek" className="text-2xl font-bold text-balance">
           {title(item)}
         </h1>

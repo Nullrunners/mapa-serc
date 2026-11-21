@@ -159,10 +159,10 @@ function Device({ item, passport, headingRef, from, walkNote, onGuide, guided }:
           Trasa w Mapach Google
         </ExternalLink>
         <Link href={`/aed/${item.id}`} className="btn btn-secondary">
-          Paszport urządzenia
+          Raport urządzenia
         </Link>
       </div>
-      <p className="hint">W paszporcie zgłosisz problem albo wydrukujesz naklejkę QR.</p>
+      <p className="hint">W raporcie zgłosisz problem albo wydrukujesz naklejkę QR.</p>
     </article>
   );
 }
