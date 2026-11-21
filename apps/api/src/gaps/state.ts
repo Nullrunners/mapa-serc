@@ -6,6 +6,7 @@
 import { createHash } from 'node:crypto'
 import { now, today } from '../config'
 import type { Store } from '../db/store'
+import { isAnswering } from '../http/load'
 import { notWorking } from '../passport/service'
 import type { Geo } from '../pipeline/geocode'
 import { distanceM } from '../pipeline/normalize'
@@ -66,7 +67,7 @@ export function overviewFor(store: Store): Promise<TimedOverview> {
   const supply = supplyFor(store)
   if (overviewCache?.key !== supply.key) {
     const started = Date.now()
-    const promise = nationalOverview(populationCells(), supply.coverage).then((overview) => ({ ...overview, tookMs: Date.now() - started, computedAt: new Date().toISOString() }))
+    const promise = nationalOverview(populationCells(), supply.coverage, isAnswering).then((overview) => ({ ...overview, tookMs: Date.now() - started, computedAt: new Date().toISOString() }))
     const entry = { key: supply.key, promise }
     overviewCache = entry
     promise.catch((error) => {

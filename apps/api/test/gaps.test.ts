@@ -5,7 +5,7 @@ import { weeklyHours } from '@aed/schema'
 import { createApp } from '../src/app'
 import { getContext } from '../src/context'
 import { areaKm2, inShape, parseRing, parseWkt, simplifyRing, type Ring, type Shape } from '../src/gaps/area'
-import { buildCoverage, hexesOfCell, hexState, RES, type HexState } from '../src/gaps/engine'
+import { buildCoverage, hexesOfCell, hexState, nationalOverview, RES, type HexState } from '../src/gaps/engine'
 import { createGeo, memoryCache } from '../src/pipeline/geocode'
 import { recommend } from '../src/gaps/greedy'
 import { laeaToWgs84 } from '../src/gaps/laea'
@@ -125,6 +125,34 @@ describe('coverage and placement', () => {
     expect(gained).toBeCloseTo(residentsServed, -1)
     // The busiest square comes first: seniors count three times, so the 3000 with 2000 seniors weigh as much as 7000 with 1000.
     expect(first[0]!.gained.residents).toBeGreaterThan(0)
+  })
+
+  it('sums the squares into large hexagons, the same however often it steps aside for requests', async () => {
+    const [lat, lon] = cellCentre(cells[0]!)
+    const coverage = buildCoverage([point(lat, lon, weeklyHours('Mo-Fr 08:00-16:00')!)])
+    const quiet = await nationalOverview(cells, coverage)
+    expect(quiet.totals.residents).toBe(10_500)
+    expect(quiet.totals.seniors).toBe(3000)
+    expect(quiet.totals.noDevice).toBeGreaterThan(0)
+    expect(quiet.totals.noDevice).toBeLessThan(10_500)
+    // Nobody is covered at night by a device in an office.
+    expect(quiet.totals.noNight).toBe(10_500)
+    expect([...quiet.areas.values()].reduce((sum, area) => sum + area.residents, 0)).toBeCloseTo(10_500, 6)
+
+    // With a request being answered it lets go after every square.
+    let asked = 0
+    let turns = 0
+    const turn = () => {
+      turns++
+      timer = setImmediate(turn)
+    }
+    let timer = setImmediate(turn)
+    const busy = await nationalOverview(cells, coverage, () => (asked++, true))
+    clearImmediate(timer)
+    expect(asked).toBe(cells.length)
+    expect(turns).toBeGreaterThanOrEqual(cells.length)
+    expect(busy.totals).toEqual(quiet.totals)
+    expect([...busy.areas].map(([hex, area]) => [hex, area.result()])).toEqual([...quiet.areas].map(([hex, area]) => [hex, area.result()]))
   })
 
   it('stops when nothing is left to cover', () => {

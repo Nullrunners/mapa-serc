@@ -10,6 +10,11 @@ import type { Context } from 'hono'
 import type { z } from '@hono/zod-openapi'
 import { checked, type ok } from './respond'
 
+/**
+ * zlib hands its work to another thread a piece at a time, and takes up the next piece only when the server has a
+ * moment. In megabyte pieces a layer is a few such trips, not hundreds, which counts while the server is busy.
+ */
+const PIECES = { chunkSize: 1 << 20 }
 const compress = promisify(gzip)
 const decompress = promisify(gunzip)
 
@@ -29,7 +34,7 @@ export async function keepJson<S extends z.ZodType>(c: Context, schema: S, body:
   // From the content, not from a counter: the same data has the same tag after a restart, so browsers keep their copy.
   // Weak, because the same tag goes with the compressed and the plain form.
   const etag = `W/"${createHash('sha1').update(text).digest('base64url')}"`
-  return { gzipped: bytes(await compress(text)), etag, schema }
+  return { gzipped: bytes(await compress(text, PIECES)), etag, schema }
 }
 
 /** One kept body per key, rebuilt when `version` changes. A build that failed is not kept: the next request tries again. */
@@ -81,7 +86,7 @@ async function respond(c: Context, kept: KeptBody, cacheControl: string): Promis
   c.header('Vary', 'Accept-Encoding', { append: true })
   if (sameTag(c.req.header('If-None-Match'), kept.etag)) return c.body(null, 304)
   c.header('Content-Type', 'application/json')
-  if (!takesGzip(c.req.header('Accept-Encoding'))) return c.body(bytes(await decompress(kept.gzipped)))
+  if (!takesGzip(c.req.header('Accept-Encoding'))) return c.body(bytes(await decompress(kept.gzipped, PIECES)))
   c.header('Content-Encoding', 'gzip')
   return c.body(kept.gzipped)
 }
