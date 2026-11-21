@@ -4,7 +4,7 @@ import { Map as MapLibreMap, NavigationControl, type GeoJSONSource } from "mapli
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, useState } from "react";
 import { API_URL } from "@/lib/api/client";
-import { canDrawMap, MAP_STYLE as STYLE, POLAND } from "@/lib/maplibre";
+import { canDrawMap, ignoreMissingStyleIcons, MAP_STYLE as STYLE, POLAND } from "@/lib/maplibre";
 import type { Picked } from "./aed-details";
 
 const LAYERS = [
@@ -57,6 +57,7 @@ export default function AedMap({ showCommunity, focus, selected, onSelect }: Aed
       return;
     }
     mapRef.current = map;
+    ignoreMissingStyleIcons(map);
     map.addControl(new NavigationControl({ showCompass: false }), "top-right");
 
     map.on("load", () => {

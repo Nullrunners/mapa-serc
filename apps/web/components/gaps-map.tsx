@@ -4,7 +4,7 @@ import { Map as MapLibreMap, NavigationControl, type ExpressionSpecification, ty
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, useState } from "react";
 import { API_URL, type GapsPlace, type GapsView } from "@/lib/api/client";
-import { canDrawMap, MAP_STYLE, POLAND } from "@/lib/maplibre";
+import { canDrawMap, ignoreMissingStyleIcons, MAP_STYLE, POLAND } from "@/lib/maplibre";
 
 /** One hue from light to dark, so the scale reads without telling red from green. */
 export const SCALE = ["#fde0dd", "#fbb4b9", "#f768a1", "#c51b8a", "#7a0177"] as const;
@@ -65,6 +65,7 @@ export default function GapsMap({ hexes, places, selected, onSelect, onView, fit
       return;
     }
     mapRef.current = map;
+    ignoreMissingStyleIcons(map);
     map.addControl(new NavigationControl({ showCompass: false }), "top-right");
 
     const report = () => {
