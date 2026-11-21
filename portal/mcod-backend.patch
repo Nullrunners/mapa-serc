@@ -1,0 +1,1965 @@
+diff --git a/mcod/celeryapp.py b/mcod/celeryapp.py
+index 62a338f..dc91814 100644
+--- a/mcod/celeryapp.py
++++ b/mcod/celeryapp.py
+@@ -90,6 +90,13 @@ def get_beat_schedule(
+             "options": default_options,
+             "schedule": crontab(minute=30, hour=3),
+         },
++        # Aggregated lists ("wykazy zbiorcze", e.g. AED defibrillators): after the harvesters (3:00) have
++        # refreshed the providers' resources, so the summary picks up the night's changes.
++        "aggregated_lists_creation": {
++            "task": "mcod.resources.tasks.build_all_aggregated_lists_task",
++            "options": default_options,
++            "schedule": crontab(minute=45, hour=3),
++        },
+         "kibana-statistics": {
+             "task": "mcod.counters.tasks.kibana_statistics",
+             "options": default_options,
+diff --git a/mcod/resources/aggregated_lists/__init__.py b/mcod/resources/aggregated_lists/__init__.py
+new file mode 100644
+index 0000000..64b5a72
+--- /dev/null
++++ b/mcod/resources/aggregated_lists/__init__.py
+@@ -0,0 +1,9 @@
++"""
++Aggregated lists ("wykazy zbiorcze"): one standard table built by the portal from the resources of many
++providers, each row attributed to the institution that published it. AED defibrillators are the first list.
++
++- definitions.py  registry of lists (membership tag, standard columns, summary dataset metadata)
++- core.py         reading, checking and merging tables (pandas only, no Django)
++- service.py      portal side: finding source resources and publishing the summary resource
++- schemas/        Table Schemas with each list's standard columns
++"""
+diff --git a/mcod/resources/aggregated_lists/core.py b/mcod/resources/aggregated_lists/core.py
+new file mode 100644
+index 0000000..8a8b7dd
+--- /dev/null
++++ b/mcod/resources/aggregated_lists/core.py
+@@ -0,0 +1,344 @@
++"""
++Core of the aggregated lists ("wykazy zbiorcze"): reading a provider's table, checking it against the
++list's standard (a Frictionless Table Schema), cleaning rows and merging all providers into one table.
++
++Pure pandas and the standard library: nothing here imports Django, so it can be tested without the
++portal stack (see mcod/resources/tests/test_aggregated_lists_core.py). The Django side (querysets,
++publishing the summary resource) lives in `service.py`.
++
++Rules, in the order they are applied to each provider's table:
++
++1. Headers are compared after trimming whitespace and a BOM, lower-casing and turning spaces and
++   hyphens into underscores, so "Nazwa " and "nazwa" are the same column.
++2. All columns marked `required` in the schema must be present; otherwise the whole table is skipped
++   (as the DGA summary does with tables missing its columns).
++3. Columns outside the standard are dropped; missing optional columns are added empty.
++4. A row is skipped when a required value is empty or does not match the schema (number range,
++   allowed values, pattern). Each reason is counted per provider for the report.
++5. Rows are merged in provider order. A row whose primary key was already published by an earlier
++   provider is skipped and counted, so the summary never holds two rows with the same identifier.
++6. Every published row gets the provider columns (`PROVIDER_COLUMNS`): who publishes the source table
++   in the portal, where it is and when it was last updated. The provider stays responsible for its rows.
++"""
++
++import csv
++import datetime
++import io
++import json
++import re
++from collections import Counter, OrderedDict
++from dataclasses import dataclass, field
++from pathlib import Path
++from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
++
++import pandas as pd
++
++SUPPORTED_EXTENSIONS: Tuple[str, ...] = ("csv", "xlsx", "xls")
++
++# Provider columns appended to every row of a summary list. Named like the pattern's own columns
++# (Polish snake_case) so the summary stays one consistent table.
++PROVIDER_NAME_COLUMN = "dysponent_danych"
++PROVIDER_RESOURCE_COLUMN = "zasob_zrodlowy"
++PROVIDER_UPDATED_COLUMN = "aktualizacja_zasobu_zrodlowego"
++PROVIDER_COLUMNS: Tuple[str, ...] = (PROVIDER_NAME_COLUMN, PROVIDER_RESOURCE_COLUMN, PROVIDER_UPDATED_COLUMN)
++
++# Reasons a row or a whole table is left out; the keys go into the build report.
++SKIP_EMPTY_REQUIRED = "brak_wymaganej_wartosci"
++SKIP_INVALID_VALUE = "nieprawidlowa_wartosc"
++SKIP_DUPLICATE_KEY = "powtorzony_identyfikator"
++
++_CSV_DELIMITERS = ",;\t|"
++_CSV_ENCODINGS = ("utf-8-sig", "cp1250", "iso-8859-2")
++_DIGITS_PATTERN = re.compile(r"^\^\\d\{(\d+)\}\$$")
++
++
++class AggregatedListError(Exception):
++    """Base class for problems with one provider's table."""
++
++
++class SourceReadError(AggregatedListError):
++    """The table cannot be read (unknown format, broken file, unknown encoding)."""
++
++
++class MissingColumnsError(AggregatedListError):
++    """The table lacks columns the list requires."""
++
++    def __init__(self, columns: Sequence[str]):
++        self.columns = list(columns)
++        super().__init__("Brak wymaganych kolumn: " + ", ".join(self.columns))
++
++
++@dataclass(frozen=True)
++class SchemaField:
++    name: str
++    type: str = "string"
++    required: bool = False
++    minimum: Optional[float] = None
++    maximum: Optional[float] = None
++    enum: Optional[Tuple[str, ...]] = None
++    pattern: Optional[str] = None
++
++    def problem(self, value: str) -> Optional[str]:
++        """Why a non-empty value breaks the schema, or None when it is fine."""
++        if self.type in ("number", "integer"):
++            try:
++                number = float(value)
++            except ValueError:
++                return SKIP_INVALID_VALUE
++            if self.minimum is not None and number < self.minimum:
++                return SKIP_INVALID_VALUE
++            if self.maximum is not None and number > self.maximum:
++                return SKIP_INVALID_VALUE
++        if self.type == "date":
++            try:
++                datetime.date.fromisoformat(value)
++            except ValueError:
++                return SKIP_INVALID_VALUE
++        if self.enum is not None and value not in self.enum:
++            return SKIP_INVALID_VALUE
++        # Table Schema patterns match the whole value (XML Schema semantics), anchors or not.
++        if self.pattern is not None and re.fullmatch(self.pattern, value) is None:
++            return SKIP_INVALID_VALUE
++        return None
++
++
++@dataclass(frozen=True)
++class TableSchema:
++    fields: Tuple[SchemaField, ...]
++    primary_key: Tuple[str, ...] = ()
++
++    @classmethod
++    def from_dict(cls, data: Dict[str, Any]) -> "TableSchema":
++        fields = []
++        for raw in data["fields"]:
++            constraints = raw.get("constraints", {})
++            enum = constraints.get("enum")
++            fields.append(
++                SchemaField(
++                    name=raw["name"],
++                    type=raw.get("type", "string"),
++                    required=bool(constraints.get("required", False)),
++                    minimum=constraints.get("minimum"),
++                    maximum=constraints.get("maximum"),
++                    enum=tuple(enum) if enum is not None else None,
++                    pattern=constraints.get("pattern"),
++                )
++            )
++        primary_key = data.get("primaryKey", ())
++        if isinstance(primary_key, str):
++            primary_key = (primary_key,)
++        return cls(fields=tuple(fields), primary_key=tuple(primary_key))
++
++    @classmethod
++    def from_file(cls, path: Union[str, Path]) -> "TableSchema":
++        with open(path, encoding="utf-8") as handle:
++            return cls.from_dict(json.load(handle))
++
++    @property
++    def column_names(self) -> List[str]:
++        return [f.name for f in self.fields]
++
++    @property
++    def required_names(self) -> List[str]:
++        return [f.name for f in self.fields if f.required]
++
++
++@dataclass(frozen=True)
++class Provider:
++    """Who publishes a source table in the portal; written into every row taken from it."""
++
++    name: str
++    resource_url: str = ""
++    updated: str = ""
++    resource_id: Optional[int] = None
++
++
++@dataclass
++class SourceReport:
++    provider: str
++    resource_id: Optional[int]
++    rows_read: int = 0
++    rows_published: int = 0
++    skipped: Dict[str, int] = field(default_factory=dict)
++    error: Optional[str] = None
++
++    def as_dict(self) -> Dict[str, Any]:
++        return {
++            "provider": self.provider,
++            "resource_id": self.resource_id,
++            "rows_read": self.rows_read,
++            "rows_published": self.rows_published,
++            "skipped": dict(self.skipped),
++            "error": self.error,
++        }
++
++
++def normalise_header(name: Any) -> str:
++    text = str(name).replace("﻿", "").strip().lower()
++    return re.sub(r"[\s\-]+", "_", text)
++
++
++def _decode(content: bytes) -> str:
++    for encoding in _CSV_ENCODINGS:
++        try:
++            return content.decode(encoding)
++        except UnicodeDecodeError:
++            continue
++    raise SourceReadError("Nie udało się odczytać kodowania pliku CSV.")
++
++
++def read_table(content: bytes, extension: Optional[str]) -> pd.DataFrame:
++    """Reads a provider's file into a DataFrame of strings (empty cells as "")."""
++    extension = (extension or "").lower().lstrip(".")
++    if extension not in SUPPORTED_EXTENSIONS:
++        raise SourceReadError(f"Nieobsługiwany format pliku: {extension or 'brak'}.")
++    try:
++        if extension == "csv":
++            text = _decode(content)
++            sample = text[:65536]
++            try:
++                delimiter = csv.Sniffer().sniff(sample, delimiters=_CSV_DELIMITERS).delimiter
++            except csv.Error:
++                delimiter = ","
++            df = pd.read_csv(io.StringIO(text), sep=delimiter, dtype=str, keep_default_na=False)
++        else:
++            df = pd.read_excel(io.BytesIO(content), dtype=str, keep_default_na=False)
++    except AggregatedListError:
++        raise
++    except Exception as exc:
++        raise SourceReadError(f"Nie udało się odczytać pliku: {exc}") from exc
++    df.columns = [normalise_header(c) for c in df.columns]
++    return df
++
++
++def check_columns(df: pd.DataFrame, schema: TableSchema) -> None:
++    missing = [name for name in schema.required_names if name not in df.columns]
++    if missing:
++        raise MissingColumnsError(missing)
++
++
++def _normalise_value(value: Any, schema_field: SchemaField) -> str:
++    if value is None or (isinstance(value, float) and pd.isna(value)):
++        return ""
++    text = str(value).strip()
++    if text.lower() in ("nan", "none", "null"):
++        return ""
++    if schema_field.type in ("number", "integer"):
++        text = text.replace(",", ".").replace(" ", "")
++    if schema_field.type == "date" and re.fullmatch(r"\d{4}-\d{2}-\d{2}[ T]00:00:00", text):
++        # A date cell read from a spreadsheet as text comes with midnight attached.
++        text = text[:10]
++    if schema_field.pattern:
++        # Spreadsheets turn codes such as TERYT "0201011" into numbers, dropping leading zeros
++        # (and sometimes adding ".0"). Restore them when the pattern is "exactly N digits".
++        match = _DIGITS_PATTERN.match(schema_field.pattern)
++        if match:
++            digits = int(match.group(1))
++            if re.fullmatch(r"\d+\.0", text):
++                text = text[:-2]
++            if text.isdigit() and len(text) < digits:
++                text = text.zfill(digits)
++    return text
++
++
++def clean_table(df: pd.DataFrame, schema: TableSchema) -> Tuple[pd.DataFrame, Dict[str, int]]:
++    """
++    Keeps the schema's columns (in its order) and the rows whose required values are present and valid.
++    Returns the cleaned table and the number of skipped rows per reason.
++    """
++    check_columns(df, schema)
++    df = df.reindex(columns=schema.column_names)
++    for schema_field in schema.fields:
++        df[schema_field.name] = df[schema_field.name].map(lambda v, f=schema_field: _normalise_value(v, f))
++
++    reasons: List[Optional[str]] = []
++    required = [f for f in schema.fields if f.required]
++    for row in df.itertuples(index=False):
++        values = dict(zip(schema.column_names, row))
++        reason = None
++        for schema_field in required:
++            value = values[schema_field.name]
++            if value == "":
++                reason = SKIP_EMPTY_REQUIRED
++                break
++            reason = schema_field.problem(value)
++            if reason:
++                break
++        reasons.append(reason)
++
++    keep = [reason is None for reason in reasons]
++    skipped = Counter(reason for reason in reasons if reason)
++    return df[keep].reset_index(drop=True), dict(skipped)
++
++
++def merge_tables(
++    parts: Iterable[Tuple[Provider, pd.DataFrame]],
++    schema: TableSchema,
++) -> Tuple[pd.DataFrame, List[SourceReport]]:
++    """
++    Cleans each provider's table and concatenates them, adding the provider columns.
++    A table that cannot be used is reported with `error` and contributes no rows.
++    """
++    columns = schema.column_names + list(PROVIDER_COLUMNS)
++    frames: List[pd.DataFrame] = []
++    reports: List[SourceReport] = []
++    seen_keys = set()
++
++    for provider, df in parts:
++        report = SourceReport(provider=provider.name, resource_id=provider.resource_id, rows_read=len(df))
++        reports.append(report)
++        try:
++            cleaned, skipped = clean_table(df, schema)
++        except MissingColumnsError as exc:
++            report.error = str(exc)
++            continue
++        report.skipped.update(skipped)
++
++        if schema.primary_key:
++            keys = [tuple(row) for row in cleaned[list(schema.primary_key)].itertuples(index=False)]
++            fresh = []
++            for key in keys:
++                fresh.append(key not in seen_keys)
++                seen_keys.add(key)
++            duplicates = len(fresh) - sum(fresh)
++            if duplicates:
++                report.skipped[SKIP_DUPLICATE_KEY] = report.skipped.get(SKIP_DUPLICATE_KEY, 0) + duplicates
++            cleaned = cleaned[fresh].reset_index(drop=True)
++
++        cleaned[PROVIDER_NAME_COLUMN] = provider.name
++        cleaned[PROVIDER_RESOURCE_COLUMN] = provider.resource_url
++        cleaned[PROVIDER_UPDATED_COLUMN] = provider.updated
++        report.rows_published = len(cleaned)
++        frames.append(cleaned)
++
++    if frames:
++        merged = pd.concat(frames, ignore_index=True)[columns]
++    else:
++        merged = pd.DataFrame(columns=columns)
++    return merged, reports
++
++
++def to_csv_bytes(df: pd.DataFrame) -> bytes:
++    """CSV as RFC 4180: UTF-8 without BOM, comma separated, CRLF line endings, quotes only when needed."""
++    buffer = io.StringIO()
++    writer = csv.writer(buffer, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
++    writer.writerow(list(df.columns))
++    for row in df.itertuples(index=False):
++        writer.writerow(["" if value is None else value for value in row])
++    return buffer.getvalue().encode("utf-8")
++
++
++def summarise(reports: Iterable[SourceReport]) -> "OrderedDict[str, Any]":
++    """Totals for logs and the AggregatedListInfo record."""
++    reports = list(reports)
++    skipped: Counter = Counter()
++    for report in reports:
++        skipped.update(report.skipped)
++    return OrderedDict(
++        sources=len(reports),
++        sources_used=sum(1 for r in reports if r.error is None and r.rows_published > 0),
++        sources_rejected=sum(1 for r in reports if r.error is not None),
++        rows_read=sum(r.rows_read for r in reports),
++        rows_published=sum(r.rows_published for r in reports),
++        skipped=dict(skipped),
++    )
+diff --git a/mcod/resources/aggregated_lists/definitions.py b/mcod/resources/aggregated_lists/definitions.py
+new file mode 100644
+index 0000000..cf48f6b
+--- /dev/null
++++ b/mcod/resources/aggregated_lists/definitions.py
+@@ -0,0 +1,102 @@
++"""
++Registry of aggregated lists ("wykazy zbiorcze").
++
++A list is defined once here. The portal then, every night (see `build_all_aggregated_lists_task`):
++
++- finds published tabular resources (CSV, XLSX, XLS) of published datasets that carry the list's
++  membership tag (e.g. `wykaz-aed`),
++- checks each against the list's standard columns (a Frictionless Table Schema in `schemas/`),
++- merges the valid rows into one CSV, with every row marked with the institution that published it,
++- publishes that CSV as the resource of a summary dataset owned by the ministry.
++
++It generalises the DGA "Wykaz chronionych danych" summary (mcod/resources/dga_utils.py), which is
++hard-wired to one list; adding a list here needs no other code. No Django imports: the owner
++institution comes from settings at run time (`service.owner_organization_pk`).
++"""
++
++from dataclasses import dataclass, field
++from functools import lru_cache
++from pathlib import Path
++from typing import Dict, List, Optional, Tuple
++
++from mcod.resources.aggregated_lists.core import PROVIDER_COLUMNS, TableSchema
++
++SCHEMAS_DIR = Path(__file__).resolve().parent / "schemas"
++
++
++@lru_cache(maxsize=None)
++def _load_schema(path: str) -> TableSchema:
++    return TableSchema.from_file(path)
++
++
++@dataclass(frozen=True)
++class AggregatedListDefinition:
++    slug: str
++    # Reserved tag a provider adds to its dataset to put its resources on the list.
++    tag: str
++    # File name (in SCHEMAS_DIR) of the Table Schema with the list's standard columns.
++    schema_file: str
++    dataset_title: str
++    dataset_description: str
++    resource_title: str
++    resource_description: str
++    file_name_prefix: str
++    category_titles: Tuple[str, ...] = ()
++    # Tags of the summary dataset. Must not include `tag`, or the summary would feed itself.
++    dataset_tags: Tuple[str, ...] = ()
++    # None: settings.AGGREGATED_LISTS_OWNER_ORGANIZATION_PK (the ministry).
++    owner_organization_pk: Optional[int] = None
++    extra: Dict[str, str] = field(default_factory=dict)
++
++    def __post_init__(self):
++        if self.tag in self.dataset_tags:
++            raise ValueError(f"Summary dataset of list {self.slug!r} must not carry its membership tag {self.tag!r}.")
++
++    @property
++    def schema(self) -> TableSchema:
++        return _load_schema(str(SCHEMAS_DIR / self.schema_file))
++
++    @property
++    def output_columns(self) -> List[str]:
++        return self.schema.column_names + list(PROVIDER_COLUMNS)
++
++
++AED = AggregatedListDefinition(
++    slug="aed",
++    tag="wykaz-aed",
++    schema_file="aed.json",
++    dataset_title="Wykaz defibrylatorów AED – wykaz zbiorczy",
++    dataset_description=(
++        "Ogólnopolski wykaz publicznie dostępnych defibrylatorów AED, składany automatycznie każdej nocy "
++        "z zasobów, które dysponenci danych publikują w portalu dane.gov.pl. Do wykazu trafiają zasoby "
++        "(CSV, XLSX lub XLS) ze zbiorów oznaczonych tagiem „wykaz-aed”, jeśli mają kolumny wzorca danych AED. "
++        "Każdy wiersz ma kolumnę „dysponent_danych”: za poprawność, aktualność i jakość danych w danym wierszu "
++        "odpowiada wskazany w niej dysponent. Kolumny „zasob_zrodlowy” i „aktualizacja_zasobu_zrodlowego” "
++        "wskazują zasób, z którego pochodzi wiersz."
++    ),
++    resource_title="Defibrylatory AED – wykaz zbiorczy (CSV)",
++    resource_description=(
++        "Wszystkie defibrylatory AED z zasobów dysponentów oznaczonych tagiem „wykaz-aed”, w jednej tabeli "
++        "zgodnej ze wzorcem danych AED (CSV, UTF-8, separator przecinek). Wykaz jest odświeżany codziennie. "
++        "Za dane w każdym wierszu odpowiada dysponent wskazany w kolumnie „dysponent_danych”."
++    ),
++    file_name_prefix="Wykaz defibrylatorów AED – wykaz zbiorczy",
++    category_titles=("Zdrowie", "Regiony i miasta"),
++    dataset_tags=("AED", "defibrylator", "wykaz zbiorczy"),
++)
++
++REGISTRY: Dict[str, AggregatedListDefinition] = {definition.slug: definition for definition in (AED,)}
++
++
++def get_definition(slug: str) -> AggregatedListDefinition:
++    try:
++        return REGISTRY[slug]
++    except KeyError:
++        known = ", ".join(sorted(REGISTRY)) or "brak"
++        raise KeyError(f"Nieznany wykaz zbiorczy: {slug!r}. Dostępne: {known}.") from None
++
++
++def definitions_for_tags(tag_names) -> List[AggregatedListDefinition]:
++    """Lists a dataset joins through its tags (compared case-insensitively)."""
++    names = {str(name).strip().lower() for name in tag_names}
++    return [definition for definition in REGISTRY.values() if definition.tag.lower() in names]
+diff --git a/mcod/resources/aggregated_lists/schemas/aed.json b/mcod/resources/aggregated_lists/schemas/aed.json
+new file mode 100644
+index 0000000..eaa5c87
+--- /dev/null
++++ b/mcod/resources/aggregated_lists/schemas/aed.json
+@@ -0,0 +1,446 @@
++{
++  "$schema": "https://specs.frictionlessdata.io/schemas/table-schema.json",
++  "name": "wzorzec-danych-aed",
++  "title": "Wzorzec danych: lokalizacje defibrylatorów AED",
++  "version": "0.1.0",
++  "description": "Jednolity zakres danych o publicznie dostępnych defibrylatorach AED do udostępniania w portalu dane.gov.pl. Pola wymagane są zawsze wypełnione; pola zalecane wypełnia opiekun przy zgłoszeniu urządzenia.",
++  "fields": [
++    {
++      "name": "id",
++      "title": "Identyfikator",
++      "description": "Stały identyfikator urządzenia w zbiorze krajowym (UUID). Nadaje go system; nie zmienia się przy aktualizacji danych, więc można się na niego powoływać.",
++      "type": "string",
++      "example": "0b6f6a52-6f1e-5c0e-9d0a-3f1f0c9e7a11",
++      "constraints": {
++        "required": true,
++        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
++        "unique": true
++      },
++      "x-wymagalnosc": "required"
++    },
++    {
++      "name": "nazwa",
++      "title": "Nazwa miejsca",
++      "description": "Nazwa obiektu, w którym jest urządzenie – taka, po której trafi tam osoba z zewnątrz.",
++      "type": "string",
++      "example": "Urząd Miasta Legionowo",
++      "constraints": {
++        "required": true,
++        "maxLength": 200
++      },
++      "x-wymagalnosc": "required",
++      "x-geodae": "nom",
++      "x-dane-gov-pl-geo": "label"
++    },
++    {
++      "name": "cecha_ulicy",
++      "title": "Cecha ulicy",
++      "description": "Rodzaj ulicy według rejestru TERYT, małymi literami: ulica, aleja, plac, osiedle, rondo itd.",
++      "type": "string",
++      "example": "ulica",
++      "constraints": {
++        "maxLength": 30
++      },
++      "x-wymagalnosc": "optional"
++    },
++    {
++      "name": "nazwa_ulicy",
++      "title": "Nazwa ulicy",
++      "description": "Nazwa ulicy bez cechy („Piłsudskiego\", nie „ul. Piłsudskiego\"). Puste, jeśli miejscowość nie ma ulic.",
++      "type": "string",
++      "example": "Piłsudskiego",
++      "constraints": {
++        "maxLength": 120
++      },
++      "x-wymagalnosc": "optional",
++      "x-osm": "addr:street",
++      "x-geodae": "adr_voie"
++    },
++    {
++      "name": "nr_budynku",
++      "title": "Numer budynku",
++      "description": "Numer porządkowy budynku, razem z literą, jeśli ją ma.",
++      "type": "string",
++      "example": "41",
++      "constraints": {
++        "maxLength": 20
++      },
++      "x-wymagalnosc": "optional",
++      "x-osm": "addr:housenumber",
++      "x-geodae": "adr_num"
++    },
++    {
++      "name": "nr_lokalu",
++      "title": "Numer lokalu",
++      "description": "Numer lokalu, jeśli urządzenie jest w wydzielonym lokalu.",
++      "type": "string",
++      "example": "2",
++      "constraints": {
++        "maxLength": 20
++      },
++      "x-wymagalnosc": "optional"
++    },
++    {
++      "name": "kod_pocztowy",
++      "title": "Kod pocztowy",
++      "description": "Kod pocztowy w zapisie 00-000.",
++      "type": "string",
++      "example": "05-120",
++      "constraints": {
++        "pattern": "^\\d{2}-\\d{3}$"
++      },
++      "x-wymagalnosc": "optional",
++      "x-osm": "addr:postcode",
++      "x-geodae": "com_cp"
++    },
++    {
++      "name": "miejscowosc",
++      "title": "Miejscowość",
++      "description": "Nazwa miejscowości.",
++      "type": "string",
++      "example": "Legionowo",
++      "constraints": {
++        "required": true,
++        "maxLength": 80
++      },
++      "x-wymagalnosc": "required",
++      "x-osm": "addr:city",
++      "x-geodae": "com_nom"
++    },
++    {
++      "name": "kod_terc",
++      "title": "Kod TERC gminy",
++      "description": "Identyfikator gminy w rejestrze TERYT (TERC), 7 cyfr: województwo, powiat, gmina i rodzaj gminy. System uzupełnia go sam na podstawie współrzędnych.",
++      "type": "string",
++      "example": "1408011",
++      "constraints": {
++        "required": true,
++        "pattern": "^\\d{7}$"
++      },
++      "x-wymagalnosc": "required",
++      "x-geodae": "com_insee"
++    },
++    {
++      "name": "kod_simc",
++      "title": "Kod SIMC miejscowości",
++      "description": "Identyfikator miejscowości w rejestrze TERYT (SIMC), 7 cyfr.",
++      "type": "string",
++      "example": "0920806",
++      "constraints": {
++        "pattern": "^\\d{7}$"
++      },
++      "x-wymagalnosc": "optional"
++    },
++    {
++      "name": "szerokosc_geograficzna",
++      "title": "Szerokość geograficzna",
++      "description": "Szerokość geograficzna w układzie WGS84, w stopniach dziesiętnych z kropką. W Polsce od 49,0 do 54,9.",
++      "type": "number",
++      "example": 52.395198,
++      "constraints": {
++        "required": true,
++        "minimum": 49,
++        "maximum": 54.9
++      },
++      "x-wymagalnosc": "required",
++      "x-geodae": "lat_coor1",
++      "x-dane-gov-pl-geo": "b"
++    },
++    {
++      "name": "dlugosc_geograficzna",
++      "title": "Długość geograficzna",
++      "description": "Długość geograficzna w układzie WGS84, w stopniach dziesiętnych z kropką. W Polsce od 14,1 do 24,2.",
++      "type": "number",
++      "example": 20.931382,
++      "constraints": {
++        "required": true,
++        "minimum": 14.1,
++        "maximum": 24.2
++      },
++      "x-wymagalnosc": "required",
++      "x-geodae": "long_coor1",
++      "x-dane-gov-pl-geo": "l"
++    },
++    {
++      "name": "opis_lokalizacji",
++      "title": "Gdzie dokładnie",
++      "description": "Gdzie dokładnie jest urządzenie: wejście, pomieszczenie, punkt orientacyjny. To zdanie przeczyta osoba, która biegnie po defibrylator.",
++      "type": "string",
++      "example": "Parter, hol główny, na ścianie obok portierni",
++      "constraints": {
++        "maxLength": 300
++      },
++      "x-wymagalnosc": "recommended",
++      "x-osm": "defibrillator:location",
++      "x-geodae": "acc_complt"
++    },
++    {
++      "name": "wewnatrz_budynku",
++      "title": "Wewnątrz budynku",
++      "description": "true, jeśli urządzenie jest w środku budynku; false, jeśli na zewnątrz (np. w kapsule na elewacji).",
++      "type": "boolean",
++      "example": true,
++      "x-wymagalnosc": "optional",
++      "x-osm": "indoor",
++      "x-geodae": "acc"
++    },
++    {
++      "name": "pietro",
++      "title": "Piętro",
++      "description": "Numer kondygnacji: 0 to parter, -1 to pierwsza kondygnacja podziemna.",
++      "type": "string",
++      "example": "0",
++      "constraints": {
++        "maxLength": 10
++      },
++      "x-wymagalnosc": "optional",
++      "x-osm": "level",
++      "x-geodae": "acc_etg"
++    },
++    {
++      "name": "dostep",
++      "title": "Kto może skorzystać",
++      "description": "Kto ma dostęp do urządzenia.",
++      "type": "string",
++      "example": "publiczny",
++      "constraints": {
++        "enum": [
++          "publiczny",
++          "ograniczony",
++          "prywatny"
++        ]
++      },
++      "x-wymagalnosc": "recommended",
++      "x-osm": "access",
++      "x-geodae": "acc_lib"
++    },
++    {
++      "name": "sposob_dostepu",
++      "title": "Jak wyjąć urządzenie",
++      "description": "Co trzeba zrobić na miejscu, żeby wziąć defibrylator. Od tego zależy, ile sekund straci ratujący. Kodu do szafki nie wpisuj: podaje go dyspozytor 112.",
++      "type": "string",
++      "example": "szafka_z_alarmem",
++      "constraints": {
++        "enum": [
++          "swobodny",
++          "szafka_z_alarmem",
++          "szafka_z_kodem",
++          "przez_obsluge"
++        ]
++      },
++      "x-wymagalnosc": "optional"
++    },
++    {
++      "name": "godziny_dostepnosci",
++      "title": "Godziny dostępności",
++      "description": "Kiedy można dostać się do urządzenia, w zapisie opening_hours znanym z OpenStreetMap: „24/7\" przez całą dobę, „Mo-Fr 08:00-16:00\" od poniedziałku do piątku, „Mo-Fr 07:30-15:30; Sa 08:00-12:00\" dla różnych dni. Kreator układa ten zapis z wybranych dni i godzin.",
++      "type": "string",
++      "example": "Mo-Fr 08:00-16:00",
++      "constraints": {
++        "maxLength": 200
++      },
++      "x-wymagalnosc": "recommended",
++      "x-osm": "opening_hours",
++      "x-geodae": "dispo_horaires"
++    },
++    {
++      "name": "uwagi_dostepu",
++      "title": "Jak się dostać",
++      "description": "Co trzeba zrobić, żeby dostać się do urządzenia: domofon, portier, szafka z plombą. Nie wpisuj tu kodów dostępu.",
++      "type": "string",
++      "example": "Po godzinach pracy urzędu dzwonić domofonem do ochrony",
++      "constraints": {
++        "maxLength": 300
++      },
++      "x-wymagalnosc": "optional",
++      "x-geodae": "disp_complt"
++    },
++    {
++      "name": "podmiot_odpowiedzialny",
++      "title": "Podmiot odpowiedzialny",
++      "description": "Instytucja lub firma, która opiekuje się urządzeniem i potwierdza jego sprawność.",
++      "type": "string",
++      "example": "Urząd Miasta Legionowo",
++      "constraints": {
++        "maxLength": 200
++      },
++      "x-wymagalnosc": "recommended",
++      "x-osm": "operator",
++      "x-geodae": "expt_rais"
++    },
++    {
++      "name": "telefon_kontaktowy",
++      "title": "Telefon kontaktowy",
++      "description": "Numer telefonu instytucji (nie prywatny), pod którym ktoś pomoże dotrzeć do urządzenia. Zapis: +48 i dziewięć cyfr.",
++      "type": "string",
++      "example": "+48227667200",
++      "constraints": {
++        "pattern": "^\\+\\d{9,15}$"
++      },
++      "x-wymagalnosc": "optional",
++      "x-osm": "phone",
++      "x-geodae": "tel1"
++    },
++    {
++      "name": "email_kontaktowy",
++      "title": "E-mail kontaktowy",
++      "description": "Adres e-mail instytucji (nie imienny), na który trafi prośba o potwierdzenie danych.",
++      "type": "string",
++      "example": "kancelaria@um.legionowo.pl",
++      "constraints": {
++        "maxLength": 120
++      },
++      "x-wymagalnosc": "optional",
++      "x-geodae": "expt_email"
++    },
++    {
++      "name": "status",
++      "title": "Status",
++      "description": "Czy z urządzenia można dziś skorzystać.",
++      "type": "string",
++      "example": "czynny",
++      "constraints": {
++        "required": true,
++        "enum": [
++          "czynny",
++          "czasowo_niedostepny",
++          "wycofany",
++          "nieznany"
++        ]
++      },
++      "x-wymagalnosc": "required",
++      "x-geodae": "etat_fonct"
++    },
++    {
++      "name": "data_weryfikacji",
++      "title": "Data weryfikacji",
++      "description": "Dzień, w którym opiekun ostatnio potwierdził, że urządzenie jest na miejscu i sprawne (RRRR-MM-DD).",
++      "type": "date",
++      "format": "default",
++      "example": "2026-10-01",
++      "x-wymagalnosc": "recommended",
++      "x-osm": "check_date",
++      "x-geodae": "dermnt"
++    },
++    {
++      "name": "producent",
++      "title": "Producent",
++      "description": "Producent urządzenia.",
++      "type": "string",
++      "example": "Philips",
++      "constraints": {
++        "maxLength": 80
++      },
++      "x-wymagalnosc": "optional",
++      "x-osm": "manufacturer",
++      "x-geodae": "fab_rais"
++    },
++    {
++      "name": "model",
++      "title": "Model",
++      "description": "Model urządzenia.",
++      "type": "string",
++      "example": "HeartStart FRx",
++      "constraints": {
++        "maxLength": 80
++      },
++      "x-wymagalnosc": "optional",
++      "x-osm": "model",
++      "x-geodae": "modele"
++    },
++    {
++      "name": "elektrody_pediatryczne",
++      "title": "Elektrody pediatryczne",
++      "description": "true, jeśli przy urządzeniu są elektrody dla dzieci albo ma ono tryb pediatryczny.",
++      "type": "boolean",
++      "example": false,
++      "x-wymagalnosc": "optional",
++      "x-geodae": "lc_ped"
++    },
++    {
++      "name": "termin_waznosci_elektrod",
++      "title": "Termin ważności elektrod",
++      "description": "Data, do której ważne są elektrody dla dorosłych (RRRR-MM-DD). Pozwala systemowi przypomnieć opiekunowi o wymianie.",
++      "type": "date",
++      "format": "default",
++      "example": "2027-06-30",
++      "x-wymagalnosc": "optional",
++      "x-geodae": "dtpr_lcad"
++    },
++    {
++      "name": "termin_waznosci_elektrod_pediatrycznych",
++      "title": "Termin ważności elektrod pediatrycznych",
++      "description": "Data, do której ważne są elektrody dla dzieci (RRRR-MM-DD). Zostaw puste, gdy przy urządzeniu nie ma takich elektrod.",
++      "type": "date",
++      "format": "default",
++      "example": "2027-03-31",
++      "x-wymagalnosc": "optional",
++      "x-geodae": "dtpr_lcped"
++    },
++    {
++      "name": "termin_waznosci_baterii",
++      "title": "Termin ważności baterii",
++      "description": "Data, do której ważna jest bateria (RRRR-MM-DD).",
++      "type": "date",
++      "format": "default",
++      "example": "2028-01-31",
++      "x-wymagalnosc": "optional",
++      "x-geodae": "dtpr_bat"
++    },
++    {
++      "name": "zrodlo",
++      "title": "Źródło",
++      "description": "Dostawca lub zbiór, z którego pochodzi rekord. Przy licencji CC BY 4.0 jest to zarazem wymagane oznaczenie autorstwa.",
++      "type": "string",
++      "example": "Urząd Miasta Legionowo (dane.gov.pl, zbiór 40593)",
++      "constraints": {
++        "required": true,
++        "maxLength": 300
++      },
++      "x-wymagalnosc": "required"
++    },
++    {
++      "name": "id_w_zrodle",
++      "title": "Identyfikator w źródle",
++      "description": "Identyfikator, pod którym urządzenie występuje u dostawcy (np. numer inwentarzowy albo numer z pliku).",
++      "type": "string",
++      "example": "12",
++      "constraints": {
++        "maxLength": 100
++      },
++      "x-wymagalnosc": "optional"
++    },
++    {
++      "name": "licencja",
++      "title": "Licencja",
++      "description": "Licencja, na której dostawca udostępnił rekord.",
++      "type": "string",
++      "example": "CC0 1.0",
++      "constraints": {
++        "required": true,
++        "enum": [
++          "CC0 1.0",
++          "CC BY 4.0",
++          "ODbL 1.0"
++        ]
++      },
++      "x-wymagalnosc": "required"
++    },
++    {
++      "name": "data_aktualizacji",
++      "title": "Data aktualizacji",
++      "description": "Dzień ostatniej zmiany rekordu w zbiorze krajowym (RRRR-MM-DD).",
++      "type": "date",
++      "format": "default",
++      "example": "2026-11-21",
++      "constraints": {
++        "required": true
++      },
++      "x-wymagalnosc": "required"
++    }
++  ],
++  "primaryKey": "id",
++  "missingValues": [
++    ""
++  ]
++}
+diff --git a/mcod/resources/aggregated_lists/service.py b/mcod/resources/aggregated_lists/service.py
+new file mode 100644
+index 0000000..a7f8e31
+--- /dev/null
++++ b/mcod/resources/aggregated_lists/service.py
+@@ -0,0 +1,352 @@
++"""
++Portal side of the aggregated lists ("wykazy zbiorcze"): finding the providers' resources, building the
++summary table and publishing it as a resource of the summary dataset.
++
++Mirrors the DGA summary (mcod/resources/dga_utils.py) with two differences:
++
++- the summary resource keeps its id and address: each night its main file is replaced in place (like a
++  file change in the admin panel), so links to it never break; the DGA summary creates a new resource
++  and deletes the old one instead,
++- the list's definition (columns, tag, titles, owner) comes from the registry in `definitions.py`, so the
++  same code serves every list.
++
++Flow (see mcod/resources/tasks/aggregated_lists.py):
++1. `build_list`: published resources of published datasets tagged with the list's tag → one CSV.
++2. `publish`: create the summary dataset and resource on the first run, replace the file afterwards.
++3. `check_aggregated_list_task` waits for the portal's validation of the new file; on failure
++   `roll_back` restores the previous file (or deletes what the first run created).
++"""
++
++import datetime
++import logging
++from dataclasses import dataclass, field
++from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
++
++import pandas as pd
++import requests
++import sentry_sdk
++from celery import states
++from django.apps import apps
++from django.conf import settings
++from django.core.exceptions import ObjectDoesNotExist
++from django.core.files.uploadedfile import SimpleUploadedFile
++from django.db import transaction
++from django.db.models import QuerySet
++from django.utils import timezone, translation
++
++from mcod.resources.aggregated_lists.core import (
++    SUPPORTED_EXTENSIONS,
++    Provider,
++    SourceReadError,
++    SourceReport,
++    merge_tables,
++    normalise_header,
++    read_table,
++    summarise,
++    to_csv_bytes,
++)
++from mcod.resources.aggregated_lists.definitions import AggregatedListDefinition
++
++if TYPE_CHECKING:
++    from mcod.datasets.models import Dataset
++    from mcod.resources.models import AggregatedListInfo, Resource
++
++logger = logging.getLogger("mcod")
++
++CSV_MIMETYPE = "text/csv"
++REMOTE_TIMEOUT = (3.0, 30.0)
++
++
++@dataclass
++class BuildResult:
++    content: bytes
++    reports: List[SourceReport]
++    totals: Dict[str, Any]
++    built_at: datetime.datetime = field(default_factory=timezone.now)
++
++    def as_report(self) -> Dict[str, Any]:
++        return {**self.totals, "sources_report": [r.as_dict() for r in self.reports]}
++
++
++@dataclass
++class Publication:
++    resource_pk: int
++    # Set only when this run created them, so a failed first run can remove them again.
++    created_resource: bool = False
++    created_dataset_pk: Optional[int] = None
++    # Storage name of the file this run replaced, to restore it when the new one fails validation.
++    previous_file: Optional[str] = None
++
++
++def owner_organization_pk(definition: AggregatedListDefinition) -> int:
++    return int(definition.owner_organization_pk or settings.AGGREGATED_LISTS_OWNER_ORGANIZATION_PK)
++
++
++def get_info(definition: AggregatedListDefinition, create: bool = False) -> Optional["AggregatedListInfo"]:
++    AggregatedListInfo = apps.get_model("resources", "AggregatedListInfo")
++    if create:
++        info, _ = AggregatedListInfo.objects.get_or_create(slug=definition.slug)
++        return info
++    return AggregatedListInfo.objects.filter(slug=definition.slug).first()
++
++
++def get_summary_resource(definition: AggregatedListDefinition) -> Optional["Resource"]:
++    info = get_info(definition)
++    return info.summary_resource if info else None
++
++
++def get_source_resources(definition: AggregatedListDefinition) -> QuerySet:
++    """
++    Published CSV/XLSX/XLS resources of published datasets carrying the list's tag, whose file, link and
++    data validation succeeded (the same prefilter as the DGA summary). Ordered by institution.
++    """
++    Resource = apps.get_model("resources", "Resource")
++    Dataset = apps.get_model("datasets", "Dataset")
++
++    member_datasets = Dataset.objects.filter(status="published", tags__name__iexact=definition.tag).values("pk")
++    queryset = Resource.objects.filter(
++        dataset__in=member_datasets,
++        status="published",
++        format__in=SUPPORTED_EXTENSIONS,
++        data_tasks_last_status=states.SUCCESS,
++        file_tasks_last_status=states.SUCCESS,
++        link_tasks_last_status=states.SUCCESS,
++    )
++    info = get_info(definition)
++    if info and info.resource_id:
++        queryset = queryset.exclude(pk=info.resource_id)
++    if info and info.dataset_id:
++        queryset = queryset.exclude(dataset_id=info.dataset_id)
++    return queryset.select_related("dataset__organization").order_by("dataset__organization__title", "pk")
++
++
++def _read_from_tabular_data(resource: "Resource") -> pd.DataFrame:
++    tabular_data = resource.tabular_data
++    if tabular_data is None:
++        raise SourceReadError(f"Zasób {resource.pk} nie ma pliku, adresu ani danych tabelarycznych.")
++    rows = tabular_data.table.read(keyed=True)
++    df = pd.DataFrame(rows).astype(str)
++    df.columns = [normalise_header(c) for c in df.columns]
++    return df
++
++
++def read_source_table(resource: "Resource") -> pd.DataFrame:
++    """
++    The provider's table as text. Order: the stored file (exact values, no type guessing), then the
++    resource's address (remote and CKAN-harvested resources), then the portal's parsed tabular data.
++    """
++    main_file = resource.main_file
++    if main_file and not resource.main_file_compressed_format:
++        try:
++            with main_file.open("rb") as handle:
++                return read_table(handle.read(), resource.format)
++        except (OSError, ValueError) as exc:
++            logger.warning("Aggregated list: cannot open file of resource %s: %s", resource.pk, exc)
++
++    if resource.link and not resource.is_link_internal:
++        try:
++            response = requests.get(resource.link, timeout=REMOTE_TIMEOUT)
++            response.raise_for_status()
++        except requests.exceptions.RequestException as exc:
++            raise SourceReadError(f"Nie udało się pobrać {resource.link}: {exc}") from exc
++        return read_table(response.content, resource.format)
++
++    try:
++        return _read_from_tabular_data(resource)
++    except SourceReadError:
++        raise
++    except Exception as exc:
++        raise SourceReadError(f"Nie udało się odczytać danych tabelarycznych zasobu {resource.pk}: {exc}") from exc
++
++
++def provider_for(resource: "Resource") -> Provider:
++    updated = resource.data_date or (resource.modified.date() if resource.modified else None)
++    with translation.override(settings.LANGUAGES[0][0]):
++        url = resource.frontend_absolute_url
++    return Provider(
++        name=resource.institution.title,
++        resource_url=url,
++        updated=updated.isoformat() if updated else "",
++        resource_id=resource.pk,
++    )
++
++
++def build_list(definition: AggregatedListDefinition) -> BuildResult:
++    parts: List[Tuple[Provider, pd.DataFrame]] = []
++    unreadable: List[SourceReport] = []
++
++    for resource in get_source_resources(definition):
++        provider = provider_for(resource)
++        try:
++            parts.append((provider, read_source_table(resource)))
++        except SourceReadError as exc:
++            sentry_sdk.api.capture_exception(exc)
++            logger.error("Aggregated list %s: skipping resource %s: %s", definition.slug, resource.pk, exc)
++            unreadable.append(SourceReport(provider=provider.name, resource_id=resource.pk, error=str(exc)))
++
++    merged, reports = merge_tables(parts, definition.schema)
++    reports = reports + unreadable
++    for report in reports:
++        if report.error:
++            logger.warning("Aggregated list %s: resource %s left out: %s", definition.slug, report.resource_id, report.error)
++        elif report.skipped:
++            logger.info("Aggregated list %s: resource %s rows skipped: %s", definition.slug, report.resource_id, report.skipped)
++
++    totals = summarise(reports)
++    logger.info("Aggregated list %s built: %s", definition.slug, dict(totals))
++    return BuildResult(content=to_csv_bytes(merged), reports=reports, totals=dict(totals))
++
++
++def _summary_file(definition: AggregatedListDefinition, content: bytes) -> SimpleUploadedFile:
++    name = f"{definition.file_name_prefix} {timezone.now():%Y%m%d}.csv"
++    return SimpleUploadedFile(name=name, content=content, content_type=CSV_MIMETYPE)
++
++
++def _create_summary_dataset(definition: AggregatedListDefinition) -> "Dataset":
++    Organization = apps.get_model("organizations", "Organization")
++    Dataset = apps.get_model("datasets", "Dataset")
++    Category = apps.get_model("categories", "Category")
++    Tag = apps.get_model("tags", "Tag")
++
++    organization_pk = owner_organization_pk(definition)
++    try:
++        institution = Organization.objects.get(pk=organization_pk)
++    except Organization.DoesNotExist:
++        logger.error("Aggregated list %s: owner institution %s not found.", definition.slug, organization_pk)
++        raise ObjectDoesNotExist(f"Owner institution {organization_pk} of aggregated list {definition.slug} not found.")
++
++    dataset = Dataset.objects.create(
++        title=definition.dataset_title,
++        notes=definition.dataset_description,
++        organization=institution,
++        update_notification_recipient_email=settings.AGGREGATED_LISTS_NOTIFICATION_EMAIL,
++        has_dynamic_data=False,
++        has_high_value_data=False,
++        has_high_value_data_from_ec_list=False,
++        has_research_data=False,
++        update_frequency="daily",
++        status="published",
++    )
++
++    categories = list(Category.objects.filter(title__in=definition.category_titles))
++    missing = set(definition.category_titles) - {c.title for c in categories}
++    for title in sorted(missing):
++        logger.warning("Aggregated list %s: no category titled %s.", definition.slug, title)
++
++    language = settings.LANGUAGES[0][0]
++    tags = [Tag.objects.get_or_create(name=name, language=language)[0] for name in definition.dataset_tags]
++
++    dataset.categories.set(categories)
++    dataset.tags.set(tags)
++    dataset.save()
++    logger.info("Aggregated list %s: created summary dataset %s.", definition.slug, dataset.pk)
++    return dataset
++
++
++def publish(definition: AggregatedListDefinition, result: BuildResult) -> Publication:
++    """
++    Puts the built CSV into the portal. First run: summary dataset (if missing), resource and its file;
++    the file's post_save signal starts the usual validation. Later runs: the main file is replaced in place
++    and validation is started explicitly, because replacing a file does not trigger it.
++    """
++    Resource = apps.get_model("resources", "Resource")
++    ResourceFile = apps.get_model("resources", "ResourceFile")
++    from mcod.resources.tasks import entrypoint_process_resource_file_validation_task
++
++    info = get_info(definition, create=True)
++    resource = info.summary_resource
++    today = timezone.now().date()
++
++    with transaction.atomic():
++        if resource is None:
++            created_dataset_pk = None
++            dataset = info.summary_dataset
++            if dataset is None:
++                dataset = _create_summary_dataset(definition)
++                created_dataset_pk = dataset.pk
++
++            resource = Resource.objects.create(
++                title=definition.resource_title,
++                description=definition.resource_description,
++                dataset=dataset,
++                has_dynamic_data=False,
++                has_high_value_data=False,
++                has_high_value_data_from_ec_list=False,
++                has_research_data=False,
++                contains_protected_data=False,
++                status="published",
++                data_date=today,
++            )
++            # post_save of a new main file of a published resource runs all validation tasks
++            ResourceFile.objects.create(resource=resource, is_main=True, file=_summary_file(definition, result.content))
++            publication = Publication(resource_pk=resource.pk, created_resource=True, created_dataset_pk=created_dataset_pk)
++            info.dataset = dataset
++            logger.info("Aggregated list %s: created summary resource %s.", definition.slug, resource.pk)
++        else:
++            current = ResourceFile.objects.filter(resource=resource, is_main=True).first()
++            previous_file = current.file.name if current and current.file else None
++            resource.data_date = today
++            resource.save()
++            resource_file, created = ResourceFile.objects.update_or_create(
++                resource=resource, is_main=True, defaults={"file": _summary_file(definition, result.content)}
++            )
++            # Statuses of the previous file must not count as the result for the new one.
++            Resource.raw.filter(pk=resource.pk).update(
++                data_tasks_last_status=states.PENDING,
++                file_tasks_last_status=states.PENDING,
++                link_tasks_last_status=states.PENDING,
++            )
++            if not created:
++                entrypoint_process_resource_file_validation_task.apply_async_on_commit(
++                    args=(resource_file.pk,), kwargs={"update_file_archive": True}
++                )
++            publication = Publication(resource_pk=resource.pk, previous_file=previous_file)
++            logger.info("Aggregated list %s: replaced file of summary resource %s.", definition.slug, resource.pk)
++
++        info.resource = resource
++        info.built_at = result.built_at
++        info.report = result.as_report()
++        info.save()
++
++    return publication
++
++
++def mark_published(definition: AggregatedListDefinition, resource: "Resource") -> None:
++    info = get_info(definition, create=True)
++    info.resource = resource
++    info.dataset = resource.dataset
++    info.published_at = timezone.now()
++    info.save()
++    logger.info("Aggregated list %s: summary resource %s validated and published.", definition.slug, resource.pk)
++
++
++def roll_back(definition: AggregatedListDefinition, publication: Publication) -> None:
++    """Undoes a publication whose file did not pass the portal's validation."""
++    Resource = apps.get_model("resources", "Resource")
++    Dataset = apps.get_model("datasets", "Dataset")
++    ResourceFile = apps.get_model("resources", "ResourceFile")
++    from mcod.resources.tasks import entrypoint_process_resource_file_validation_task
++
++    try:
++        if publication.created_resource:
++            Resource.raw.filter(pk=publication.resource_pk).delete()
++            if publication.created_dataset_pk:
++                Dataset.raw.filter(pk=publication.created_dataset_pk).delete()
++            logger.warning("Aggregated list %s: removed summary created by the failed run.", definition.slug)
++        elif publication.previous_file:
++            files = ResourceFile.objects.filter(resource_id=publication.resource_pk, is_main=True)
++            files.update(file=publication.previous_file)
++            resource_file = files.first()
++            if resource_file:
++                entrypoint_process_resource_file_validation_task.apply_async_on_commit(
++                    args=(resource_file.pk,), kwargs={"update_file_archive": True}
++                )
++            logger.warning(
++                "Aggregated list %s: restored previous file %s of resource %s.",
++                definition.slug,
++                publication.previous_file,
++                publication.resource_pk,
++            )
++    except Exception as exc:
++        logger.error("Aggregated list %s: roll back failed: %s", definition.slug, exc)
++        sentry_sdk.api.capture_exception(exc)
+diff --git a/mcod/resources/forms.py b/mcod/resources/forms.py
+index fd4a5b7..b0b1951 100644
+--- a/mcod/resources/forms.py
++++ b/mcod/resources/forms.py
+@@ -30,6 +30,14 @@ from mcod.lib.widgets import (
+ )
+ from mcod.organizations.models import Organization
+ from mcod.regions.fields import RegionsMultipleChoiceField
++from mcod.resources.aggregated_lists.core import (
++    SUPPORTED_EXTENSIONS as AGGREGATED_LIST_EXTENSIONS,
++    MissingColumnsError,
++    SourceReadError,
++    check_columns,
++    read_table,
++)
++from mcod.resources.aggregated_lists.definitions import definitions_for_tags
+ from mcod.resources.archives import is_password_protected_archive_file
+ from mcod.resources.dga_constants import (
+     ALLOWED_DGA_INSTITUTIONS,
+@@ -333,6 +341,10 @@ class ResourceForm(forms.ModelForm, HighValueDataFormValidatorMixin):
+             if not is_main_dga_resource and organization:
+                 self._remove_dga_flag_from_current_dga_resource_if_needed(data, organization)
+ 
++        uploaded_file: Optional[UploadedFile] = data.get("file")
++        if uploaded_file and dataset:
++            self._validate_aggregated_list_file(uploaded_file, dataset)
++
+         self.validate_high_value_data_flags_conflict(data)
+         if organization:
+             self._validate_high_value_data_from_ec_list_organization(data, organization)
+@@ -399,6 +411,40 @@ class ResourceForm(forms.ModelForm, HighValueDataFormValidatorMixin):
+                 _("To select YES here, above select the dataset of a government or local government institution."),
+             )
+ 
++    def _validate_aggregated_list_file(self, file: UploadedFile, dataset: Dataset) -> None:
++        """
++        A table added to a dataset tagged for an aggregated list (e.g. `wykaz-aed`) must have the list's
++        required columns. Otherwise the nightly summary would leave it out and the provider would not know.
++        Other files in such a dataset (e.g. a PDF with a description) are not checked.
++        """
++        definitions = definitions_for_tags(dataset.tags.values_list("name", flat=True))
++        if not definitions:
++            return
++        extension = os.path.splitext(file.name or "")[1].lstrip(".").lower()
++        if not extension and getattr(file, "content_type", None):
++            extension = (guess_extension(file.content_type) or "").lstrip(".")
++        if extension not in AGGREGATED_LIST_EXTENSIONS:
++            return
++
++        try:
++            content = file.read()
++            file.seek(0)
++            table = read_table(content, extension)
++        except SourceReadError as exc:
++            self.add_error("file", f"Nie udało się odczytać pliku, więc nie trafi on do wykazu zbiorczego. {exc}")
++            return
++
++        for definition in definitions:
++            try:
++                check_columns(table, definition.schema)
++            except MissingColumnsError as exc:
++                self.add_error(
++                    "file",
++                    f"Zbiór ma tag „{definition.tag}”, więc ten plik trafi do wykazu „{definition.dataset_title}”. "
++                    f"Brakuje w nim kolumn: {', '.join(exc.columns)}. Uzupełnij je według wzorca danych "
++                    f"albo usuń tag ze zbioru.",
++                )
++
+     def _validate_dga_file(self, file: InMemoryUploadedFile, creating_resource: bool) -> None:
+         extension: Optional[str] = guess_extension(file.content_type)
+         if extension is None:
+diff --git a/mcod/resources/management/commands/build_aggregated_list.py b/mcod/resources/management/commands/build_aggregated_list.py
+new file mode 100644
+index 0000000..3953ed3
+--- /dev/null
++++ b/mcod/resources/management/commands/build_aggregated_list.py
+@@ -0,0 +1,71 @@
++import json
++
++from django.core.management.base import BaseCommand, CommandError
++
++from mcod.resources.aggregated_lists import service
++from mcod.resources.aggregated_lists.definitions import REGISTRY, get_definition
++
++
++class Command(BaseCommand):
++    help = (
++        "Buduje wykaz zbiorczy (np. defibrylatorów AED) z zasobów zbiorów oznaczonych tagiem wykazu. "
++        "Bez --dry-run publikuje wynik w portalu tak samo jak nocne zadanie."
++    )
++
++    def add_arguments(self, parser):
++        parser.add_argument("slugs", nargs="*", help=f"Wykazy do zbudowania (domyślnie wszystkie: {', '.join(REGISTRY)}).")
++        parser.add_argument(
++            "--dry-run",
++            action="store_true",
++            help="Tylko zbuduj wykaz i pokaż raport, niczego nie zapisuj w portalu.",
++        )
++        parser.add_argument("--output", help="Zapisz zbudowany plik CSV pod tą ścieżką (przydatne z --dry-run).")
++        parser.add_argument(
++            "--async",
++            dest="run_async",
++            action="store_true",
++            help="Zleć budowę zadaniu Celery zamiast budować w tym procesie.",
++        )
++
++    def handle(self, *args, **options):
++        slugs = options["slugs"] or list(REGISTRY)
++        try:
++            definitions = [get_definition(slug) for slug in slugs]
++        except KeyError as exc:
++            raise CommandError(str(exc))
++        if options["output"] and len(definitions) > 1:
++            raise CommandError("--output działa dla jednego wykazu naraz.")
++
++        for definition in definitions:
++            if options["run_async"]:
++                from mcod.resources.tasks import build_aggregated_list_task
++
++                build_aggregated_list_task.apply_async(args=(definition.slug,))
++                self.stdout.write(f"{definition.slug}: zlecono budowę wykazu.")
++                continue
++
++            result = service.build_list(definition)
++            if options["output"]:
++                with open(options["output"], "wb") as handle:
++                    handle.write(result.content)
++                self.stdout.write(f"{definition.slug}: zapisano {options['output']}.")
++            self.stdout.write(json.dumps(result.as_report(), ensure_ascii=False, indent=2, default=str))
++
++            if options["dry_run"]:
++                continue
++
++            publication = service.publish(definition, result)
++            from mcod.resources.tasks import check_aggregated_list_task
++
++            check_aggregated_list_task.apply_async(
++                args=(definition.slug, publication.resource_pk),
++                kwargs={
++                    "created_resource": publication.created_resource,
++                    "created_dataset_pk": publication.created_dataset_pk,
++                    "previous_file": publication.previous_file,
++                },
++                countdown=30,
++            )
++            resource = service.get_summary_resource(definition)
++            address = resource.frontend_absolute_url if resource else f"zasób {publication.resource_pk}"
++            self.stdout.write(self.style.SUCCESS(f"{definition.slug}: opublikowano {address}; trwa walidacja pliku w portalu."))
+diff --git a/mcod/resources/migrations/0075_aggregatedlistinfo.py b/mcod/resources/migrations/0075_aggregatedlistinfo.py
+new file mode 100644
+index 0000000..3c1d7e9
+--- /dev/null
++++ b/mcod/resources/migrations/0075_aggregatedlistinfo.py
+@@ -0,0 +1,56 @@
++# Written by hand for the aggregated lists ("wykazy zbiorcze"), in the shape `makemigrations` produces.
++
++import django.contrib.postgres.fields.jsonb
++import django.db.models.deletion
++from django.db import migrations, models
++
++
++class Migration(migrations.Migration):
++
++    dependencies = [
++        ("datasets", "0045_merge_20251028_1446"),
++        ("resources", "0074_auto_20260618_0956"),
++    ]
++
++    operations = [
++        migrations.CreateModel(
++            name="AggregatedListInfo",
++            fields=[
++                (
++                    "id",
++                    models.AutoField(
++                        auto_created=True,
++                        primary_key=True,
++                        serialize=False,
++                        verbose_name="ID",
++                    ),
++                ),
++                ("slug", models.SlugField(unique=True)),
++                ("created_at", models.DateTimeField(auto_now_add=True)),
++                ("updated_at", models.DateTimeField(auto_now=True)),
++                ("built_at", models.DateTimeField(blank=True, null=True)),
++                ("published_at", models.DateTimeField(blank=True, null=True)),
++                ("report", django.contrib.postgres.fields.jsonb.JSONField(blank=True, default=dict)),
++                (
++                    "dataset",
++                    models.ForeignKey(
++                        blank=True,
++                        null=True,
++                        on_delete=django.db.models.deletion.SET_NULL,
++                        related_name="+",
++                        to="datasets.Dataset",
++                    ),
++                ),
++                (
++                    "resource",
++                    models.ForeignKey(
++                        blank=True,
++                        null=True,
++                        on_delete=django.db.models.deletion.SET_NULL,
++                        related_name="+",
++                        to="resources.Resource",
++                    ),
++                ),
++            ],
++        ),
++    ]
+diff --git a/mcod/resources/models.py b/mcod/resources/models.py
+index 6c9ac63..0d8a8fd 100644
+--- a/mcod/resources/models.py
++++ b/mcod/resources/models.py
+@@ -1645,6 +1645,39 @@ class AggregatedDGAInfo(models.Model):
+         return None
+ 
+ 
++class AggregatedListInfo(models.Model):
++    """
++    State of one aggregated list ("wykaz zbiorczy", see mcod/resources/aggregated_lists): which resource
++    holds the summary and what the last build found. One row per list definition (`slug`).
++    Generalises AggregatedDGAInfo, which is a singleton for the DGA list only.
++    """
++
++    slug = models.SlugField(max_length=50, unique=True)
++    created_at = models.DateTimeField(auto_now_add=True)
++    updated_at = models.DateTimeField(auto_now=True)
++    resource = models.ForeignKey(Resource, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
++    dataset = models.ForeignKey("datasets.Dataset", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
++    built_at = models.DateTimeField(null=True, blank=True)
++    published_at = models.DateTimeField(null=True, blank=True)
++    # Totals and per-source report of the last build: sources used and rejected, rows skipped and why.
++    report = JSONField(default=dict, blank=True)
++
++    def __str__(self):
++        return f"AggregatedListInfo({self.slug})"
++
++    @property
++    def summary_resource(self) -> Optional[Resource]:
++        if self.resource and self.resource.is_published and not self.resource.is_removed:
++            return self.resource
++        return None
++
++    @property
++    def summary_dataset(self) -> Optional[Dataset]:
++        if self.dataset and self.dataset.is_published and not self.dataset.is_removed:
++            return self.dataset
++        return None
++
++
+ class Chart(ExtendedModel):
+     SIGNALS_MAP = {
+         "updated": (update_chart_resource,),
+diff --git a/mcod/resources/tasks/__init__.py b/mcod/resources/tasks/__init__.py
+index 3309d6b..dc423fa 100644
+--- a/mcod/resources/tasks/__init__.py
++++ b/mcod/resources/tasks/__init__.py
+@@ -1,3 +1,8 @@
++from mcod.resources.tasks.aggregated_lists import (
++    build_aggregated_list_task,
++    build_all_aggregated_lists_task,
++    check_aggregated_list_task,
++)
+ from mcod.resources.tasks.dga import clean_dga_temp_directory, create_main_dga_resource_task
+ from mcod.resources.tasks.entrypoint_res import entrypoint_process_resource_validation_task
+ from mcod.resources.tasks.entrypoint_res_file import (
+@@ -31,6 +36,9 @@ if is_enabled("S69_resource_link_validation_chunk"):
+     from mcod.resources.tasks.validate_link import validate_links_batch  # noqa: F401
+ 
+     __all__ = (
++        "build_aggregated_list_task",
++        "build_all_aggregated_lists_task",
++        "check_aggregated_list_task",
+         "clean_dga_temp_directory",
+         "create_main_dga_resource_task",
+         "entrypoint_process_resource_validation_task",
+@@ -58,6 +66,9 @@ if is_enabled("S69_resource_link_validation_chunk"):
+ 
+ else:
+     __all__ = (
++        "build_aggregated_list_task",
++        "build_all_aggregated_lists_task",
++        "check_aggregated_list_task",
+         "clean_dga_temp_directory",
+         "create_main_dga_resource_task",
+         "entrypoint_process_resource_validation_task",
+diff --git a/mcod/resources/tasks/aggregated_lists.py b/mcod/resources/tasks/aggregated_lists.py
+new file mode 100644
+index 0000000..d809058
+--- /dev/null
++++ b/mcod/resources/tasks/aggregated_lists.py
+@@ -0,0 +1,101 @@
++import logging
++from typing import Optional
++
++from django.apps import apps
++from django.conf import settings
++
++from mcod.core.tasks import extended_shared_task
++from mcod.resources.aggregated_lists import service
++from mcod.resources.aggregated_lists.definitions import REGISTRY, get_definition
++from mcod.resources.dga_utils import (
++    FailedValidationException,
++    PendingValidationException,
++    check_all_resource_validations_status,
++)
++
++logger = logging.getLogger("mcod")
++
++
++@extended_shared_task(
++    name="mcod.resources.tasks.build_all_aggregated_lists_task",
++)
++def build_all_aggregated_lists_task() -> None:
++    """Nightly entry point (celery beat): builds every list in the registry, each in its own task."""
++    for slug in REGISTRY:
++        build_aggregated_list_task.apply_async(args=(slug,))
++
++
++@extended_shared_task(
++    name="mcod.resources.tasks.build_aggregated_list_task",
++)
++def build_aggregated_list_task(slug: str) -> dict:
++    """
++    Builds one aggregated list ("wykaz zbiorczy") and puts it into the portal:
++
++    1. Reads the published resources of datasets tagged with the list's tag and merges the rows that
++       follow the list's standard columns into one CSV, each row marked with its provider.
++    2. Creates the summary dataset and resource on the first run; later replaces the resource's file in
++       place, so its address stays the same.
++    3. Hands over to `check_aggregated_list_task`, which waits for the portal's validation of the new file.
++    """
++    definition = get_definition(slug)
++    logger.info("Building aggregated list %s.", slug)
++    result = service.build_list(definition)
++    publication = service.publish(definition, result)
++    # publish() has committed its transaction by now, so the check sees the new file.
++    check_aggregated_list_task.apply_async(
++        args=(slug, publication.resource_pk),
++        kwargs={
++            "created_resource": publication.created_resource,
++            "created_dataset_pk": publication.created_dataset_pk,
++            "previous_file": publication.previous_file,
++        },
++        countdown=settings.AGGREGATED_LISTS_VALIDATION_RETRY_COUNTDOWN,
++    )
++    return result.totals
++
++
++@extended_shared_task(
++    max_retries=10,
++    atomic=False,
++    retry_countdown=30,
++    retry_on_errors=(PendingValidationException,),
++    bind=True,
++    name="mcod.resources.tasks.check_aggregated_list_task",
++)
++def check_aggregated_list_task(
++    self,
++    slug: str,
++    resource_pk: int,
++    created_resource: bool = False,
++    created_dataset_pk: Optional[int] = None,
++    previous_file: Optional[str] = None,
++) -> None:
++    """
++    Waits (by retrying) until the portal has validated the summary file, like the DGA summary task.
++    When validation fails, or is still pending after the last retry, the publication is rolled back:
++    the previous file comes back, or the resource and dataset created by a first run are removed.
++    """
++    definition = get_definition(slug)
++    publication = service.Publication(
++        resource_pk=resource_pk,
++        created_resource=created_resource,
++        created_dataset_pk=created_dataset_pk,
++        previous_file=previous_file,
++    )
++    Resource = apps.get_model("resources", "Resource")
++    resource = Resource.raw.get(pk=resource_pk)
++
++    try:
++        check_all_resource_validations_status(resource)
++    except PendingValidationException:
++        if self.request.retries >= self.max_retries:
++            logger.error("Aggregated list %s: validation still pending after the last retry.", slug)
++            service.roll_back(definition, publication)
++        raise
++    except FailedValidationException:
++        logger.error("Aggregated list %s: summary file failed validation.", slug)
++        service.roll_back(definition, publication)
++        raise
++
++    service.mark_published(definition, resource)
+diff --git a/mcod/resources/tests/test_aggregated_lists_core.py b/mcod/resources/tests/test_aggregated_lists_core.py
+new file mode 100644
+index 0000000..179fdb5
+--- /dev/null
++++ b/mcod/resources/tests/test_aggregated_lists_core.py
+@@ -0,0 +1,233 @@
++"""
++Tests of the aggregated lists core (reading, checking and merging provider tables).
++
++They need only pandas and openpyxl, not the portal stack, so they also run outside Docker:
++    python -m pytest -o addopts="" --noconftest mcod/resources/tests/test_aggregated_lists_core.py
++"""
++
++import io
++
++import pandas as pd
++import pytest
++
++from mcod.resources.aggregated_lists.core import (
++    PROVIDER_COLUMNS,
++    SKIP_DUPLICATE_KEY,
++    SKIP_EMPTY_REQUIRED,
++    SKIP_INVALID_VALUE,
++    MissingColumnsError,
++    Provider,
++    SourceReadError,
++    TableSchema,
++    check_columns,
++    clean_table,
++    merge_tables,
++    read_table,
++    summarise,
++    to_csv_bytes,
++)
++from mcod.resources.aggregated_lists.definitions import AED, REGISTRY, AggregatedListDefinition, definitions_for_tags, get_definition
++
++SCHEMA = AED.schema
++
++ROW = {
++    "id": "3f0c2a8e-5b1d-4c7a-9e21-6d4b8f0a1c55",
++    "nazwa": "Urząd Miasta – hol główny",
++    "cecha_ulicy": "ul.",
++    "nazwa_ulicy": "Piłsudskiego",
++    "nr_budynku": "1",
++    "kod_pocztowy": "05-120",
++    "miejscowosc": "Legionowo",
++    "kod_terc": "1408011",
++    "szerokosc_geograficzna": "52.4012",
++    "dlugosc_geograficzna": "20.9265",
++    "status": "czynny",
++    "zrodlo": "Urząd Miasta Legionowo",
++    "licencja": "CC0 1.0",
++    "data_aktualizacji": "2026-11-21",
++}
++
++
++def table(*rows, **overrides):
++    return pd.DataFrame([{**ROW, **overrides, **row} for row in rows] or [{**ROW, **overrides}], dtype=str)
++
++
++def test_aed_definition_uses_the_pattern():
++    assert REGISTRY["aed"] is AED
++    assert AED.tag == "wykaz-aed"
++    assert SCHEMA.column_names[:3] == ["id", "nazwa", "cecha_ulicy"]
++    assert len(SCHEMA.column_names) == 34
++    assert set(SCHEMA.required_names) == {
++        "id",
++        "nazwa",
++        "miejscowosc",
++        "kod_terc",
++        "szerokosc_geograficzna",
++        "dlugosc_geograficzna",
++        "status",
++        "zrodlo",
++        "licencja",
++        "data_aktualizacji",
++    }
++    assert SCHEMA.primary_key == ("id",)
++    assert AED.output_columns == SCHEMA.column_names + list(PROVIDER_COLUMNS)
++
++
++def test_definition_lookup_by_slug_and_tag():
++    assert get_definition("aed") is AED
++    with pytest.raises(KeyError):
++        get_definition("nie-ma")
++    assert definitions_for_tags(["AED", "Wykaz-AED "]) == [AED]
++    assert definitions_for_tags(["defibrylator"]) == []
++
++
++def test_summary_dataset_cannot_carry_its_membership_tag():
++    with pytest.raises(ValueError):
++        AggregatedListDefinition(
++            slug="x",
++            tag="wykaz-x",
++            schema_file="aed.json",
++            dataset_title="",
++            dataset_description="",
++            resource_title="",
++            resource_description="",
++            file_name_prefix="",
++            dataset_tags=("wykaz-x",),
++        )
++
++
++def test_reads_csv_with_semicolons_cp1250_and_messy_headers():
++    content = "﻿ID ;Nazwa;Miejscowość\n1;Hol;Łódź\n".encode("utf-8")
++    df = read_table(content, "csv")
++    assert list(df.columns) == ["id", "nazwa", "miejscowość"]
++    assert df.iloc[0].tolist() == ["1", "Hol", "Łódź"]
++
++    content = "nazwa;miejscowosc\nPrzychodnia;Łódź\n".encode("cp1250")
++    df = read_table(content, "CSV")
++    assert df.iloc[0]["miejscowosc"] == "Łódź"
++
++
++def test_reads_xlsx_as_text():
++    buffer = io.BytesIO()
++    table().to_excel(buffer, index=False)
++    df = read_table(buffer.getvalue(), "xlsx")
++    assert df.iloc[0]["kod_terc"] == "1408011"
++    assert df.iloc[0]["nazwa"] == ROW["nazwa"]
++
++
++def test_rejects_unknown_format_and_broken_file():
++    with pytest.raises(SourceReadError):
++        read_table(b"{}", "json")
++    with pytest.raises(SourceReadError):
++        read_table(b"not an excel file", "xlsx")
++
++
++def test_missing_required_columns_are_named():
++    with pytest.raises(MissingColumnsError) as error:
++        check_columns(table().drop(columns=["kod_terc", "status"]), SCHEMA)
++    assert error.value.columns == ["kod_terc", "status"]
++
++
++def test_clean_table_keeps_pattern_columns_and_fills_optional_ones():
++    df = table()
++    df["kolumna_dostawcy"] = "x"
++    cleaned, skipped = clean_table(df, SCHEMA)
++    assert list(cleaned.columns) == SCHEMA.column_names
++    assert skipped == {}
++    assert cleaned.iloc[0]["nr_lokalu"] == ""
++    assert cleaned.iloc[0]["nazwa"] == ROW["nazwa"]
++
++
++def test_clean_table_skips_rows_with_empty_or_invalid_required_values():
++    df = table(
++        {},
++        {"id": "a1b2c3d4-0000-4000-8000-000000000001", "nazwa": "  "},
++        {"id": "a1b2c3d4-0000-4000-8000-000000000002", "szerokosc_geograficzna": "60.1"},
++        {"id": "a1b2c3d4-0000-4000-8000-000000000003", "status": "dziala"},
++        {"id": "nie-uuid"},
++        {"id": "a1b2c3d4-0000-4000-8000-000000000004", "data_aktualizacji": "21.11.2026"},
++    )
++    cleaned, skipped = clean_table(df, SCHEMA)
++    assert cleaned["id"].tolist() == [ROW["id"]]
++    assert skipped == {SKIP_EMPTY_REQUIRED: 1, SKIP_INVALID_VALUE: 4}
++
++
++def test_clean_table_repairs_spreadsheet_damage():
++    df = table(
++        {
++            "kod_terc": "201011",
++            "szerokosc_geograficzna": "52,4012",
++            "dlugosc_geograficzna": " 20.9265 ",
++            "data_aktualizacji": "2026-11-21 00:00:00",
++        },
++        {"id": "a1b2c3d4-0000-4000-8000-000000000005", "kod_terc": "1408011.0"},
++    )
++    cleaned, skipped = clean_table(df, SCHEMA)
++    assert skipped == {}
++    assert cleaned["kod_terc"].tolist() == ["0201011", "1408011"]
++    assert cleaned.iloc[0]["szerokosc_geograficzna"] == "52.4012"
++    assert cleaned.iloc[0]["dlugosc_geograficzna"] == "20.9265"
++    assert cleaned.iloc[0]["data_aktualizacji"] == "2026-11-21"
++
++
++def test_merge_attributes_every_row_to_its_provider_and_drops_repeated_ids():
++    legionowo = Provider(
++        name="Urząd Miasta Legionowo",
++        resource_url="https://dane.gov.pl/pl/dataset/1/resource/11",
++        updated="2026-11-21",
++        resource_id=11,
++    )
++    marki = Provider(name="Urząd Miasta Marki", resource_url="https://dane.gov.pl/pl/dataset/2/resource/22", updated="2026-11-20", resource_id=22)
++    broken = Provider(name="Gmina bez kolumn", resource_id=33)
++
++    second = "b2c3d4e5-0000-4000-8000-000000000001"
++    merged, reports = merge_tables(
++        [
++            (legionowo, table()),
++            (marki, table({}, {"id": second, "miejscowosc": "Marki", "kod_terc": "1434031"})),
++            (broken, pd.DataFrame({"nazwa": ["x"]})),
++        ],
++        SCHEMA,
++    )
++
++    assert list(merged.columns) == AED.output_columns
++    assert merged["id"].tolist() == [ROW["id"], second]
++    assert merged["dysponent_danych"].tolist() == ["Urząd Miasta Legionowo", "Urząd Miasta Marki"]
++    assert merged.iloc[1]["zasob_zrodlowy"] == "https://dane.gov.pl/pl/dataset/2/resource/22"
++    assert merged.iloc[1]["aktualizacja_zasobu_zrodlowego"] == "2026-11-20"
++
++    assert [r.rows_published for r in reports] == [1, 1, 0]
++    assert reports[1].skipped == {SKIP_DUPLICATE_KEY: 1}
++    assert reports[2].error.startswith("Brak wymaganych kolumn: id")
++
++    totals = summarise(reports)
++    assert totals["sources"] == 3
++    assert totals["sources_used"] == 2
++    assert totals["sources_rejected"] == 1
++    assert totals["rows_read"] == 4
++    assert totals["rows_published"] == 2
++    assert totals["skipped"] == {SKIP_DUPLICATE_KEY: 1}
++
++
++def test_merge_with_no_usable_sources_gives_header_only():
++    merged, reports = merge_tables([], SCHEMA)
++    assert merged.empty
++    assert list(merged.columns) == AED.output_columns
++    assert to_csv_bytes(merged).decode("utf-8") == ",".join(AED.output_columns) + "\r\n"
++
++
++def test_csv_output_is_rfc4180_and_reads_back():
++    merged, _ = merge_tables([(Provider(name='Gmina "Przykładowa", Biuro'), table(nazwa="Hol, parter"))], SCHEMA)
++    content = to_csv_bytes(merged)
++    assert not content.startswith(b"\xef\xbb\xbf")
++    assert b"\r\n" in content
++    assert '"Hol, parter"' in content.decode("utf-8")
++    back = pd.read_csv(io.BytesIO(content), dtype=str, keep_default_na=False)
++    assert back.iloc[0]["dysponent_danych"] == 'Gmina "Przykładowa", Biuro'
++    assert back.iloc[0]["kod_terc"] == "1408011"
++
++
++def test_schema_from_dict_accepts_string_primary_key():
++    schema = TableSchema.from_dict({"fields": [{"name": "a", "constraints": {"required": True}}], "primaryKey": "a"})
++    assert schema.primary_key == ("a",)
++    assert schema.required_names == ["a"]
+diff --git a/mcod/settings/base.py b/mcod/settings/base.py
+index 9e567f1..fac88cf 100644
+--- a/mcod/settings/base.py
++++ b/mcod/settings/base.py
+@@ -967,6 +967,9 @@ CELERY_TASK_ROUTES = {
+     "mcod.submissions.tasks.generate_statistical_report_for_all_submissions_task": {"queue": "reports"},
+     "mcod.resources.tasks.check_link_protocol": {"queue": "resources"},
+     "mcod.resources.tasks.create_main_dga_resource_task": {"queue": "resources"},
++    "mcod.resources.tasks.build_all_aggregated_lists_task": {"queue": "resources"},
++    "mcod.resources.tasks.build_aggregated_list_task": {"queue": "resources"},
++    "mcod.resources.tasks.check_aggregated_list_task": {"queue": "resources"},
+     "mcod.resources.tasks.delete_es_resource_tabular_data_index": {"queue": "indexing_data"},
+     "mcod.resources.tasks.delete_es_resource_tabular_data_indexes_for_organization": {"queue": "indexing_data"},
+     "mcod.resources.tasks.entrypoint_process_resource_file_validation_task": {"queue": "resources"},
+@@ -1730,6 +1733,16 @@ MAIN_DGA_DATASET_TAGS_NAMES = [
+     "chronione dane",
+ ]
+ 
++# Aggregated lists ("wykazy zbiorcze", mcod/resources/aggregated_lists): one summary table per list, built
++# nightly from the resources of datasets that carry the list's tag. The summary dataset belongs to this
++# institution (by default the same as the DGA summary: Ministerstwo Cyfryzacji).
++AGGREGATED_LISTS_OWNER_ORGANIZATION_PK = env.int(
++    "AGGREGATED_LISTS_OWNER_ORGANIZATION_PK", default=int(MAIN_DGA_DATASET_OWNER_ORGANIZATION_PK)
++)
++AGGREGATED_LISTS_NOTIFICATION_EMAIL = env("AGGREGATED_LISTS_NOTIFICATION_EMAIL", default="")
++# Seconds to wait between checks of the summary resource's validation, and how many checks before rollback.
++AGGREGATED_LISTS_VALIDATION_RETRY_COUNTDOWN = env.int("AGGREGATED_LISTS_VALIDATION_RETRY_COUNTDOWN", default=30)
++
+ PASSWORD_RESET_PATH = "/user/reset-password/%s/"
+ EMAIL_VALIDATION_PATH = "/user/verify-email/%s/"
+ 
