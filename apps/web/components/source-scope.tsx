@@ -18,7 +18,7 @@ function Cell({ source, field }: { source: SourceReport; field: string }) {
   return (
     <td>
       {entry.provided > 0 && <span className={entry.provided === source.rows ? "font-semibold" : ""}>{percent(entry.provided, source.rows)}</span>}
-      {entry.constant && <span className="block text-xs text-muted">jedna wartość dla całego źródła</span>}
+      {entry.constant && <span className="block text-xs text-muted">jedna wartość dla wszystkich</span>}
       {entry.added > 0 && (
         <span className="block text-xs text-ok">
           {entry.provided > 0 ? "+ " : ""}
@@ -43,12 +43,9 @@ export default function SourceScope({ sources: all, notIncluded }: { sources: So
           Zakres danych w każdym źródle
         </h2>
         <p>
-          Punktem odniesienia jest wzorzec danych. Tabela pokazuje, w jakiej części wierszy każde źródło podaje daną informację. Osobno zaznaczamy to, co system uzupełnił sam z rejestrów państwowych (kod gminy,
-          położenie z adresu).
-        </p>
-        <p>
+          Jaka część wierszy każdego źródła ma dane pole wzorca. Na zielono: to, co uzupełniliśmy z rejestrów.{" "}
           <a href={`${API_URL}/dane/zakres-zrodel.csv`} className="link">
-            Pobierz tę tabelę jako plik CSV
+            Pobierz tabelę (CSV)
           </a>
         </p>
       </div>
@@ -108,7 +105,7 @@ export default function SourceScope({ sources: all, notIncluded }: { sources: So
       {notIncluded.length > 0 && (
         <section aria-labelledby="poza-zbiorem" className="space-y-3 pt-4">
           <h3 id="poza-zbiorem" className="text-lg font-bold">
-            Źródła, które znamy, ale ich nie włączamy
+            Źródła spoza zbioru
           </h3>
           <ul className="space-y-3">
             {notIncluded.map((source) => (
@@ -123,7 +120,7 @@ export default function SourceScope({ sources: all, notIncluded }: { sources: So
                 </p>
                 <p className="text-sm">{source.scope}</p>
                 <p className="text-sm">
-                  <strong>Dlaczego nie ma go w zbiorze:</strong> {source.reason}
+                  <strong>Dlaczego nie:</strong> {source.reason}
                 </p>
               </li>
             ))}

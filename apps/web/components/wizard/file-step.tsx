@@ -21,10 +21,7 @@ export default function FileStep({ headingRef, busy, onFile }: { headingRef: Ref
   return (
     <section className="max-w-2xl space-y-5">
       <StepHeading headingRef={headingRef}>Wybierz plik z listą defibrylatorów</StepHeading>
-      <p>
-        Wystarczy plik, który już masz, w dowolnym układzie kolumn. Nie musisz go przerabiać: sami zgadniemy, co jest czym, a Ty tylko to potwierdzisz. Arkusz z Excela możesz wgrać od razu, także w starszym
-        formacie (.xls).
-      </p>
+      <p>Dowolny układ kolumn. Sami rozpoznamy, co jest czym.</p>
       <div className="space-y-1.5">
         <label htmlFor="plik" className="label">
           Plik z urządzeniami
@@ -46,20 +43,17 @@ export default function FileStep({ headingRef, busy, onFile }: { headingRef: Ref
         />
       </div>
       {busy && <p className="text-muted">Sprawdzam plik…</p>}
-      <p className="text-sm">
-        Nie masz jeszcze listy?{" "}
+      <p className="flex flex-wrap gap-x-3 text-sm">
+        <span>Nie masz listy? Pobierz szablon:</span>
         <a href={`${API_URL}/dane/wzorzec.xlsx`} className="link">
-          Pobierz szablon w Excelu
-        </a>{" "}
-        (wypełnij arkusz „Szablon”),{" "}
+          Excel
+        </a>
         <a href={`${API_URL}/dane/szablon.csv`} className="link">
-          szablon CSV
-        </a>{" "}
-        albo zobacz{" "}
+          CSV
+        </a>
         <Link href="/wzorzec" className="link">
-          opis wszystkich pól
+          opis pól
         </Link>
-        .
       </p>
     </section>
   );

@@ -8,7 +8,7 @@ export default function ReviewStep({ headingRef, preview, onBack, onNext }: { he
   const { summary } = preview;
   return (
     <section className="space-y-5">
-      <StepHeading headingRef={headingRef}>Zobacz, co poprawiliśmy i na co warto spojrzeć</StepHeading>
+      <StepHeading headingRef={headingRef}>Zobacz poprawki</StepHeading>
       <Stats
         className="max-w-3xl grid-cols-2 sm:grid-cols-4"
         items={[
@@ -59,7 +59,7 @@ export default function ReviewStep({ headingRef, preview, onBack, onNext }: { he
           </tbody>
         </table>
       </div>
-      {summary.rows > preview.rows.length && <p className="hint">Dla czytelności pokazujemy pierwsze {preview.rows.length} wierszy, ale wyślemy wszystkie ({summary.rows}).</p>}
+      {summary.rows > preview.rows.length && <p className="hint">Widać {preview.rows.length} z {summary.rows}. Wyślemy wszystkie.</p>}
 
       <StepButtons onBack={onBack}>
         <button type="button" onClick={onNext} className="btn btn-primary">
@@ -90,8 +90,8 @@ function Notes({ row }: { row: Row }) {
         <li>
           <span className="font-semibold text-gov">Już w systemie:</span>{" "}
           {duplicate.publication === "official"
-            ? `„${duplicate.nazwa}” już jest w oficjalnych danych (${duplicate.distanceM} m stąd). Zaktualizujemy ten wpis, nie dodamy drugiego.`
-            : `to urządzenie znaliśmy dotąd tylko z mapy społeczności (${duplicate.distanceM} m stąd). Twoje zgłoszenie je potwierdzi.`}
+            ? `„${duplicate.nazwa}” (${duplicate.distanceM} m stąd). Zaktualizujemy ten wpis.`
+            : `znane dotąd z OpenStreetMap (${duplicate.distanceM} m stąd). Zgłoszenie je potwierdzi.`}
         </li>
       )}
     </ul>

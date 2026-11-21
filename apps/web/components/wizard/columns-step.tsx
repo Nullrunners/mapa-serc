@@ -1,5 +1,6 @@
 import { FIELDS, GROUPS, SYSTEM_FIELDS, type FieldDef } from "@aed/schema";
 import type { Ref } from "react";
+import { plural } from "@/lib/gaps-text";
 import { StepButtons, StepHeading, type Mapping, type Preview } from "./shared";
 
 /** What a column can be: a field of the pattern (without those the system fills in itself) or a composite column. */
@@ -42,9 +43,9 @@ export default function ColumnsStep({ headingRef, fileName, preview, mapping, on
 
   return (
     <section className="space-y-5">
-      <StepHeading headingRef={headingRef}>Sprawdź, czy kolumny są dobrze rozpoznane</StepHeading>
+      <StepHeading headingRef={headingRef}>Sprawdź kolumny</StepHeading>
       <p className="max-w-3xl">
-        W pliku „{fileName}” jest {rows} {rows === 1 ? "wiersz" : "wierszy"}. Przy każdej kolumnie pokazujemy, za co ją uznaliśmy i dlaczego. Jeśli się pomyliliśmy, wybierz właściwą odpowiedź z listy.
+        „{fileName}”: {rows} {plural(rows, "wiersz", "wiersze", "wierszy")}. Popraw, jeśli źle rozpoznaliśmy kolumnę.
       </p>
       {preview.fileFixes.length > 0 && (
         <ul className="max-w-3xl list-disc space-y-1 rounded-lg bg-surface py-3 pr-4 pl-8 text-sm">
@@ -80,7 +81,7 @@ export default function ColumnsStep({ headingRef, fileName, preview, mapping, on
                     onChange={(event) => onMapping({ ...mapping, [column.header]: event.target.value || null })}
                     className="field w-full py-1.5"
                   >
-                    <option value="">— pomiń tę kolumnę —</option>
+                    <option value="">— pomiń —</option>
                     {TARGET_GROUPS.map((group) => (
                       <optgroup key={group.title} label={group.title}>
                         {group.options.map((option) => (
@@ -101,8 +102,8 @@ export default function ColumnsStep({ headingRef, fileName, preview, mapping, on
 
       {(!hasName || !hasPosition) && (
         <p role="alert" className="max-w-3xl text-danger">
-          {!hasName && "Wskaż kolumnę z nazwą miejsca, w którym stoi urządzenie. "}
-          {!hasPosition && "Wskaż kolumny z adresem albo ze współrzędnymi GPS, żebyśmy wiedzieli, gdzie urządzenie jest."}
+          {!hasName && "Wskaż kolumnę z nazwą miejsca. "}
+          {!hasPosition && "Wskaż adres albo współrzędne GPS."}
         </p>
       )}
       <StepButtons onBack={onBack}>

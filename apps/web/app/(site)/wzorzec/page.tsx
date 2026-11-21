@@ -8,19 +8,19 @@ import { REQUIREMENT, VALUE_TYPE } from "@/lib/pattern-text";
 export const metadata: Metadata = { title: "Wzorzec danych AED" };
 
 const OTHER_FILES = [
-  { href: "/dane/szablon.csv", label: "Szablon CSV z przykładowym wierszem" },
-  { href: "/dane/wzorzec.md", label: "Opis wszystkich pól jako zwykły tekst" },
-  { href: "/dane/schema.json", label: "Schemat w JSON do automatycznego sprawdzania plików", note: "dla programistów" },
-  { href: "/dane/aed.csv-metadata.json", label: "Opis kolumn pliku krajowego (CSVW)", note: "dla programistów" },
+  { href: "/dane/szablon.csv", label: "Szablon CSV" },
+  { href: "/dane/wzorzec.md", label: "Opis pól (tekst)" },
+  { href: "/dane/schema.json", label: "Schemat JSON", note: "dla programistów" },
+  { href: "/dane/aed.csv-metadata.json", label: "Opis kolumn CSVW", note: "dla programistów" },
 ];
 
 // Formats stay on one line, with plain hyphens, so a copied example works in a file.
 const FILE_RULES: ReactNode[] = [
-  "Zapisz plik jako CSV w kodowaniu UTF-8, z przecinkami między kolumnami i nagłówkiem w pierwszym wierszu.",
+  "CSV w UTF-8, przecinki między kolumnami, nagłówek w pierwszym wierszu.",
   <>
-    Liczby zapisuj z kropką (52.2297), a daty jako <span className="whitespace-nowrap">RRRR-MM-DD</span> (<span className="whitespace-nowrap">2026-11-21</span>).
+    Liczby z kropką (52.2297), daty jako <span className="whitespace-nowrap">RRRR-MM-DD</span> (<span className="whitespace-nowrap">2026-11-21</span>).
   </>,
-  "Pole bez danych zostaw puste.",
+  "Brak danych: zostaw puste pole.",
 ];
 
 /** Rendered from the same field catalogue that generates the CSV, the Table Schema and the API contract. */
@@ -30,7 +30,7 @@ export default function PatternPage() {
     <div className="space-y-12">
       <PageHeader
         title="Wzorzec danych: lokalizacje defibrylatorów AED"
-        lead={`Wersja ${SCHEMA_VERSION}. To lista informacji, które prosimy podać o każdym defibrylatorze, żeby dane z różnych miejsc dało się połączyć.`}
+        lead={`Wersja ${SCHEMA_VERSION}. Co podać o każdym defibrylatorze, żeby dane z różnych miejsc dało się połączyć.`}
       />
 
       <div className="grid gap-8 md:grid-cols-2">
@@ -42,7 +42,7 @@ export default function PatternPage() {
             <a href={`${API_URL}/dane/wzorzec.xlsx`} className="btn btn-primary">
               Pobierz wzorzec w Excelu (XLSX)
             </a>
-            <p className="hint">Opis pól, słowniki, przykład i pusty szablon do wypełnienia.</p>
+            <p className="hint">Opis pól, przykład i pusty szablon.</p>
           </div>
           <ul className="space-y-1 text-sm">
             {OTHER_FILES.map((file) => (

@@ -33,7 +33,7 @@ export default function Candidates() {
     const { data, response } = await api
       .POST("/v1/candidates/{id}/decision", { params: { path: { id: candidate.id } }, body: { decision }, headers: { Authorization: `Bearer ${token}` } })
       .catch(() => ({ data: undefined, response: undefined }));
-    if (!data) return setError(response?.status === 401 ? "Do tej czynności potrzebny jest token administratora. Wpisz go w polu powyżej." : "Nie udało się zapisać decyzji. Spróbuj ponownie za chwilę.");
+    if (!data) return setError(response?.status === 401 ? "Wpisz token administratora powyżej." : "Nie udało się zapisać decyzji. Spróbuj za chwilę.");
     if (data.confirmationUrl) setLinks({ ...links, [candidate.id]: data.confirmationUrl });
     setVersion(version + 1);
   }
@@ -58,7 +58,7 @@ export default function Candidates() {
           </label>
           <input id="token" type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} aria-describedby="token-opis" className="field w-64 py-1.5" />
           <p id="token-opis" className="text-xs text-muted">
-            Potrzebny tylko do podejmowania decyzji. Wskazówki może przeglądać każdy.
+            Tylko do decyzji. Przeglądać może każdy.
           </p>
         </div>
       </div>
@@ -74,8 +74,8 @@ export default function Candidates() {
           {result.state === "loading" && "Wczytuję…"}
           {result.state === "ready" &&
             (result.data.total === 0
-              ? "Na razie nie ma wskazówek. Uruchom zadanie „radar”, żeby je wygenerować."
-              : `Wskazówki: ${count(result.data.total)}${result.data.total > result.data.items.length ? `, poniżej ${result.data.items.length} najważniejszych` : ""}.`)}
+              ? "Brak wskazówek. Uruchom zadanie „radar”."
+              : `Wskazówki: ${count(result.data.total)}${result.data.total > result.data.items.length ? ` (widać ${result.data.items.length} najważniejszych)` : ""}`)}
         </p>
         {result.state === "error" && (
           <p role="alert" className="text-danger">
@@ -112,14 +112,14 @@ function Lead({ candidate, link, onDecide }: { candidate: Candidate; link?: stri
       </blockquote>
       {candidate.kind === "procurement" && candidate.registered !== null && (
         <p className="text-sm">
-          Urządzeń z tej gminy w oficjalnych danych: <strong>{candidate.registered}</strong>
-          {candidate.devices !== null ? `, a w ogłoszeniu kupiono ich: ${candidate.devices}` : ""}.
+          W danych gminy: <strong>{candidate.registered}</strong>
+          {candidate.devices !== null ? `, kupiono: ${candidate.devices}` : ""}
         </p>
       )}
       {link && (
         <div className="space-y-1 pt-1">
           <label htmlFor={`link-${candidate.id}`} className="label text-sm">
-            Link do wysłania opiekunowi urządzenia (np. e-mailem)
+            Link dla opiekuna urządzenia
           </label>
           <input id={`link-${candidate.id}`} readOnly value={link} onFocus={(event) => event.target.select()} className="field w-full py-1 font-mono text-xs" />
         </div>

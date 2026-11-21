@@ -48,7 +48,7 @@ export default function Sources() {
         />
         <section aria-labelledby="pobierz" className="space-y-2">
           <h2 id="pobierz" className="text-lg font-bold">
-            Pobierz całą bazę w jednym pliku
+            Pobierz całą bazę
           </h2>
           <div className="flex flex-wrap gap-2">
             {DOWNLOADS.map((file) => (
@@ -57,7 +57,7 @@ export default function Sources() {
               </a>
             ))}
           </div>
-          <p className="hint">CSV otworzysz w Excelu. GeoJSON i JSON-LD są dla programów do map i dla programistów.</p>
+          <p className="hint">CSV otworzysz w Excelu, pozostałe są dla programistów.</p>
         </section>
       </div>
 
@@ -132,7 +132,7 @@ function SourceCard({ source }: { source: SourceReport }) {
       )}
       {source.issues.length > 0 && (
         <details className="text-sm">
-          <summary className="cursor-pointer font-semibold text-warn">Do sprawdzenia przez dostawcę danych ({source.issues.length})</summary>
+          <summary className="cursor-pointer font-semibold text-warn">Do sprawdzenia przez dostawcę ({source.issues.length})</summary>
           <ul className="mt-2 list-disc space-y-0.5 pl-6">
             {source.issues.map((line) => (
               <li key={line.code}>

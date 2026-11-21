@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Źródła i jakość danych" };
 export default function QualityPage() {
   return (
     <div className="space-y-8">
-      <PageHeader title="Źródła i jakość danych" lead="Skąd mamy dane o defibrylatorach, co poprawiliśmy sami i co musi jeszcze sprawdzić ich dostawca." />
+      <PageHeader title="Źródła i jakość danych" lead="Skąd mamy dane i co w nich poprawiliśmy." />
       <Sources />
     </div>
   );

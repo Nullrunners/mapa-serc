@@ -2,8 +2,8 @@ import type { Ref } from "react";
 import { StepButtons, StepHeading, type Licence, type Provider } from "./shared";
 
 const LICENCES: { value: Licence; label: string; hint: string }[] = [
-  { value: "CC0 1.0", label: "Bez żadnych warunków (CC0 1.0)", hint: "Polecamy dla danych publicznych: każdy może z nich swobodnie korzystać." },
-  { value: "CC BY 4.0", label: "Z obowiązkiem podania źródła (CC BY 4.0)", hint: "Kto użyje tych danych, musi podać Twoją instytucję jako źródło." },
+  { value: "CC0 1.0", label: "Bez warunków (CC0 1.0)", hint: "Polecamy. Każdy może swobodnie korzystać." },
+  { value: "CC BY 4.0", label: "Z podaniem źródła (CC BY 4.0)", hint: "Trzeba podać Twoją instytucję jako źródło." },
 ];
 
 export interface SignStepProps {
@@ -28,14 +28,14 @@ export default function SignStep({ headingRef, provider, onProvider, invitation,
       }}
     >
       <StepHeading headingRef={headingRef}>Podpisz zgłoszenie</StepHeading>
-      {invitation && <p className="rounded-lg bg-gov-light p-3 text-sm">Dostałeś(-aś) zaproszenie od administratora zbioru, więc po wysłaniu dane pojawią się od razu.</p>}
+      {invitation && <p className="rounded-lg bg-gov-light p-3 text-sm">Masz zaproszenie, więc dane pojawią się od razu po wysłaniu.</p>}
 
       <div className="space-y-1.5">
         <label htmlFor="dostawca" className="label">
           Nazwa instytucji
         </label>
         <p id="dostawca-opis" className="hint">
-          Pokażemy ją przy każdym urządzeniu jako źródło danych, na przykład „Urząd Miasta Marki”.
+          Np. „Urząd Miasta Marki”. Pokażemy ją jako źródło danych.
         </p>
         <input
           id="dostawca"
@@ -55,7 +55,7 @@ export default function SignStep({ headingRef, provider, onProvider, invitation,
           Adres e-mail instytucji <span className="font-normal text-muted">(nieobowiązkowy)</span>
         </label>
         <p id="email-opis" className="hint">
-          Wyślemy tu naklejki z kodem QR dla Twoich urządzeń i przypomnimy o wymianie elektrod i baterii przed terminem. Nie pokazujemy tego adresu publicznie.
+          Wyślemy tu naklejki QR i przypomnienia o wymianie elektrod. Nie publikujemy go.
         </p>
         <input id="email" type="email" autoComplete="email" aria-describedby="email-opis" value={provider.email} onChange={(event) => set({ email: event.target.value })} className="field w-full" />
       </div>
@@ -75,7 +75,7 @@ export default function SignStep({ headingRef, provider, onProvider, invitation,
 
       <label className="flex items-start gap-3">
         <input type="checkbox" required checked={provider.confirmed} onChange={(event) => set({ confirmed: event.target.checked })} className="mt-1 size-4" />
-        <span>Potwierdzam, że mogę udostępnić te dane i że nie ma w nich danych prywatnych osób, takich jak numery telefonów komórkowych czy imienne adresy e-mail.</span>
+        <span>Mogę udostępnić te dane i nie ma w nich danych osobowych (np. prywatnych telefonów, imiennych e-maili).</span>
       </label>
 
       <StepButtons onBack={onBack}>
