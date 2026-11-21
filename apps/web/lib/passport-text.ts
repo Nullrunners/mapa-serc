@@ -47,3 +47,20 @@ export function expiryText(item: ExpiryItem): { text: string; tone: string } {
 
 /** Short code printed under the QR, for people who type the address by hand. */
 export const shortCode = (id: string) => id.slice(0, 8).toUpperCase();
+
+/** Address of a device passport on the site the page was opened from (browser only). */
+export const passportHref = (id: string) => `${window.location.origin}/aed/${id}`;
+
+/** Stickers on one A4 sheet page, and devices on one sheet link (the ids travel in the address). */
+export const STICKERS_PER_PAGE = 4;
+export const STICKERS_PER_SHEET = 40;
+
+/** Links to A4 sheets with the stickers of the given devices, 40 devices per link. */
+export function stickerSheets(ids: readonly string[]): { href: string; from: number; to: number }[] {
+  const sheets: { href: string; from: number; to: number }[] = [];
+  for (let start = 0; start < ids.length; start += STICKERS_PER_SHEET) {
+    const part = ids.slice(start, start + STICKERS_PER_SHEET);
+    sheets.push({ href: `/naklejki?id=${part.join(",")}`, from: start + 1, to: start + part.length });
+  }
+  return sheets;
+}

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { FIELDS, GROUPS, type FieldDef } from "@aed/schema";
 import { api, API_URL } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { stickerSheets } from "@/lib/passport-text";
 
 type Preview = components["schemas"]["ImportPreview"];
 type Result = components["schemas"]["ImportResult"];
@@ -430,6 +431,15 @@ export default function Wizard() {
                 dostęp do zarządzania jednym urządzeniem.
                 {provider.email && ` Wysłaliśmy je też na adres ${provider.email}.`}
               </p>
+              {result.devices.length > 1 && (
+                <p className="flex flex-wrap gap-x-4 font-semibold">
+                  {stickerSheets(result.devices.map((device) => device.id)).map((sheet, _, sheets) => (
+                    <Link key={sheet.href} href={sheet.href} className="text-gov underline">
+                      {sheets.length === 1 ? "Wydrukuj wszystkie naklejki na kartkach A4" : `Naklejki ${sheet.from}–${sheet.to} na kartkach A4`}
+                    </Link>
+                  ))}
+                </p>
+              )}
               <ul className="divide-y divide-line border-y border-line text-sm">
                 {result.devices.map((device) => (
                   <li key={device.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2">
