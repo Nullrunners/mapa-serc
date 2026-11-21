@@ -21,6 +21,7 @@ import {
   type statsRoute,
 } from './contract'
 import { ApiError } from './http/errors'
+import { KeptBodies, keepJson, sendKept } from './http/kept'
 import { ok } from './http/respond'
 import { runJob } from './jobs'
 import { KNOWN_SOURCES } from './pipeline/known'
@@ -168,27 +169,34 @@ export const aedDetailHandler: RouteHandler<typeof aedDetailRoute> = async (c) =
   })
 }
 
+/** The map layers as sent: every page with a map asks for one, and it is the same until a device changes. */
+const mapLayers = new KeptBodies<number, typeof MapFeatureCollection>()
+
 export const mapHandler: RouteHandler<typeof mapRoute> = async (c) => {
   const { store } = await getContext()
   const { layer } = c.req.valid('query')
-  return ok(c, MapFeatureCollection, {
-    type: 'FeatureCollection',
-    features: store.aeds
-      .filter((aed) => inLayer(aed, layer))
-      .map((aed) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: [aed.record.dlugosc_geograficzna, aed.record.szerokosc_geograficzna] as [number, number] },
-        properties: {
-          id: aed.id,
-          nazwa: aed.record.nazwa,
-          publication: aed.publication,
-          dostep: aed.record.dostep,
-          godziny_dostepnosci: aed.record.godziny_dostepnosci,
-          status: aed.record.status,
-          quality: aed.quality,
-        },
-      })),
-  })
+  const kept = await mapLayers.get(layer, store.revision, () =>
+    keepJson(c, MapFeatureCollection, {
+      type: 'FeatureCollection',
+      features: store.aeds
+        .filter((aed) => inLayer(aed, layer))
+        .map((aed) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: [aed.record.dlugosc_geograficzna, aed.record.szerokosc_geograficzna] as [number, number] },
+          properties: {
+            id: aed.id,
+            nazwa: aed.record.nazwa,
+            publication: aed.publication,
+            dostep: aed.record.dostep,
+            godziny_dostepnosci: aed.record.godziny_dostepnosci,
+            status: aed.record.status,
+            quality: aed.quality,
+          },
+        })),
+    }),
+  )
+  // Asked about every time: a keeper who has just changed a device must see it on the map.
+  return sendKept(c, kept)
 }
 
 export const statsHandler: RouteHandler<typeof statsRoute> = async (c) => {

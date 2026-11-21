@@ -21,13 +21,14 @@ import {
 import type { z } from '@hono/zod-openapi'
 import type { Store } from '../db/store'
 import { ApiError } from '../http/errors'
+import { KeptBodies, keepJson, sendKept } from '../http/kept'
 import { ok } from '../http/respond'
 import { csvCell } from '../publish/files'
 import { areaKm2, parseBbox, parseRing, shapeArea, type Area } from './area'
 import { communeAt, communeByTerc, localitiesNamed } from './commune'
 import { hexPolygon, REACH_M, RES, SENIOR_WEIGHT, type HexState } from './engine'
 import { POPULATION_SOURCE } from './population'
-import { analyseView, hexesNear, MAX_CELLS, overviewFor, supplyFor, type PlaceReport } from './state'
+import { analyseView, hexesNear, MAX_CELLS, overviewFor, supplyFor, type PlaceReport, type TimedOverview } from './state'
 import { ASSUMED_HOURS } from './supply'
 
 const OSM_SOURCE = {
@@ -65,18 +66,23 @@ export const gapsSummaryHandler: RouteHandler<typeof gapsSummaryRoute> = async (
   })
 }
 
+/** The country's layer as sent: a few megabytes that every visit of the page asks for, the same until the figures are counted again. */
+const overviewLayer = new KeptBodies<TimedOverview, typeof GapsOverview>()
+
 export const gapsOverviewHandler: RouteHandler<typeof gapsOverviewRoute> = async (c) => {
   const { store } = await getContext()
   const overview = await overviewFor(store)
-  const features = [...overview.areas.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([hex, area]) => {
-      const { residents, noDevice, noNight, coveredShare } = area.result()
-      const uncovered = Math.round(residents * (1 - coveredShare))
-      return { type: 'Feature' as const, geometry: { type: 'Polygon' as const, coordinates: hexPolygon(hex) }, properties: { hex, residents, noDevice, noNight, coveredShare, uncovered } }
-    })
-  c.header('Cache-Control', 'public, max-age=300')
-  return ok(c, GapsOverview, { type: 'FeatureCollection', features })
+  const kept = await overviewLayer.get('overview', overview, () => {
+    const features = [...overview.areas.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([hex, area]) => {
+        const { residents, noDevice, noNight, coveredShare } = area.result()
+        const uncovered = Math.round(residents * (1 - coveredShare))
+        return { type: 'Feature' as const, geometry: { type: 'Polygon' as const, coordinates: hexPolygon(hex) }, properties: { hex, residents, noDevice, noNight, coveredShare, uncovered } }
+      })
+    return keepJson(c, GapsOverview, { type: 'FeatureCollection', features })
+  })
+  return sendKept(c, kept, 'public, max-age=300')
 }
 
 const round1 = (value: number) => Math.round(value * 10) / 10
