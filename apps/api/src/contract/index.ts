@@ -858,18 +858,50 @@ export const GapsOverview = z
       z.object({
         type: z.literal('Feature'),
         geometry: Polygon,
-        properties: z.object({ hex: z.string(), residents: z.number().int(), noDevice: z.number().int(), noNight: z.number().int(), coveredShare: z.number() }),
+        properties: z.object({
+          hex: z.string(),
+          residents: z.number().int(),
+          noDevice: z.number().int(),
+          noNight: z.number().int(),
+          coveredShare: z.number(),
+          uncovered: z.number().int().openapi({ description: 'Residents × share of the week without a device in reach, the same measure as the small hexagons' }),
+        }),
       }),
     ),
   })
   .openapi('GapsOverview')
 
-export const GapsQuery = z.object({
-  bbox: z
-    .string()
-    .regex(/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?){3}$/)
-    .openapi({ description: 'minLon,minLat,maxLon,maxLat – the area to analyse', example: '20.85,52.10,21.27,52.37' }),
-  n: z.coerce.number().int().min(1).max(20).default(10).openapi({ description: 'How many places to recommend' }),
+const NUMBER = String.raw`-?\d+(\.\d+)?`
+const BBOX = new RegExp(`^${NUMBER}(,${NUMBER}){3}$`)
+const POINT = new RegExp(`^${NUMBER},${NUMBER}$`)
+const RING = new RegExp(`^${NUMBER},${NUMBER}(;${NUMBER},${NUMBER}){2,99}$`)
+const bboxParam = z.string().regex(BBOX).openapi({ description: 'minLon,minLat,maxLon,maxLat', example: '20.85,52.10,21.27,52.37' })
+
+export const GapsQuery = z
+  .object({
+    bbox: bboxParam.optional().openapi({ description: 'A box to analyse: minLon,minLat,maxLon,maxLat' }),
+    area: z
+      .string()
+      .regex(RING)
+      .optional()
+      .openapi({ description: 'A shape drawn on the map: 3–100 corners as lon,lat joined by ";"', example: '20.90,52.39;20.95,52.39;20.93,52.42' }),
+    terc: z
+      .string()
+      .regex(/^\d{7}$/)
+      .optional()
+      .openapi({ description: 'A whole commune by its TERC code; look it up with /v1/gaps/commune first, which fetches its boundary', example: '1408011' }),
+    n: z.coerce.number().int().min(1).max(20).default(10).openapi({ description: 'How many places to recommend' }),
+  })
+  .refine((query) => [query.bbox, query.area, query.terc].filter((value) => value !== undefined).length === 1, { message: 'Give exactly one of bbox, area or terc.' })
+
+export const GapsNearQuery = z.object({ bbox: bboxParam.openapi({ description: 'The part of the map in view: minLon,minLat,maxLon,maxLat' }) })
+
+export const GapsCommuneQuery = z.object({
+  at: z.string().regex(POINT).openapi({ description: 'lon,lat of any point in the commune', example: '20.93,52.40' }),
+})
+
+export const GapsLocalitiesQuery = z.object({
+  q: z.string().trim().min(2).max(80).openapi({ description: 'Name of a town or village', example: 'Legionowo' }),
 })
 
 export const GapsNearbyDevice = z
@@ -905,35 +937,72 @@ export const GapsPlace = z
   })
   .openapi('GapsPlace')
 
+const GapsHexFeature = z
+  .object({
+    type: z.literal('Feature'),
+    geometry: Polygon,
+    properties: z.object({
+      hex: z.string(),
+      residents: z.number(),
+      coveredHours: z.number().int(),
+      noDevice: z.boolean(),
+      noNight: z.boolean(),
+      uncovered: z.number().openapi({ description: 'Residents × share of the week without a device in reach' }),
+    }),
+  })
+  .openapi('GapsHexFeature')
+
+export const GapsHexes = z.object({ type: z.literal('FeatureCollection'), features: z.array(GapsHexFeature) }).openapi('GapsHexes')
+
 export const GapsView = z
   .object({
     tooLarge: z.boolean().openapi({ description: 'The area holds more populated squares than one analysis may; zoom in' }),
     cells: z.number().int(),
     maxCells: z.number().int(),
+    km2: z.number().openapi({ description: 'Size of the analysed area in square kilometres' }),
     totals: GapsTotals,
-    hexes: z
-      .object({
-        type: z.literal('FeatureCollection'),
-        features: z.array(
-          z.object({
-            type: z.literal('Feature'),
-            geometry: Polygon,
-            properties: z.object({
-              hex: z.string(),
-              residents: z.number(),
-              coveredHours: z.number().int(),
-              noDevice: z.boolean(),
-              noNight: z.boolean(),
-              uncovered: z.number().openapi({ description: 'Residents × share of the week without a device in reach' }),
-            }),
-          }),
-        ),
-      })
-      .openapi('GapsHexes'),
+    hexes: GapsHexes,
     places: z.array(GapsPlace),
     method: GapsMethod,
   })
   .openapi('GapsView')
+
+export const GapsNear = z
+  .object({
+    type: z.literal('FeatureCollection'),
+    features: z.array(GapsHexFeature),
+    tooLarge: z.boolean().openapi({ description: 'Too much of the map is in view for small hexagons; no features then' }),
+  })
+  .openapi('GapsNear')
+
+const MultiPolygon = z.object({
+  type: z.literal('MultiPolygon'),
+  coordinates: z.array(z.array(z.array(z.array(z.number())))).openapi({ description: 'Polygons of rings of [lon, lat] pairs; the first ring of each its outline' }),
+})
+
+export const GapsCommune = z
+  .object({
+    terc: z.string(),
+    gmina: z.string().openapi({ example: 'Legionowo (miasto)' }),
+    powiat: z.string(),
+    wojewodztwo: z.string(),
+    km2: z.number(),
+    bbox: z.array(z.number()).length(4).openapi({ description: 'minLon,minLat,maxLon,maxLat' }),
+    boundary: MultiPolygon.openapi({ description: 'Simplified to about 30 m' }),
+  })
+  .openapi('GapsCommune')
+
+export const GapsLocalities = z
+  .object({
+    items: z.array(z.object({ name: z.string(), gmina: z.string(), powiat: z.string(), wojewodztwo: z.string(), lat: z.number(), lon: z.number() })),
+  })
+  .openapi('GapsLocalities')
+
+const gapsProblems = {
+  404: problem('No commune at that point, or the boundary of that TERC has not been looked up yet'),
+  503: problem('The state register of boundaries or addresses did not answer'),
+  ...problems,
+}
 
 export const gapsSummaryRoute = createRoute({
   method: 'get',
@@ -950,7 +1019,37 @@ export const gapsOverviewRoute = createRoute({
   operationId: 'getGapsOverview',
   tags: ['gaps'],
   summary: 'The country in large hexagons (H3 resolution 6) with residents and gaps, for the map',
-  responses: { 200: json(GapsOverview, 'Large hexagons; empty while the national figures are being computed'), ...problems },
+  responses: { 200: json(GapsOverview, 'Large hexagons; the first request after a start waits until the national figures are computed'), ...problems },
+})
+
+export const gapsNearRoute = createRoute({
+  method: 'get',
+  path: '/v1/gaps/hexes.geojson',
+  operationId: 'getGapsNear',
+  tags: ['gaps'],
+  summary: 'Small hexagons (H3 resolution 9) of the part of the map in view, without recommendations, for a close-up map',
+  request: { query: GapsNearQuery },
+  responses: { 200: json(GapsNear, 'Small hexagons, or none with tooLarge when the view holds too many'), ...problems },
+})
+
+export const gapsCommuneRoute = createRoute({
+  method: 'get',
+  path: '/v1/gaps/commune',
+  operationId: 'getGapsCommune',
+  tags: ['gaps'],
+  summary: 'The commune at a point with its boundary (from the state register ULDK), to analyse it as a whole',
+  request: { query: GapsCommuneQuery },
+  responses: { 200: json(GapsCommune, 'The commune and its boundary'), ...gapsProblems },
+})
+
+export const gapsLocalitiesRoute = createRoute({
+  method: 'get',
+  path: '/v1/gaps/localities',
+  operationId: 'getGapsLocalities',
+  tags: ['gaps'],
+  summary: 'Towns and villages of a name with their communes (from the state address register), to pick a commune by name',
+  request: { query: GapsLocalitiesQuery },
+  responses: { 200: json(GapsLocalities, 'At most ten places, the seats of communes first'), ...gapsProblems },
 })
 
 export const gapsRoute = createRoute({
@@ -958,9 +1057,9 @@ export const gapsRoute = createRoute({
   path: '/v1/gaps',
   operationId: 'getGaps',
   tags: ['gaps'],
-  summary: 'Gaps in one area: hexagons with the hours a defibrillator is in reach, and the best places for new ones',
+  summary: 'Gaps in one area (a box, a drawn shape or a commune): hexagons with the hours a defibrillator is in reach, and the best places for new ones',
   request: { query: GapsQuery },
-  responses: { 200: json(GapsView, 'The analysis of the area'), ...problems },
+  responses: { 200: json(GapsView, 'The analysis of the area'), ...gapsProblems },
 })
 
 export const gapsCsvRoute = createRoute({
@@ -970,7 +1069,7 @@ export const gapsCsvRoute = createRoute({
   tags: ['gaps'],
   summary: 'The recommended places of an area as CSV (ODbL 1.0: device positions come partly from OpenStreetMap)',
   request: { query: GapsQuery },
-  responses: { 200: file('text/csv', 'One row per recommended place'), ...problems },
+  responses: { 200: file('text/csv', 'One row per recommended place'), ...gapsProblems },
 })
 
 // --------------------------------------------------------------------- admin

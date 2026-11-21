@@ -31,11 +31,35 @@ export interface GeoCache {
   set(key: string, value: unknown): Promise<void>
 }
 
+/** A town or village the address register knows by name, with the commune it lies in. */
+export interface Locality {
+  name: string
+  gmina: string
+  powiat: string
+  wojewodztwo: string
+  lat: number
+  lon: number
+}
+
 export interface Geo {
   commune(lat: number, lon: number): Promise<Commune | null>
+  /**
+   * The commune at a point with its boundary as WKT (WGS84), or null when no commune is there (the sea, abroad).
+   * Not cached: the boundary is large, so the caller keeps a simplified copy. Throws when the register does not answer.
+   */
+  communeBoundary(lat: number, lon: number): Promise<{ commune: Commune; wkt: string } | null>
+  /** Towns and villages of this name, at most ten. Throws when the register refuses, so a refusal is not remembered. */
+  localities(name: string): Promise<Locality[]>
   address(query: string): Promise<GeocodedAddress | null>
   /** The address point closest to a position, if there is one within 100 m. */
   nearestAddress(lat: number, lon: number): Promise<GeocodedAddress | null>
+}
+
+/** "140801_1|Legionowo (miasto)|powiat legionowski|mazowieckie" → a commune; null when the TERC is not seven digits. */
+function communeOf([teryt, gmina, powiat, wojewodztwo]: (string | undefined)[]): Commune | null {
+  const terc = (teryt ?? '').trim().replace(/\D/g, '')
+  if (terc.length !== 7) return null
+  return { terc, gmina: gmina?.trim() ?? '', powiat: powiat?.trim() ?? '', wojewodztwo: wojewodztwo?.trim() ?? '' }
 }
 
 export const memoryCache = (): GeoCache => {
@@ -70,9 +94,19 @@ export function createGeo(cache: GeoCache, fetchImpl: typeof fetch = fetch): Geo
     return value
   }
 
-  const text = async (url: string): Promise<string> => {
-    const response = await fetchImpl(url, { signal: AbortSignal.timeout(15_000), headers: { 'User-Agent': 'aed-hub/0.1' } })
+  const text = async (url: string, timeoutMs = 15_000): Promise<string> => {
+    const response = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs), headers: { 'User-Agent': 'aed-hub/0.1' } })
     if (!response.ok) throw new Error(`HTTP ${response.status} from ${new URL(url).host}`)
+    return response.text()
+  }
+
+  /**
+   * ULDK turns away a client it finds too eager with a redirect to an endless stream of filler (about 150 MB).
+   * Take the redirect itself as the refusal, so nothing is downloaded and nothing wrong is cached.
+   */
+  const uldk = async (url: string, timeoutMs = 15_000): Promise<string> => {
+    const response = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs), redirect: 'manual', headers: { 'User-Agent': 'aed-hub/0.1' } })
+    if (response.status !== 200) throw new Error(`HTTP ${response.status} from ULDK`)
     return response.text()
   }
 
@@ -89,14 +123,46 @@ export function createGeo(cache: GeoCache, fetchImpl: typeof fetch = fetch): Geo
   return {
     commune: (lat, lon) =>
       cached(`uldk:${lat.toFixed(5)},${lon.toFixed(5)}`, async () => {
-        const body = await text(`https://uldk.gugik.gov.pl/?request=GetCommuneByXY&xy=${lon},${lat},4326&result=teryt,commune,county,voivodeship`)
+        const body = await uldk(`https://uldk.gugik.gov.pl/?request=GetCommuneByXY&xy=${lon},${lat},4326&result=teryt,commune,county,voivodeship`)
         const [status, line] = body.trim().split('\n')
         if (status?.trim() !== '0' || !line) return null
-        const [teryt, gmina, powiat, wojewodztwo] = line.split('|').map((part) => part.trim())
-        const terc = (teryt ?? '').replace(/\D/g, '')
-        if (terc.length !== 7) return null
-        return { terc, gmina: gmina ?? '', powiat: powiat ?? '', wojewodztwo: wojewodztwo ?? '' }
+        return communeOf(line.split('|'))
       }),
+
+    communeBoundary: async (lat, lon) => {
+      const url = `https://uldk.gugik.gov.pl/?request=GetCommuneByXY&xy=${lon},${lat},4326&result=teryt,commune,county,voivodeship,geom_wkt&srid=4326`
+      // The register now and then refuses or sends half an answer; asking again a moment later often helps.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) await new Promise((done) => setTimeout(done, 400 * attempt))
+        const body = await limit(() => uldk(url, 4000)).catch(() => null)
+        if (body === null) continue
+        const [status = '', ...lines] = body.trim().split('\n')
+        // "-1 brak wyników": no commune at this point.
+        if (status.trim().startsWith('-1')) return null
+        const parts = lines.join('').trim().split('|')
+        const commune = status.trim() === '0' && parts.length === 5 && parts[4]!.startsWith('SRID=4326;') ? communeOf(parts) : null
+        if (commune) return { commune, wkt: parts[4]! }
+      }
+      throw new Error('ULDK did not send the commune boundary')
+    },
+
+    localities: async (name) => {
+      const key = `uug-towns:${name.toLowerCase()}`
+      const hit = await cache.get(key)
+      if (hit !== undefined) return hit as Locality[]
+      const body = JSON.parse(await limit(() => text(`https://services.gugik.gov.pl/uug/?request=GetAddress&srid=4326&address=${encodeURIComponent(name)}`))) as {
+        notice?: string
+        results?: Record<string, Record<string, string | null>> | null
+      }
+      // "blocked for abuse" and the like: no answer, so nothing to remember.
+      if (!('results' in body)) throw new Error(`UUG refused: ${body.notice ?? 'no results field'}`)
+      const found = Object.values(body.results ?? {})
+        .map((result) => ({ name: result.city ?? '', gmina: result.commune ?? '', powiat: result.county ?? '', wojewodztwo: result.voivodeship ?? '', lat: Number(result.y), lon: Number(result.x) }))
+        .filter((locality) => locality.name && Number.isFinite(locality.lat) && Number.isFinite(locality.lon))
+        .slice(0, 10)
+      await cache.set(key, found)
+      return found
+    },
 
     address: (query) => cached(`uug:${query.toLowerCase()}`, () => uug(`request=GetAddress&srid=4326&address=${encodeURIComponent(query)}`)),
 

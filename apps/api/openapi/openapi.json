@@ -2371,6 +2371,10 @@
                     },
                     "coveredShare": {
                       "type": "number"
+                    },
+                    "uncovered": {
+                      "type": "integer",
+                      "description": "Residents × share of the week without a device in reach, the same measure as the small hexagons"
                     }
                   },
                   "required": [
@@ -2378,7 +2382,8 @@
                     "residents",
                     "noDevice",
                     "noNight",
-                    "coveredShare"
+                    "coveredShare",
+                    "uncovered"
                   ]
                 }
               },
@@ -2395,6 +2400,219 @@
           "features"
         ]
       },
+      "GapsNear": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "FeatureCollection"
+            ]
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GapsHexFeature"
+            }
+          },
+          "tooLarge": {
+            "type": "boolean",
+            "description": "Too much of the map is in view for small hexagons; no features then"
+          }
+        },
+        "required": [
+          "type",
+          "features",
+          "tooLarge"
+        ]
+      },
+      "GapsHexFeature": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "Feature"
+            ]
+          },
+          "geometry": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Polygon"
+                ]
+              },
+              "coordinates": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "description": "Rings of [lon, lat] pairs"
+              }
+            },
+            "required": [
+              "type",
+              "coordinates"
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "hex": {
+                "type": "string"
+              },
+              "residents": {
+                "type": "number"
+              },
+              "coveredHours": {
+                "type": "integer"
+              },
+              "noDevice": {
+                "type": "boolean"
+              },
+              "noNight": {
+                "type": "boolean"
+              },
+              "uncovered": {
+                "type": "number",
+                "description": "Residents × share of the week without a device in reach"
+              }
+            },
+            "required": [
+              "hex",
+              "residents",
+              "coveredHours",
+              "noDevice",
+              "noNight",
+              "uncovered"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "geometry",
+          "properties"
+        ]
+      },
+      "GapsCommune": {
+        "type": "object",
+        "properties": {
+          "terc": {
+            "type": "string"
+          },
+          "gmina": {
+            "type": "string",
+            "example": "Legionowo (miasto)"
+          },
+          "powiat": {
+            "type": "string"
+          },
+          "wojewodztwo": {
+            "type": "string"
+          },
+          "km2": {
+            "type": "number"
+          },
+          "bbox": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "minLon,minLat,maxLon,maxLat"
+          },
+          "boundary": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "MultiPolygon"
+                ]
+              },
+              "coordinates": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                },
+                "description": "Polygons of rings of [lon, lat] pairs; the first ring of each its outline"
+              }
+            },
+            "required": [
+              "type",
+              "coordinates"
+            ],
+            "description": "Simplified to about 30 m"
+          }
+        },
+        "required": [
+          "terc",
+          "gmina",
+          "powiat",
+          "wojewodztwo",
+          "km2",
+          "bbox",
+          "boundary"
+        ]
+      },
+      "GapsLocalities": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "gmina": {
+                  "type": "string"
+                },
+                "powiat": {
+                  "type": "string"
+                },
+                "wojewodztwo": {
+                  "type": "string"
+                },
+                "lat": {
+                  "type": "number"
+                },
+                "lon": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "name",
+                "gmina",
+                "powiat",
+                "wojewodztwo",
+                "lat",
+                "lon"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
       "GapsView": {
         "type": "object",
         "properties": {
@@ -2407,6 +2625,10 @@
           },
           "maxCells": {
             "type": "integer"
+          },
+          "km2": {
+            "type": "number",
+            "description": "Size of the analysed area in square kilometres"
           },
           "totals": {
             "$ref": "#/components/schemas/GapsTotals"
@@ -2428,6 +2650,7 @@
           "tooLarge",
           "cells",
           "maxCells",
+          "km2",
           "totals",
           "hexes",
           "places",
@@ -2446,80 +2669,7 @@
           "features": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "enum": [
-                    "Feature"
-                  ]
-                },
-                "geometry": {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "enum": [
-                        "Polygon"
-                      ]
-                    },
-                    "coordinates": {
-                      "type": "array",
-                      "items": {
-                        "type": "array",
-                        "items": {
-                          "type": "array",
-                          "items": {
-                            "type": "number"
-                          }
-                        }
-                      },
-                      "description": "Rings of [lon, lat] pairs"
-                    }
-                  },
-                  "required": [
-                    "type",
-                    "coordinates"
-                  ]
-                },
-                "properties": {
-                  "type": "object",
-                  "properties": {
-                    "hex": {
-                      "type": "string"
-                    },
-                    "residents": {
-                      "type": "number"
-                    },
-                    "coveredHours": {
-                      "type": "integer"
-                    },
-                    "noDevice": {
-                      "type": "boolean"
-                    },
-                    "noNight": {
-                      "type": "boolean"
-                    },
-                    "uncovered": {
-                      "type": "number",
-                      "description": "Residents × share of the week without a device in reach"
-                    }
-                  },
-                  "required": [
-                    "hex",
-                    "residents",
-                    "coveredHours",
-                    "noDevice",
-                    "noNight",
-                    "uncovered"
-                  ]
-                }
-              },
-              "required": [
-                "type",
-                "geometry",
-                "properties"
-              ]
+              "$ref": "#/components/schemas/GapsHexFeature"
             }
           }
         },
@@ -4861,7 +5011,7 @@
         "summary": "The country in large hexagons (H3 resolution 6) with residents and gaps, for the map",
         "responses": {
           "200": {
-            "description": "Large hexagons; empty while the national figures are being computed",
+            "description": "Large hexagons; the first request after a start waits until the national figures are computed",
             "content": {
               "application/json": {
                 "schema": {
@@ -4894,47 +5044,34 @@
         "x-status": "live"
       }
     },
-    "/v1/gaps.csv": {
+    "/v1/gaps/hexes.geojson": {
       "get": {
-        "operationId": "downloadGapsCsv",
+        "operationId": "getGapsNear",
         "tags": [
           "gaps"
         ],
-        "summary": "The recommended places of an area as CSV (ODbL 1.0: device positions come partly from OpenStreetMap)",
+        "summary": "Small hexagons (H3 resolution 9) of the part of the map in view, without recommendations, for a close-up map",
         "parameters": [
           {
             "schema": {
               "type": "string",
               "pattern": "^-?\\d+(\\.\\d+)?(,-?\\d+(\\.\\d+)?){3}$",
-              "description": "minLon,minLat,maxLon,maxLat – the area to analyse",
+              "description": "The part of the map in view: minLon,minLat,maxLon,maxLat",
               "example": "20.85,52.10,21.27,52.37"
             },
             "required": true,
-            "description": "minLon,minLat,maxLon,maxLat – the area to analyse",
+            "description": "The part of the map in view: minLon,minLat,maxLon,maxLat",
             "name": "bbox",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 20,
-              "default": 10,
-              "description": "How many places to recommend"
-            },
-            "required": false,
-            "description": "How many places to recommend",
-            "name": "n",
             "in": "query"
           }
         ],
         "responses": {
           "200": {
-            "description": "One row per recommended place",
+            "description": "Small hexagons, or none with tooLarge when the view holds too many",
             "content": {
-              "text/csv": {
+              "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/GapsNear"
                 }
               }
             }
@@ -4963,24 +5100,314 @@
         "x-status": "live"
       }
     },
+    "/v1/gaps/commune": {
+      "get": {
+        "operationId": "getGapsCommune",
+        "tags": [
+          "gaps"
+        ],
+        "summary": "The commune at a point with its boundary (from the state register ULDK), to analyse it as a whole",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?$",
+              "description": "lon,lat of any point in the commune",
+              "example": "20.93,52.40"
+            },
+            "required": true,
+            "description": "lon,lat of any point in the commune",
+            "name": "at",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The commune and its boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GapsCommune"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No commune at that point, or the boundary of that TERC has not been looked up yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The state register of boundaries or addresses did not answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/gaps/localities": {
+      "get": {
+        "operationId": "getGapsLocalities",
+        "tags": [
+          "gaps"
+        ],
+        "summary": "Towns and villages of a name with their communes (from the state address register), to pick a commune by name",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 80,
+              "description": "Name of a town or village",
+              "example": "Legionowo"
+            },
+            "required": true,
+            "description": "Name of a town or village",
+            "name": "q",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "At most ten places, the seats of communes first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GapsLocalities"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No commune at that point, or the boundary of that TERC has not been looked up yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The state register of boundaries or addresses did not answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/gaps.csv": {
+      "get": {
+        "operationId": "downloadGapsCsv",
+        "tags": [
+          "gaps"
+        ],
+        "summary": "The recommended places of an area as CSV (ODbL 1.0: device positions come partly from OpenStreetMap)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?(,-?\\d+(\\.\\d+)?){3}$",
+              "description": "A box to analyse: minLon,minLat,maxLon,maxLat",
+              "example": "20.85,52.10,21.27,52.37"
+            },
+            "required": false,
+            "description": "A box to analyse: minLon,minLat,maxLon,maxLat",
+            "name": "bbox",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?(;-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?){2,99}$",
+              "description": "A shape drawn on the map: 3–100 corners as lon,lat joined by \";\"",
+              "example": "20.90,52.39;20.95,52.39;20.93,52.42"
+            },
+            "required": false,
+            "description": "A shape drawn on the map: 3–100 corners as lon,lat joined by \";\"",
+            "name": "area",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{7}$",
+              "description": "A whole commune by its TERC code; look it up with /v1/gaps/commune first, which fetches its boundary",
+              "example": "1408011"
+            },
+            "required": false,
+            "description": "A whole commune by its TERC code; look it up with /v1/gaps/commune first, which fetches its boundary",
+            "name": "terc",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 10,
+              "description": "How many places to recommend"
+            },
+            "required": false,
+            "description": "How many places to recommend",
+            "name": "n",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One row per recommended place",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No commune at that point, or the boundary of that TERC has not been looked up yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The state register of boundaries or addresses did not answer",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
     "/v1/gaps": {
       "get": {
         "operationId": "getGaps",
         "tags": [
           "gaps"
         ],
-        "summary": "Gaps in one area: hexagons with the hours a defibrillator is in reach, and the best places for new ones",
+        "summary": "Gaps in one area (a box, a drawn shape or a commune): hexagons with the hours a defibrillator is in reach, and the best places for new ones",
         "parameters": [
           {
             "schema": {
               "type": "string",
               "pattern": "^-?\\d+(\\.\\d+)?(,-?\\d+(\\.\\d+)?){3}$",
-              "description": "minLon,minLat,maxLon,maxLat – the area to analyse",
+              "description": "A box to analyse: minLon,minLat,maxLon,maxLat",
               "example": "20.85,52.10,21.27,52.37"
             },
-            "required": true,
-            "description": "minLon,minLat,maxLon,maxLat – the area to analyse",
+            "required": false,
+            "description": "A box to analyse: minLon,minLat,maxLon,maxLat",
             "name": "bbox",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?(;-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?){2,99}$",
+              "description": "A shape drawn on the map: 3–100 corners as lon,lat joined by \";\"",
+              "example": "20.90,52.39;20.95,52.39;20.93,52.42"
+            },
+            "required": false,
+            "description": "A shape drawn on the map: 3–100 corners as lon,lat joined by \";\"",
+            "name": "area",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{7}$",
+              "description": "A whole commune by its TERC code; look it up with /v1/gaps/commune first, which fetches its boundary",
+              "example": "1408011"
+            },
+            "required": false,
+            "description": "A whole commune by its TERC code; look it up with /v1/gaps/commune first, which fetches its boundary",
+            "name": "terc",
             "in": "query"
           },
           {
@@ -5008,6 +5435,16 @@
               }
             }
           },
+          "404": {
+            "description": "No commune at that point, or the boundary of that TERC has not been looked up yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "422": {
             "description": "The request does not match the contract",
             "content": {
@@ -5020,6 +5457,16 @@
           },
           "500": {
             "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The state register of boundaries or addresses did not answer",
             "content": {
               "application/problem+json": {
                 "schema": {

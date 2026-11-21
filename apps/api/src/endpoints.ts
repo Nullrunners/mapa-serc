@@ -14,7 +14,10 @@ import {
   csvRoute,
   csvwRoute,
   feedRoute,
+  gapsCommuneRoute,
   gapsCsvRoute,
+  gapsLocalitiesRoute,
+  gapsNearRoute,
   gapsOverviewRoute,
   gapsRoute,
   gapsSummaryRoute,
@@ -80,7 +83,7 @@ import {
   passportHandler,
   reportHandler,
 } from './passport/handlers'
-import { gapsCsvHandler, gapsHandler, gapsOverviewHandler, gapsSummaryHandler } from './gaps/handlers'
+import { gapsCommuneHandler, gapsCsvHandler, gapsHandler, gapsLocalitiesHandler, gapsNearHandler, gapsOverviewHandler, gapsSummaryHandler } from './gaps/handlers'
 import { candidateDecisionHandler, candidatesHandler } from './radar/handlers'
 import { approveSourceHandler, importCommitHandler, importPreviewHandler, sourceCsvHandler } from './wizard'
 
@@ -139,6 +142,9 @@ export const endpoints: Endpoint[] = [
 
   live(gapsSummaryRoute, gapsSummaryHandler),
   live(gapsOverviewRoute, gapsOverviewHandler),
+  live(gapsNearRoute, gapsNearHandler),
+  live(gapsCommuneRoute, gapsCommuneHandler),
+  live(gapsLocalitiesRoute, gapsLocalitiesHandler),
   live(gapsCsvRoute, gapsCsvHandler),
   live(gapsRoute, gapsHandler),
 

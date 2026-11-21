@@ -3,7 +3,10 @@ import { cellToLatLng, latLngToCell } from 'h3-js'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { weeklyHours } from '@aed/schema'
 import { createApp } from '../src/app'
+import { getContext } from '../src/context'
+import { areaKm2, inShape, parseRing, parseWkt, simplifyRing, type Ring, type Shape } from '../src/gaps/area'
 import { buildCoverage, hexesOfCell, hexState, RES, type HexState } from '../src/gaps/engine'
+import { createGeo, memoryCache } from '../src/pipeline/geocode'
 import { recommend } from '../src/gaps/greedy'
 import { laeaToWgs84 } from '../src/gaps/laea'
 import { cellCentre, populationCells, type GridCell } from '../src/gaps/population'
@@ -132,6 +135,83 @@ describe('coverage and placement', () => {
   })
 })
 
+describe('areas: boxes, drawn shapes and communes', () => {
+  // A square of about 1.4 × 1.1 km with a hole in its middle, and a second square to the east.
+  const square = (lon: number, lat: number, size: number): Ring => [
+    [lon, lat],
+    [lon + size, lat],
+    [lon + size, lat + size],
+    [lon, lat + size],
+    [lon, lat],
+  ]
+  const shape: Shape = [[square(20, 52, 0.02), square(20.005, 52.005, 0.01)], [square(20.1, 52, 0.01)]]
+
+  it('reads a drawn ring and closes it', () => {
+    expect(parseRing('20,52;20.1,52;20.05,52.1')).toEqual([
+      [20, 52],
+      [20.1, 52],
+      [20.05, 52.1],
+      [20, 52],
+    ])
+    expect(parseRing('20,52;20.1,52')).toBeNull()
+  })
+
+  it('reads polygons and multipolygons from the register, holes included', () => {
+    expect(parseWkt('SRID=4326;POLYGON((20 52,20.02 52,20.02 52.02,20 52.02,20 52),(20.005 52.005,20.015 52.005,20.015 52.015,20.005 52.005))')).toHaveLength(1)
+    const multi = parseWkt('SRID=4326;MULTIPOLYGON(((20 52,20.02 52,20.02 52.02,20 52),(20.005 52.005,20.01 52.005,20.01 52.01,20.005 52.005)),((21 52,21.01 52,21.01 52.01,21 52)))')!
+    expect(multi.map((rings) => rings.length)).toEqual([2, 1])
+    expect(multi[0]![0]![1]).toEqual([20.02, 52])
+    expect(parseWkt('POINT(20 52)')).toBeNull()
+  })
+
+  it('counts a point in a hole as outside and a point in a second part as inside', () => {
+    expect(inShape(shape, 20.002, 52.002)).toBe(true)
+    expect(inShape(shape, 20.01, 52.01)).toBe(false)
+    expect(inShape(shape, 20.105, 52.005)).toBe(true)
+    expect(inShape(shape, 20.05, 52.005)).toBe(false)
+  })
+
+  it('measures square kilometres without the holes', () => {
+    const whole = areaKm2({ bbox: [20, 52, 20.02, 52.02], shape: [[square(20, 52, 0.02)]] })
+    expect(whole).toBeCloseTo(0.02 * 111.2 * Math.cos((52 * Math.PI) / 180) * 0.02 * 111.2, 2)
+    expect(areaKm2({ bbox: [20, 52, 20.11, 52.02], shape })).toBeCloseTo(whole * 0.75 + whole / 4, 2)
+  })
+
+  it('simplifies a closed ring and drops one smaller than the tolerance', () => {
+    const dense: Ring = []
+    for (let i = 0; i <= 100; i++) dense.push([20 + 0.01 * Math.min(i, 50) / 50, 52 + 0.01 * Math.max(0, i - 50) / 50])
+    dense.push([20, 52.01], [20, 52])
+    const simple = simplifyRing(dense, 0.0003)!
+    expect(simple.length).toBeLessThanOrEqual(5)
+    expect(simple[0]).toEqual(simple.at(-1))
+    expect(simplifyRing(square(20, 52, 0.0001), 0.0003)).toBeNull()
+  })
+
+  it('asks the register of boundaries again when it stumbles, and never remembers a failure', async () => {
+    // First the redirect it sends a client it finds too eager, then half an answer, then the boundary.
+    const answers = [() => new Response(null, { status: 302 }), () => new Response('0\n'), () => new Response('0\n140801_1|Legionowo (miasto)|powiat legionowski|mazowieckie|SRID=4326;MULTIPOLYGON(((20.9 52.39,20.95 52.39,20.95 52.42,20.9 52.39)))')]
+    let asked = 0
+    const register = (async (_url: string, init: RequestInit) => {
+      expect(init.redirect).toBe('manual')
+      return answers[asked++]!()
+    }) as unknown as typeof fetch
+    const found = await createGeo(memoryCache(), register).communeBoundary(52.4, 20.93)
+    expect(asked).toBe(3)
+    expect(found?.commune).toEqual({ terc: '1408011', gmina: 'Legionowo (miasto)', powiat: 'powiat legionowski', wojewodztwo: 'mazowieckie' })
+    expect(parseWkt(found!.wkt)).toHaveLength(1)
+
+    const sea = createGeo(memoryCache(), (async () => new Response('-1 brak wyników')) as unknown as typeof fetch)
+    expect(await sea.communeBoundary(55.2, 18.5)).toBeNull()
+
+    let refused = true
+    const towns = createGeo(memoryCache(), (async () =>
+      new Response(refused ? '{"notice":"blocked for abuse"}' : '{"results":{"1":{"city":"Legionowo","commune":"Legionowo","county":"legionowski","voivodeship":"mazowieckie","x":"20.93","y":"52.40"}}}')) as unknown as typeof fetch)
+    await expect(towns.localities('Legionowo')).rejects.toThrow()
+    refused = false
+    expect(await towns.localities('Legionowo')).toEqual([{ name: 'Legionowo', gmina: 'Legionowo', powiat: 'legionowski', wojewodztwo: 'mazowieckie', lat: 52.4, lon: 20.93 }])
+  })
+})
+
 describe('gap endpoints', () => {
   beforeAll(async () => {
     const response = await app.request('/admin/jobs/pipeline', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' }, body: '{}' })
@@ -166,5 +246,59 @@ describe('gap endpoints', () => {
     const lines = (await response.text()).trim().split('\r\n')
     expect(lines[0]).toMatch(/^miejsce,szerokosc_geograficzna,dlugosc_geograficzna,/)
     expect(lines).toHaveLength(3)
+  })
+
+  const triangle = '20.89,52.385;20.97,52.385;20.93,52.425'
+
+  it('analyses a drawn shape: only hexagons inside it, fewer residents than its box', async () => {
+    const box = (await (await app.request('/v1/gaps?bbox=20.89,52.385,20.97,52.425&n=1')).json()) as any
+    const response = await app.request(`/v1/gaps?area=${triangle}&n=2`)
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as any
+    expect(body.tooLarge).toBe(false)
+    expect(body.totals.residents).toBeGreaterThan(0)
+    expect(body.totals.residents).toBeLessThan(box.totals.residents)
+    expect(body.km2).toBeCloseTo(box.km2 / 2, 0)
+    const ring = parseRing(triangle)!
+    for (const feature of body.hexes.features) {
+      const [lat, lon] = cellToLatLng(feature.properties.hex)
+      expect(inShape([[ring]], lon, lat)).toBe(true)
+    }
+    expect(body.places).toHaveLength(2)
+  })
+
+  it('wants exactly one area', async () => {
+    expect((await app.request('/v1/gaps?n=2')).status).toBe(422)
+    expect((await app.request(`/v1/gaps?bbox=20.88,52.38,20.98,52.43&area=${triangle}`)).status).toBe(422)
+    expect((await app.request('/v1/gaps?area=20.89,52.385;20.97,52.385')).status).toBe(422)
+  })
+
+  it('analyses a whole commune once its boundary is known, and finds it again by a click inside', async () => {
+    expect((await app.request('/v1/gaps?terc=1408011')).status).toBe(404)
+    const { store } = await getContext()
+    const outline = parseRing(triangle)!
+    await store.geoCache().set('gmina:1408011', { terc: '1408011', gmina: 'Legionowo (miasto)', powiat: 'powiat legionowski', wojewodztwo: 'mazowieckie', shape: [[outline]] })
+
+    const body = (await (await app.request('/v1/gaps?terc=1408011&n=2')).json()) as any
+    const drawn = (await (await app.request(`/v1/gaps?area=${triangle}&n=2`)).json()) as any
+    expect(body.totals).toEqual(drawn.totals)
+    expect((await app.request('/v1/gaps.csv?terc=1408011&n=2')).status).toBe(200)
+
+    const commune = await app.request('/v1/gaps/commune?at=20.93,52.40')
+    expect(commune.status).toBe(200)
+    expect(await commune.json()).toMatchObject({ terc: '1408011', gmina: 'Legionowo (miasto)', boundary: { type: 'MultiPolygon' } })
+    // Elsewhere the register would have to be asked, and the tests have no network.
+    expect((await app.request('/v1/gaps/commune?at=19.94,50.06')).status).toBe(503)
+  })
+
+  it('gives the small hexagons of a close-up view, and none for a view of the whole country', async () => {
+    const near = await app.request('/v1/gaps/hexes.geojson?bbox=20.88,52.38,20.98,52.43')
+    expect(near.status).toBe(200)
+    const body = (await near.json()) as any
+    expect(body).toMatchObject({ type: 'FeatureCollection', tooLarge: false })
+    expect(body.features.length).toBeGreaterThan(100)
+    expect(body.features[0].properties).toHaveProperty('uncovered')
+    const country = (await (await app.request('/v1/gaps/hexes.geojson?bbox=14.1,49.0,24.2,54.9')).json()) as any
+    expect(country).toMatchObject({ tooLarge: true, features: [] })
   })
 })

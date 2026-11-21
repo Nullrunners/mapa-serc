@@ -14,6 +14,7 @@ import { cellCentre, populationCells, type GridCell } from './population'
 import { basisCounts, hasHour, NIGHT_HOUR, supplyPoints, type HoursBasis, type SupplyPoint } from './supply'
 import { cellToLatLng } from 'h3-js'
 import { WEEK_HOURS } from '@aed/schema'
+import { inArea, inShape, kmToEdge, type Area, type Bbox } from './area'
 
 export interface Supply {
   key: string
@@ -71,7 +72,7 @@ function cellCentres(cells: readonly GridCell[]): Float64Array {
   return centres
 }
 
-export type Bbox = [minLon: number, minLat: number, maxLon: number, maxLat: number]
+export type { Bbox }
 
 /** Populated squares that may have a hexagon centre inside the box. */
 export function cellsIn(bbox: Bbox, cells: readonly GridCell[] = populationCells()): GridCell[] {
@@ -89,16 +90,36 @@ export function cellsIn(bbox: Bbox, cells: readonly GridCell[] = populationCells
   return found
 }
 
-export function hexesIn(bbox: Bbox, cells: readonly GridCell[], coverage: Coverage): HexState[] {
-  const [minLon, minLat, maxLon, maxLat] = bbox
+/** A square can hold a hexagon centre at most this far from its own centre: half its diagonal and a little more. */
+const CELL_REACH_KM = 0.75
+
+/**
+ * The hexagons of the squares whose centre lies in the area, and how many squares gave at least one.
+ * For a shape, squares wholly outside it are skipped before they are split, which is most of a commune's box.
+ */
+export function hexesIn(area: Area, cells: readonly GridCell[], coverage: Coverage): { states: HexState[]; used: number } {
   const states: HexState[] = []
+  let used = 0
   for (const cell of cells) {
+    if (area.shape) {
+      const [lat, lon] = cellCentre(cell)
+      if (!inShape(area.shape, lon, lat) && kmToEdge(area.shape, lon, lat) > CELL_REACH_KM) continue
+    }
+    const before = states.length
     for (const demand of hexesOfCell(cell)) {
       const [lat, lon] = cellToLatLng(demand.hex)
-      if (lat >= minLat && lat <= maxLat && lon >= minLon && lon <= maxLon) states.push(hexState(demand, coverage))
+      if (inArea(area, lon, lat)) states.push(hexState(demand, coverage))
     }
+    if (states.length > before) used++
   }
-  return states.sort((a, b) => (a.hex < b.hex ? -1 : a.hex > b.hex ? 1 : 0))
+  return { states: states.sort((a, b) => (a.hex < b.hex ? -1 : a.hex > b.hex ? 1 : 0)), used }
+}
+
+/** The small hexagons of the part of the map in view, for a close-up; nothing when the view holds too many squares. */
+export function hexesNear(store: Store, bbox: Bbox): { tooLarge: boolean; hexes: HexState[] } {
+  const cells = cellsIn(bbox)
+  if (cells.length > MAX_CELLS) return { tooLarge: true, hexes: [] }
+  return { tooLarge: false, hexes: hexesIn({ bbox, shape: null }, cells, supplyFor(store).coverage).states }
 }
 
 export interface NearbyDevice {
@@ -153,18 +174,25 @@ async function within<T>(ms: number, work: Promise<T>): Promise<T | null> {
 
 export interface ViewResult {
   tooLarge: boolean
+  /** Populated squares of the area, as counted against MAX_CELLS. */
   cells: number
   totals: Totals
   hexes: HexState[]
   places: PlaceReport[]
 }
 
-export async function analyseView(store: Store, geo: Geo, bbox: Bbox, count: number): Promise<ViewResult> {
+/**
+ * A box may hold MAX_CELLS populated squares. A shape is measured by the squares inside it, since the box around a
+ * commune can be far bigger than the commune; only a box many times too large is refused before counting.
+ */
+export async function analyseView(store: Store, geo: Geo, area: Area, count: number): Promise<ViewResult> {
   const supply = supplyFor(store)
-  const cells = cellsIn(bbox)
+  const cells = cellsIn(area.bbox)
   const empty = new TotalsBuilder().result()
-  if (cells.length > MAX_CELLS) return { tooLarge: true, cells: cells.length, totals: empty, hexes: [], places: [] }
-  const hexes = hexesIn(bbox, cells, supply.coverage)
+  const tooLarge = (counted: number): ViewResult => ({ tooLarge: true, cells: counted, totals: empty, hexes: [], places: [] })
+  if (cells.length > (area.shape ? 4 * MAX_CELLS : MAX_CELLS)) return tooLarge(cells.length)
+  const { states: hexes, used } = hexesIn(area, cells, supply.coverage)
+  if (used > MAX_CELLS) return tooLarge(used)
   const totals = new TotalsBuilder()
   for (const state of hexes) totals.add(state)
   const picks = recommend(hexes, count)
@@ -179,5 +207,5 @@ export async function analyseView(store: Store, geo: Geo, bbox: Bbox, count: num
       }
     }),
   )
-  return { tooLarge: false, cells: cells.length, totals: totals.result(), hexes, places }
+  return { tooLarge: false, cells: area.shape ? used : cells.length, totals: totals.result(), hexes, places }
 }
