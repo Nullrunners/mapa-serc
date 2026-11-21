@@ -51,7 +51,10 @@ export function createMap(container: HTMLElement, frame: HTMLElement | null): Ma
     return null;
   }
   ignoreMissingStyleIcons(map);
-  map.once("style.load", () => namePlacesInPolish(map));
+  map.once("style.load", () => {
+    namePlacesInPolish(map);
+    hidePlacesOfInterest(map);
+  });
   map.addControl(new NavigationControl({ showCompass: false }), "top-right");
   map.addControl(new FullscreenControl(frame ? { container: frame } : {}), "top-right");
   return map;
@@ -73,6 +76,16 @@ function namePlacesInPolish(map: MapLibreMap): void {
   for (const layer of map.getStyle().layers) {
     if (layer.type !== "symbol" || !JSON.stringify(map.getLayoutProperty(layer.id, "text-field") ?? "").includes("name_en")) continue;
     map.setLayoutProperty(layer.id, "text-field", ["coalesce", ["get", "name:pl"], ["get", "name"]]);
+  }
+}
+
+/**
+ * On our maps only the defibrillators carry icons: the base map's shops, cafés, car parks, stops and airports would
+ * crowd them out. Street and place names, road numbers and one-way arrows stay.
+ */
+function hidePlacesOfInterest(map: MapLibreMap): void {
+  for (const layer of map.getStyle().layers) {
+    if (layer.type === "symbol" && (layer["source-layer"] === "poi" || layer["source-layer"] === "aerodrome_label")) map.setLayoutProperty(layer.id, "visibility", "none");
   }
 }
 
