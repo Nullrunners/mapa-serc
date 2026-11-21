@@ -1,29 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
-import { api, type AedItem } from "@/lib/api/client";
+import { useRef, useState } from "react";
+import { ACCESS_LABEL, AVAILABLE_NOW, addressLine, distance, hours, title } from "@/lib/aed-text";
+import { api } from "@/lib/api/client";
 import { useLoad } from "@/lib/use-load";
+import AedDetails, { pickedFrom, type Picked } from "./aed-details";
 
 // MapLibre needs a browser; it is loaded only on the client, after the list is already usable.
 const AedMap = dynamic(() => import("./aed-map"), { ssr: false, loading: () => <div className="h-full min-h-[420px] rounded border border-line bg-gov-light" aria-hidden /> });
-
-const ACCESS_LABEL: Record<string, string> = { publiczny: "dostęp publiczny", ograniczony: "dostęp ograniczony", prywatny: "tylko dla personelu" };
-
-/** The answer to "can I get to it right now?", in words, so that it does not depend on colour. */
-const AVAILABLE_NOW = {
-  yes: { label: "Dostępny teraz", tone: "text-ok" },
-  no: { label: "Teraz niedostępny", tone: "text-danger" },
-  unknown: { label: "Nie wiadomo, czy teraz dostępny: dane nie podają godzin", tone: "text-muted" },
-} as const;
-
-const distance = (metres: number) => (metres < 1000 ? `${metres} m` : `${(metres / 1000).toFixed(1).replace(".", ",")} km`);
-
-const address = (item: AedItem) => {
-  const { record } = item;
-  const street = [record.cecha_ulicy === "ulica" ? "ul." : record.cecha_ulicy, record.nazwa_ulicy, record.nr_budynku].filter(Boolean).join(" ");
-  return [street, [record.kod_pocztowy, record.miejscowosc].filter(Boolean).join(" ")].filter(Boolean).join(", ");
-};
 
 export default function Finder() {
   const [query, setQuery] = useState("");
@@ -32,7 +17,14 @@ export default function Finder() {
   const [locating, setLocating] = useState<"idle" | "asking" | "denied">("idle");
   const [showCommunity, setShowCommunity] = useState(true);
   const [onlyAvailable, setOnlyAvailable] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Picked | null>(null);
+  const listHeading = useRef<HTMLHeadingElement>(null);
+
+  const closeDetails = () => {
+    setSelected(null);
+    // The list comes back in place of the panel; put the keyboard focus where the person left it.
+    requestAnimationFrame(() => listHeading.current?.focus());
+  };
 
   const layer = showCommunity ? "all" : "official";
   const list = useLoad(`${layer}|${submitted}|${near?.lat},${near?.lon}|${onlyAvailable}`, async (signal) => {
@@ -59,8 +51,11 @@ export default function Finder() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
+      {selected ? (
+        <AedDetails picked={selected} layer={layer} onlyAvailable={onlyAvailable} onPick={setSelected} onClose={closeDetails} />
+      ) : (
       <section aria-labelledby="lista-naglowek" className="space-y-4">
-        <h2 id="lista-naglowek" className="text-lg font-bold">
+        <h2 id="lista-naglowek" ref={listHeading} tabIndex={-1} className="text-lg font-bold">
           {near ? "Najbliższe urządzenia" : "Urządzenia"}
         </h2>
 
@@ -129,16 +124,20 @@ export default function Finder() {
               </p>
               <ol className="mt-2 divide-y divide-line border-y border-line">
                 {list.data.items.map((item) => (
-                  <li key={item.id} className={`space-y-1 px-1 py-3 ${selected === item.id ? "bg-gov-light" : ""}`}>
+                  <li key={item.id} className="space-y-1 px-1 py-3">
                     <div className="flex items-baseline justify-between gap-3">
-                      <h3 className="font-semibold">{item.record.nazwa}</h3>
+                      <h3 className="font-semibold">
+                        <button type="button" onClick={() => setSelected(pickedFrom(item))} className="text-left text-gov underline-offset-2 hover:underline">
+                          {title(item)}
+                        </button>
+                      </h3>
                       {item.distanceM !== null && <span className="shrink-0 text-sm font-semibold text-gov">{distance(item.distanceM)}</span>}
                     </div>
-                    {address(item) && <p className="text-sm">{address(item)}</p>}
+                    {addressLine(item) && <p className="text-sm">{addressLine(item)}</p>}
                     {item.record.opis_lokalizacji && <p className="text-sm text-muted">{item.record.opis_lokalizacji}</p>}
                     <p className={`text-sm font-semibold ${AVAILABLE_NOW[item.availableNow].tone}`}>{AVAILABLE_NOW[item.availableNow].label}</p>
                     <p className="flex flex-wrap gap-x-3 text-sm text-muted">
-                      {item.record.godziny_dostepnosci && <span>Godziny: {item.record.godziny_dostepnosci === "24/7" ? "całą dobę" : item.record.godziny_dostepnosci}</span>}
+                      {item.record.godziny_dostepnosci && <span>Godziny: {hours(item.record.godziny_dostepnosci)}</span>}
                       {item.record.dostep && <span>{ACCESS_LABEL[item.record.dostep] ?? item.record.dostep}</span>}
                       {item.publication === "community" && <span className="font-semibold text-warn">jeszcze niepotwierdzone (OpenStreetMap)</span>}
                     </p>
@@ -149,9 +148,10 @@ export default function Finder() {
           )}
         </div>
       </section>
+      )}
 
       <section aria-label="Mapa" className="min-h-[420px] lg:sticky lg:top-4 lg:h-[calc(100vh-8rem)]">
-        <AedMap showCommunity={showCommunity} focus={near} onSelect={setSelected} />
+        <AedMap showCommunity={showCommunity} focus={near} selected={selected} onSelect={setSelected} />
       </section>
     </div>
   );
