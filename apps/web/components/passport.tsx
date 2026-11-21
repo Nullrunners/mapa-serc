@@ -6,8 +6,9 @@ import { ExternalLink, LiveMessage, LoadStatus, Status, TONE_TEXT, type Message 
 import { AVAILABILITY, STATUS_WARNING, access, addressLine, hours, spot, title } from "@/lib/aed-text";
 import { api, problemMessage, type AedItem } from "@/lib/api/client";
 import { date, dateTime } from "@/lib/format";
-import { PROBLEMS, REPORT_BUTTON, REPORT_TEXT, expiryText, partName, reportedBy, type PassportPublic, type ReportKind } from "@/lib/passport-text";
+import { PROBLEMS, REPORT_BUTTON, REPORT_TEXT, confirmedHow, expiryText, partName, reportedBy, type PassportPublic, type ReportKind } from "@/lib/passport-text";
 import { googleDirections } from "@/lib/route";
+import { loadAccount, loadLoginOptions, loginHref } from "@/lib/session";
 import { useLoad } from "@/lib/use-load";
 
 /**
@@ -73,7 +74,7 @@ function Card({ item, passport, onPassport }: { item: AedItem; passport: Passpor
         <ul className="space-y-1 text-sm">
           <li>
             {passport.confirmedAt
-              ? `Opiekun ${passport.confirmedByKeeper ? "potwierdził" : "zgłosił"} sprawność: ${date(passport.confirmedAt)}`
+              ? `Opiekun ${passport.confirmedByKeeper ? "potwierdził" : "zgłosił"} sprawność: ${date(passport.confirmedAt)}${confirmedHow(passport)}`
               : "Opiekun jeszcze nie potwierdził sprawności w paszporcie."}
           </li>
           {passport.reports.lastOk && <li>Ostatnio ktoś sprawdził, że jest na miejscu: {dateTime(passport.reports.lastOk)}</li>}
@@ -160,6 +161,14 @@ function Report({ id, onPassport }: { id: string; onPassport: (passport: Passpor
 
 function Keeper({ id, passport }: { id: string; passport: PassportPublic }) {
   const [message, setMessage] = useState<Message | null>(null);
+  // Who is logged in, and whether this service has a login at all. Until we know, the section shows the link only.
+  const loaded = useLoad(`keeper|${id}`, async (signal) => {
+    const [account, login] = await Promise.all([loadAccount(signal).catch(() => null), loadLoginOptions(signal)]);
+    return { account, login };
+  });
+  const account = loaded.state === "ready" ? loaded.data.account : null;
+  const canLogIn = loaded.state === "ready" && loaded.data.login.mode !== "off";
+  const mine = account?.devices.some((device) => device.id === id) ?? false;
 
   async function request() {
     const { data, error } = await api.POST("/v1/aed/{id}/passport/link", { params: { path: { id } } }).catch(() => ({ data: undefined, error: undefined }));
@@ -175,13 +184,35 @@ function Keeper({ id, passport }: { id: string; passport: PassportPublic }) {
         W paszporcie wpiszesz terminy ważności elektrod i baterii. Przypomnimy Ci o wymianie e-mailem lub SMS-em 30 i 7 dni wcześniej, a po przeglądzie jednym kliknięciem potwierdzisz, że urządzenie
         działa.
       </p>
-      {passport.keeperEmail ? (
-        <button type="button" onClick={request} className="btn btn-secondary">
-          Wyślij link na adres {passport.keeperEmail}
-        </button>
-      ) : (
-        <p>W danych tego urządzenia nie ma adresu e-mail opiekuna. Napisz do operatora serwisu, a przygotuje dla Ciebie link.</p>
+      {account && (
+        <p>
+          Zalogowano przez mObywatel jako <strong>{account.name}</strong>
+        </p>
       )}
+      {account &&
+        (mine ? (
+          <Link href={`/opiekun?id=${id}`} className="btn btn-primary">
+            Otwórz panel opiekuna
+          </Link>
+        ) : (
+          <p>Tego urządzenia nie ma jeszcze przy Twoim koncie. Wejdź do panelu linkiem i kliknij tam „Dodaj do mojego konta”.</p>
+        ))}
+      {!account && canLogIn && (
+        <>
+          <Link href={loginHref(`/aed/${id}`)} className="btn btn-primary">
+            Zaloguj się przez mObywatel
+          </Link>
+          <p className="hint">Pierwszy raz? Do panelu wejdziesz najpierw linkiem. Dodasz tam urządzenie do swojego konta i potem wystarczy już samo logowanie.</p>
+        </>
+      )}
+      {!mine &&
+        (passport.keeperEmail ? (
+          <button type="button" onClick={request} className="btn btn-secondary">
+            Wyślij link na adres {passport.keeperEmail}
+          </button>
+        ) : (
+          <p>W danych tego urządzenia nie ma adresu e-mail opiekuna. Napisz do operatora serwisu, a przygotuje dla Ciebie link.</p>
+        ))}
       <LiveMessage message={message} />
       <p>
         <Link href={`/aed/${id}/naklejka`} className="link">

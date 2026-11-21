@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import KeeperHome, { KeeperBar } from "@/components/keeper-home";
 import { LiveMessage, LoadStatus, TONE_TEXT, type Message } from "@/components/ui";
 import { addressLine, title } from "@/lib/aed-text";
 import { api, problemMessage } from "@/lib/api/client";
 import { date, dateTime } from "@/lib/format";
 import { REPORT_TEXT, expiryText, partName, reportedBy, type OwnerView } from "@/lib/passport-text";
+import { loadAccount, loadLoginOptions, loginHref, readSession, sessionHeader } from "@/lib/session";
 import { useLoad } from "@/lib/use-load";
 
 const STATUS_CHOICES = [
@@ -45,29 +48,75 @@ const formOf = (view: OwnerView): Form => ({
 /** One labelled row of the form: the label in a fixed column on a wide screen, above the field on a phone. */
 const ROW = "grid gap-1 sm:grid-cols-[14rem_1fr] sm:items-center sm:gap-3";
 
-/** The keeper's side of the passport: expiry dates, contact for reminders, and "Potwierdzam sprawność". */
+/**
+ * The keeper's pages. With an owner link (`t`) or the number of a device of the logged-in keeper (`id`) in the
+ * address it is the panel of that device; with neither, the keeper's start page.
+ */
 export default function OwnerPanel() {
-  const loaded = useLoad("owner", async (signal) => {
-    const token = new URLSearchParams(window.location.search).get("t");
-    if (!token) throw new Error("W adresie brakuje kodu dostępu. Otwórz link z wiadomości od nas jeszcze raz.");
-    const { data, error: problem } = await api.GET("/v1/owner/passport", { params: { header: { "x-owner-token": token } }, signal });
+  const params = useSearchParams();
+  const token = params.get("t");
+  const id = params.get("id");
+  if (!token && !id) return <KeeperHome />;
+  return <DevicePanel key={`${token}|${id}`} token={token} id={id} connect={params.get("polacz") === "1"} />;
+}
+
+/**
+ * The keeper's side of the passport: expiry dates, contact for reminders, and "Potwierdzam sprawność".
+ * `connect` means the person is back from logging in on the way to adding this device to their account.
+ */
+function DevicePanel({ token, id, connect }: { token: string | null; id: string | null; connect: boolean }) {
+  const router = useRouter();
+  /** How the API knows this person may manage the device: the owner link, the login, or both. */
+  const access = () => ({ header: { ...(token ? { "x-owner-token": token } : {}), ...sessionHeader() }, query: token ? {} : { id: id ?? "" } });
+
+  /** Puts the device of the owner link on the logged-in person's account and reads the panel again. */
+  async function addToAccount(): Promise<OwnerView | null> {
+    const session = readSession();
+    if (!token || !session) return null;
+    const added = await api.POST("/v1/account/devices", { params: { header: { "x-keeper-session": session, "x-owner-token": token } } }).catch(() => ({ data: undefined }));
+    if (!added.data) return null;
+    const { data } = await api.GET("/v1/owner/passport", { params: access() }).catch(() => ({ data: undefined }));
+    return data ?? null;
+  }
+
+  const loaded = useLoad(`owner|${token}|${id}`, async (signal) => {
+    const [login, account] = await Promise.all([loadLoginOptions(signal), token ? null : loadAccount(signal)]);
+    if (!token && !account) return { view: null, login, refused: { text: "Zaloguj się, żeby wejść do panelu tego urządzenia.", login: true } };
+    const { data, error: problem, response } = await api.GET("/v1/owner/passport", { params: access(), signal });
+    if (!data && !token && response.status === 401) return { view: null, login, refused: { text: problemMessage(problem, "Tego urządzenia nie ma przy Twoim koncie."), login: false } };
     if (!data) throw new Error(problemMessage(problem, "Nie udało się wczytać paszportu. Spróbuj ponownie za chwilę."));
-    return { token, view: data };
+    const view = connect && data.viewer && !data.viewer.linked ? ((await addToAccount()) ?? data) : data;
+    return { view, login, refused: null };
   });
   const [updated, setView] = useState<OwnerView | null>(null);
   const [edited, setForm] = useState<Form | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const token = loaded.state === "ready" ? loaded.data.token : null;
   const view = updated ?? (loaded.state === "ready" ? loaded.data.view : null);
   const form = edited ?? (view ? formOf(view) : null);
 
-  async function confirm() {
-    if (!token) return;
+  async function connectAccount() {
     setBusy(true);
     setMessage(null);
-    const { data, error: problem } = await api.POST("/v1/owner/passport/confirm", { params: { header: { "x-owner-token": token } } }).catch(() => ({ data: undefined, error: undefined }));
+    const data = await addToAccount();
+    setBusy(false);
+    if (!data) return setMessage({ text: "Nie udało się dodać urządzenia do konta. Zaloguj się jeszcze raz i spróbuj ponownie.", tone: "danger" });
+    setView(data);
+    setMessage({ text: "Gotowe. Od teraz wejdziesz do panelu tego urządzenia po zalogowaniu, bez linku.", tone: "ok" });
+  }
+
+  /** With an owner link the person stays in the panel, only without a name; without one there is nothing to stay in. */
+  async function afterLogout() {
+    if (!token) return router.replace("/opiekun");
+    const { data } = await api.GET("/v1/owner/passport", { params: access() }).catch(() => ({ data: undefined }));
+    if (data) setView(data);
+  }
+
+  async function confirm() {
+    setBusy(true);
+    setMessage(null);
+    const { data, error: problem } = await api.POST("/v1/owner/passport/confirm", { params: access() }).catch(() => ({ data: undefined, error: undefined }));
     setBusy(false);
     if (!data) return setMessage({ text: problemMessage(problem, "Nie udało się zapisać potwierdzenia."), tone: "danger" });
     setView(data);
@@ -76,12 +125,12 @@ export default function OwnerPanel() {
 
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (!token || !form) return;
+    if (!form) return;
     setBusy(true);
     setMessage(null);
     const { data, error: problem } = await api
       .POST("/v1/owner/passport", {
-        params: { header: { "x-owner-token": token } },
+        params: access(),
         body: {
           electrodesExp: form.electrodesExp || null,
           electrodesChildExp: form.electrodesChildExp || null,
@@ -99,7 +148,33 @@ export default function OwnerPanel() {
     setMessage({ text: "Zapisaliśmy zmiany. Przypomnimy o wymianie 30 i 7 dni przed terminem.", tone: "ok" });
   }
 
-  if (!view || !form) {
+  if (loaded.state === "ready" && loaded.data.refused) {
+    const { refused, login } = loaded.data;
+    return (
+      <div className="max-w-2xl space-y-4">
+        <h1 className="text-2xl font-bold">Panel opiekuna</h1>
+        <p>{refused.text}</p>
+        {refused.login ? (
+          login.mode !== "off" && (
+            <Link href={loginHref(`/opiekun?id=${id}`)} className="btn btn-primary">
+              Zaloguj się przez mObywatel
+            </Link>
+          )
+        ) : (
+          <p className="flex flex-wrap gap-2">
+            <Link href={`/aed/${id}`} className="btn btn-secondary">
+              Przejdź na stronę urządzenia
+            </Link>
+            <Link href="/opiekun" className="btn btn-secondary">
+              Moje defibrylatory
+            </Link>
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (!view || !form || loaded.state !== "ready") {
     return (
       <div aria-live="polite" className="max-w-2xl">
         <LoadStatus of={loaded} />
@@ -114,6 +189,13 @@ export default function OwnerPanel() {
 
   return (
     <div className="max-w-2xl space-y-8">
+      {view.viewer && (
+        <KeeperBar name={view.viewer.name} onLogout={afterLogout}>
+          <Link href="/opiekun" className="link">
+            Moje defibrylatory
+          </Link>
+        </KeeperBar>
+      )}
       <div className="space-y-1">
         <p className="text-sm font-semibold tracking-wide text-gov uppercase">Paszport defibrylatora: panel opiekuna</p>
         <h1 className="text-2xl font-bold text-balance">{title(view.aed)}</h1>
@@ -126,7 +208,9 @@ export default function OwnerPanel() {
         </h2>
         <p className="text-sm">Kliknij po przeglądzie: urządzenie jest na miejscu, zielona dioda miga, a elektrody i bateria są ważne.</p>
         <p className="text-sm text-muted">
-          {card.confirmedAt ? `Ostatnie potwierdzenie: ${date(card.confirmedAt)}${card.confirmedByKeeper ? "" : " (według źródła danych)"}.` : "Urządzenie nie ma jeszcze potwierdzenia."}
+          {card.confirmedAt
+            ? `Ostatnie potwierdzenie: ${date(card.confirmedAt)}${card.confirmedByKeeper ? "" : " (według źródła danych)"}${view.passport.confirmedBy ? `, ${view.passport.confirmedBy} po zalogowaniu przez mObywatel` : ""}.`
+            : "Urządzenie nie ma jeszcze potwierdzenia."}
         </p>
         {expired.length > 0 && (
           <p className="text-sm font-semibold text-danger">
@@ -210,6 +294,32 @@ export default function OwnerPanel() {
           Zapisz zmiany
         </button>
       </form>
+
+      {loaded.data.login.mode !== "off" && (
+        <section aria-labelledby="logowanie-naglowek" className="space-y-2 border-t border-line pt-6">
+          <h2 id="logowanie-naglowek" className="text-lg font-bold">
+            Wejście bez linku
+          </h2>
+          {view.viewer?.linked ? (
+            <p className="text-sm">To urządzenie jest przy Twoim koncie. Do panelu wejdziesz po zalogowaniu przez mObywatel, na przykład ze strony urządzenia po zeskanowaniu naklejki.</p>
+          ) : view.viewer ? (
+            <>
+              <p className="text-sm">Dodaj to urządzenie do swojego konta, a następnym razem wejdziesz do panelu po zalogowaniu, bez szukania linku w poczcie.</p>
+              <button type="button" disabled={busy} onClick={connectAccount} className="btn btn-secondary">
+                Dodaj do mojego konta
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm">Zaloguj się przez mObywatel, a zapiszemy to urządzenie przy Twoim koncie. Następnym razem wejdziesz do panelu bez szukania linku w poczcie.</p>
+              <Link href={loginHref(`/opiekun?t=${encodeURIComponent(token ?? "")}&polacz=1`)} className="btn btn-secondary">
+                Zaloguj się przez mObywatel
+              </Link>
+            </>
+          )}
+          {view.keepers.length > 0 && <p className="text-sm text-muted">Bez linku wchodzą: {view.keepers.map((keeper) => `${keeper.name} (od ${date(keeper.linkedAt)})`).join(", ")}.</p>}
+        </section>
+      )}
 
       <section aria-labelledby="naklejka-naglowek" className="space-y-2 border-t border-line pt-6">
         <h2 id="naklejka-naglowek" className="text-lg font-bold">

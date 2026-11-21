@@ -538,7 +538,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The passport of the device the owner link is for */
+        /** The passport of a device for its keeper: by the owner link, or by a session of an account that has the device */
         get: operations["getOwnerPassport"];
         put?: never;
         /** The keeper changes expiry dates, status or the private contact for reminders */
@@ -566,6 +566,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** How a keeper can log in on this deployment */
+        get: operations["getLoginOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/login/demo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stand-in for the login.gov.pl round trip: opens a session for one of the made-up people */
+        post: operations["demoLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The logged-in keeper and their devices */
+        get: operations["getAccount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Adds the device of an owner link to the account, so the keeper gets in without the link next time */
+        post: operations["linkAccountDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account/devices/{id}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Takes a device off the account; the keeper can still get in by the owner link */
+        post: operations["unlinkAccountDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/aed/{id}/owner-link": {
         parameters: {
             query?: never;
@@ -575,7 +660,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** A management link for the keeper of a device; rotate = true revokes the links given out before */
+        /** A management link for the keeper of a device; rotate = true revokes the links given out before and takes the device off every account */
         post: operations["createOwnerLink"];
         delete?: never;
         options?: never;
@@ -922,6 +1007,7 @@ export interface components {
             confirmedAt: string | null;
             /** @description true, gdy datę potwierdził opiekun w paszporcie, a nie tylko podało ją źródło */
             confirmedByKeeper: boolean;
+            confirmedIdentity: components["schemas"]["IdentityProvider"];
             items: {
                 /** @enum {string} */
                 item: "electrodes" | "electrodes_child" | "battery";
@@ -950,6 +1036,11 @@ export interface components {
             keeperEmail: string | null;
             passportUrl: string;
         };
+        /**
+         * @description Skąd wiemy, kto potwierdził sprawność: opiekun był wtedy zalogowany. null = wszedł samym linkiem albo potwierdzenia nie ma
+         * @enum {string|null}
+         */
+        IdentityProvider: "demo" | "login.gov.pl" | null;
         /**
          * @description ok = urządzenie jest na miejscu, zielona dioda miga; locked = szafka zamknięta; missing = brak urządzenia; battery_alarm = sygnał baterii; damaged = uszkodzone
          * @enum {string}
@@ -1454,6 +1545,17 @@ export interface components {
                 status: "sent" | "logged" | "failed";
             }[];
             stickerUrl: string;
+            /** @description Osoby, które wchodzą do panelu po zalogowaniu, bez linku */
+            keepers: {
+                name: string;
+                linkedAt: string;
+            }[];
+            /** @description Zalogowana osoba, która o to pyta; null, gdy weszła samym linkiem */
+            viewer: {
+                name: string;
+                /** @description true, gdy to urządzenie jest już przy koncie tej osoby */
+                linked: boolean;
+            } | null;
         };
         OwnerPassport: {
             /** @example 2027-06-30 */
@@ -1465,6 +1567,11 @@ export interface components {
             /** @enum {string|null} */
             status: "czynny" | "czasowo_niedostepny" | "wycofany" | "nieznany" | null;
             confirmedAt: string | null;
+            /**
+             * @description Kto potwierdził, jeśli był zalogowany: imię i pierwsza litera nazwiska
+             * @example Anna P.
+             */
+            confirmedBy: string | null;
             /** @description Prywatny adres do przypomnień; nie trafia do zbioru */
             notifyEmail: string | null;
             /** @description Numer do przypomnień SMS (+48…); nie trafia do zbioru */
@@ -1481,6 +1588,36 @@ export interface components {
             status?: "czynny" | "czasowo_niedostepny" | "wycofany" | "nieznany" | null;
             notifyEmail?: string | null;
             notifyPhone?: string | null;
+        };
+        LoginOptions: {
+            /**
+             * @description demo = logowanie pokazowe: wybiera się jedną z przykładowych osób. off = do panelu wchodzi się tylko linkiem
+             * @enum {string}
+             */
+            mode: "demo" | "off";
+            /** @description Przykładowe osoby logowania pokazowego */
+            people: {
+                id: string;
+                name: string;
+            }[];
+        };
+        KeeperSession: {
+            session: string;
+            expiresAt: string;
+            account: components["schemas"]["KeeperAccount"];
+        };
+        KeeperAccount: {
+            /**
+             * @description Imię i pierwsza litera nazwiska
+             * @example Anna P.
+             */
+            name: string;
+            provider: components["schemas"]["IdentityProvider"] & unknown;
+            /** @description Urządzenia przy koncie: do panelu każdego z nich wchodzi się bez linku */
+            devices: components["schemas"]["PassportPublic"][];
+        };
+        DemoLoginRequest: {
+            person: string;
         };
         OwnerLinks: {
             ownerUrl: string;
@@ -2885,10 +3022,15 @@ export interface operations {
     };
     getOwnerPassport: {
         parameters: {
-            query?: never;
-            header: {
+            query?: {
+                /** @description Numer urządzenia; potrzebny, gdy zamiast linku jest sesja zalogowanego opiekuna */
+                id?: string;
+            };
+            header?: {
                 /** @description Token z linku dla opiekuna (parametr t) */
-                "x-owner-token": string;
+                "x-owner-token"?: string;
+                /** @description Sesja opiekuna z logowania (POST /v1/auth/login/demo) */
+                "x-keeper-session"?: string;
             };
             path?: never;
             cookie?: never;
@@ -2904,7 +3046,7 @@ export interface operations {
                     "application/json": components["schemas"]["OwnerView"];
                 };
             };
-            /** @description Missing, wrong or revoked owner link */
+            /** @description No owner link and no session, a wrong or revoked link, or a device that is not on the account */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2935,10 +3077,15 @@ export interface operations {
     };
     updateOwnerPassport: {
         parameters: {
-            query?: never;
-            header: {
+            query?: {
+                /** @description Numer urządzenia; potrzebny, gdy zamiast linku jest sesja zalogowanego opiekuna */
+                id?: string;
+            };
+            header?: {
                 /** @description Token z linku dla opiekuna (parametr t) */
-                "x-owner-token": string;
+                "x-owner-token"?: string;
+                /** @description Sesja opiekuna z logowania (POST /v1/auth/login/demo) */
+                "x-keeper-session"?: string;
             };
             path?: never;
             cookie?: never;
@@ -2958,7 +3105,7 @@ export interface operations {
                     "application/json": components["schemas"]["OwnerView"];
                 };
             };
-            /** @description Missing, wrong or revoked owner link */
+            /** @description No owner link and no session, a wrong or revoked link, or a device that is not on the account */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2989,10 +3136,15 @@ export interface operations {
     };
     confirmOwnerPassport: {
         parameters: {
-            query?: never;
-            header: {
+            query?: {
+                /** @description Numer urządzenia; potrzebny, gdy zamiast linku jest sesja zalogowanego opiekuna */
+                id?: string;
+            };
+            header?: {
                 /** @description Token z linku dla opiekuna (parametr t) */
-                "x-owner-token": string;
+                "x-owner-token"?: string;
+                /** @description Sesja opiekuna z logowania (POST /v1/auth/login/demo) */
+                "x-keeper-session"?: string;
             };
             path?: never;
             cookie?: never;
@@ -3008,7 +3160,250 @@ export interface operations {
                     "application/json": components["schemas"]["OwnerView"];
                 };
             };
-            /** @description Missing, wrong or revoked owner link */
+            /** @description No owner link and no session, a wrong or revoked link, or a device that is not on the account */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getLoginOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Login options */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginOptions"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    demoLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DemoLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Session; send it as X-Keeper-Session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeeperSession"];
+                };
+            };
+            /** @description The stand-in login is switched off */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAccount: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Sesja opiekuna z logowania (POST /v1/auth/login/demo) */
+                "x-keeper-session": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeeperAccount"];
+                };
+            };
+            /** @description No session, or it has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    linkAccountDevice: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Sesja opiekuna z logowania (POST /v1/auth/login/demo) */
+                "x-keeper-session": string;
+                /** @description Token z linku dla opiekuna: dowód, że to urządzenie tej osoby */
+                "x-owner-token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeeperAccount"];
+                };
+            };
+            /** @description No session, or it has ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    unlinkAccountDevice: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Sesja opiekuna z logowania (POST /v1/auth/login/demo) */
+                "x-keeper-session": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeeperAccount"];
+                };
+            };
+            /** @description No session, or it has ended */
             401: {
                 headers: {
                     [name: string]: unknown;

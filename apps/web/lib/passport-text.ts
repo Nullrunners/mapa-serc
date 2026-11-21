@@ -25,6 +25,13 @@ export const REPORT_TEXT: Record<ReportKind, string> = {
 
 export const PROBLEMS: ReportKind[] = ["locked", "missing", "battery_alarm", "damaged"];
 
+/**
+ * How we know who confirmed the device: the keeper was logged in then. The stand-in login of this prototype is
+ * named for what it is. Nothing when the keeper came in by the link alone.
+ */
+export const confirmedHow = (passport: PassportPublic) =>
+  passport.confirmedIdentity === "login.gov.pl" ? " (po zalogowaniu przez mObywatel)" : passport.confirmedIdentity === "demo" ? " (po zalogowaniu pokazowym przez mObywatel)" : "";
+
 /** 2–4, 22–24, 32–34…: the numbers Polish follows with "osoby" rather than "osób". */
 const few = (count: number) => count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20);
 
