@@ -144,7 +144,7 @@ export async function sendOwnerLink(store: Store, aed: MergedAed, nowIso: string
     aedId: aed.id,
     channel: 'email',
     recipient: email,
-    subject: `Link do paszportu defibrylatora „${name}”`,
+    subject: `Link do raportu defibrylatora „${name}”`,
     body: [
       'Dzień dobry,',
       '',
@@ -186,11 +186,11 @@ export async function welcomeProvider(store: Store, email: string, devices: read
     aedId: one ? devices[0]!.id : null,
     channel: 'email',
     recipient: email,
-    subject: one ? `Naklejka i paszport defibrylatora „${devices[0]!.name}”` : `Naklejki i paszporty Twoich defibrylatorów (${devices.length})`,
+    subject: one ? `Naklejka i raport defibrylatora „${devices[0]!.name}”` : `Naklejki i raporty Twoich defibrylatorów (${devices.length})`,
     body: [
       'Dzień dobry,',
       '',
-      `dziękujemy za zgłoszenie ${one ? 'defibrylatora' : 'defibrylatorów'} do otwartego zbioru danych. ${one ? 'Urządzenie ma' : 'Każde urządzenie ma'} swój paszport.`,
+      `dziękujemy za zgłoszenie ${one ? 'defibrylatora' : 'defibrylatorów'} do otwartego zbioru danych. ${one ? 'Urządzenie ma' : 'Każde urządzenie ma'} swój raport.`,
       '',
       `1. Wydrukuj ${one ? 'naklejkę' : 'naklejki'} z kodem QR i przyklej przy ${one ? 'urządzeniu' : 'urządzeniach'}. Kto zeskanuje kod, potwierdzi, że defibrylator jest na miejscu, albo zgłosi Ci problem.`,
       '2. W panelu opiekuna wpisz terminy ważności elektrod i baterii. Przypomnimy o wymianie na ten adres 30 i 7 dni przed terminem.',
