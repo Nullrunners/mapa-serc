@@ -2,7 +2,7 @@
 
 Rozwiązanie zadania **„Misja AED – dane na ratunek"** (HackNation 2026, Departament Zarządzania Danymi, Ministerstwo Cyfryzacji): jeden ogólnopolski, otwarty zbiór danych o defibrylatorach AED, gotowy do udostępnienia w portalu dane.gov.pl.
 
-Dane urzędowe o AED to dziś cztery samorządowe pliki w portalu (74 urządzenia), każdy w innym układzie. Społeczność OpenStreetMap zna ponad 18 tysięcy urządzeń w 2128 gminach, ale na licencji ODbL, której portal nie ma w swoim słowniku licencji. AED Hub scala to, co już jest, w jednolity zbiór, a przede wszystkim ułatwia pozyskanie reszty: opiekun zgłasza urządzenie w kilku krokach, a system wskazuje, kogo o zgłoszenie poprosić.
+Dane urzędowe o AED to dziś pięć samorządowych zbiorów w portalu (782 urządzenia): cztery pliki i lista Warszawy wydawana przez API miasta, każdy w innym układzie. Społeczność OpenStreetMap zna ponad 18 tysięcy urządzeń w 2128 gminach, ale na licencji ODbL, której portal nie ma w swoim słowniku licencji. AED Hub scala to, co już jest, w jednolity zbiór, a przede wszystkim ułatwia pozyskanie reszty: opiekun zgłasza urządzenie w kilku krokach, a system wskazuje, kogo o zgłoszenie poprosić.
 
 ## Co działa, a co jest w budowie
 
@@ -16,23 +16,25 @@ Dane urzędowe o AED to dziś cztery samorządowe pliki w portalu (74 urządzeni
 | Plik XML dla harvestera dane.gov.pl, zgodny z oficjalnym XSD 1.13 (sprawdzany w testach) | działa |
 | Raport jakości dla każdego dostawcy | działa |
 | Mapa z listą najbliższych urządzeń, strona wzorca, strona źródeł | działa; obejrzane na zrzutach ekranu w szerokości komputera i telefonu. W przeglądarce bez WebGL2 zamiast mapy jest komunikat, a lista działa dalej |
-| Kreator dla dostawcy: plik Excela (.xlsx), CSV lub GeoJSON w dowolnym układzie, automatyczne dopasowanie kolumn, podgląd poprawek i duplikatów, zgłoszenie, zatwierdzenie przez operatora | działa w API (testy); interfejs zbudowany, nie był jeszcze sprawdzany w przeglądarce |
-| Kreator: podanie adresu istniejącego zbioru, formularz pojedynczego urządzenia, stary format Excela (.xls) | do zrobienia |
+| Kreator dla dostawcy: plik Excela (.xlsx albo starszy .xls), CSV lub GeoJSON w dowolnym układzie, automatyczne dopasowanie kolumn, podgląd poprawek i duplikatów, zgłoszenie, zatwierdzenie przez operatora | działa w API (testy); interfejs zbudowany, nie był jeszcze sprawdzany w przeglądarce |
+| Kreator: podanie adresu istniejącego zbioru, formularz pojedynczego urządzenia | do zrobienia |
 | Radar AED: wskazówki z mapy społeczności (gminy i operatorzy) i z ogłoszeń o zakupach publicznych, decyzja operatora, link zaproszenia dla opiekuna, publikacja zgłoszenia z zaproszenia | działa w API (testy); interfejs zbudowany, nie był jeszcze sprawdzany w przeglądarce |
 | Radar: klasyfikacja ogłoszeń modelem językowym, wskazówki ze stron gmin i BIP | do zrobienia; dziś ogłoszenia odsiewa filtr słów kluczowych |
-| Źródło: Warszawa | czeka na klucz do API miasta |
+| Źródło: Warszawa, 708 urządzeń z API miasta. Klucz (`WARSAW_API_KEY`) jest potrzebny tylko do pobrania świeżej listy; bez niego czytana jest kopia dołączona do repozytorium | działa |
+| Łączenie rekordów po numerze urządzenia zapisanym w innym źródle (OpenStreetMap podaje numer z API Warszawy) | działa |
 
 Zgłoszenie wysłane z kreatora bez tokenu operatora ma stan „oczekuje": dostawca widzi wynik, ale rekordy wchodzą do plików dla portalu dopiero po zatwierdzeniu (`POST /admin/sources/{id}/approve`). Niezatwierdzone zgłoszenie nie może też zmienić rekordów już opublikowanych. W wersji docelowej token operatora zastępuje tożsamość dostawcy z login.gov.pl.
 
 ## Liczby z przebiegu 21.11.2026
 
-- 74 urządzenia w zbiorze urzędowym, z 4 gmin (Krosno, Przemyśl, Marki, Legionowo)
-- 18 257 urządzeń znanych tylko z OpenStreetMap, pokazywanych jako niepotwierdzone, poza plikami dla portalu
-- 36 urządzeń urzędowych potwierdzonych niezależnie przez OpenStreetMap; 21 par czeka na ręczne rozstrzygnięcie
-- Radar: w 2128 gminach społeczność zna co najmniej jedno urządzenie, a tylko 4 gminy mają dane urzędowe; 108 operatorów ma po 5 i więcej urządzeń na mapie społeczności (ZUS 177, InPost 96, Tauron 69); 47 ogłoszeń z lat 2021–2026 o zakupie AED przez podmioty publiczne (m.in. Koszalin 40 sztuk, Szczecin 40 sztuk w listopadzie 2026, Toruń 29)
-- żaden z czterech plików urzędowych nie podaje godzin dostępności, rodzaju dostępu, statusu ani daty weryfikacji urządzenia; OpenStreetMap podaje rodzaj dostępu dla 92% urządzeń, a godziny dla 37%
-- w sobotę 21.11.2026 o 11:30 jako „dostępne teraz" dało się oznaczyć 0 z 74 urządzeń urzędowych i 4215 z 18 257 znanych z OpenStreetMap
-- poprawki wprowadzone automatycznie w plikach urzędowych: 7 wierszy z zamienionymi współrzędnymi, 29 adresów rozdzielonych z jednej kolumny, 1 urządzenie ze współrzędnymi skopiowanymi z innego miasta (położenie ustalone z adresu)
+- 782 urządzenia w zbiorze urzędowym, z 5 miast (Warszawa 708, Legionowo 24, Krosno 21, Przemyśl 21, Marki 8)
+- 18 000 urządzeń znanych tylko z OpenStreetMap, pokazywanych jako niepotwierdzone, poza plikami dla portalu
+- 297 urządzeń urzędowych potwierdzonych niezależnie przez OpenStreetMap; 130 par czeka na ręczne rozstrzygnięcie. Numer urządzenia z API Warszawy zapisany w OpenStreetMap połączył 21 par, których samo porównanie nazw i położenia nie łączyło
+- Radar: w 2128 gminach społeczność zna co najmniej jedno urządzenie, a dane urzędowe ma 6 gmin (szósta tylko dlatego, że jedno urządzenie z listy Warszawy ma współrzędne w sąsiedniej gminie); 105 operatorów ma po 5 i więcej urządzeń na mapie społeczności (ZUS 177, InPost 96, Tauron 69); 47 ogłoszeń z lat 2021–2026 o zakupie AED przez podmioty publiczne (m.in. Koszalin 40 sztuk, Szczecin 40 sztuk w listopadzie 2026, Toruń 29)
+- żaden z czterech plików z portalu nie podaje godzin dostępności, rodzaju dostępu, statusu ani daty weryfikacji urządzenia. Lista Warszawy podaje rodzaj dostępu dla wszystkich 708 urządzeń, a godziny opisuje słowami przy 612: 457 opisów system zapisał w składni `opening_hours`, 155 zostawił słowami w uwagach. OpenStreetMap podaje rodzaj dostępu dla 92% urządzeń, a godziny dla 37%
+- w sobotę 21.11.2026 o 13:26 jako „dostępne teraz" dało się oznaczyć 103 z 782 urządzeń urzędowych i 4171 z 18 000 znanych tylko z OpenStreetMap
+- poprawki wprowadzone automatycznie w czterech plikach z portalu: 7 wierszy z zamienionymi współrzędnymi, 29 adresów rozdzielonych z jednej kolumny, 1 urządzenie ze współrzędnymi skopiowanymi z innego miasta (położenie ustalone z adresu)
+- próba kreatora na prawdziwym pliku urzędu (Urząd Miasta Łodzi, arkusz `.xls`, 140 wierszy, same adresy): 118 urządzeń dostało położenie z adresu, w 61 wierszach miejscowość uzupełniono na podstawie pozostałych wierszy, 74 opisy godzin zapisano w składni `opening_hours`, a przy 98 wierszach system wskazał urządzenie, które już zna (pewne albo do sprawdzenia). Pliku nie ma w zbiorze, bo urząd nie podał warunków ponownego wykorzystania
 
 ## Uruchomienie
 
@@ -102,11 +104,14 @@ Schemat portalu przyjmuje wyłącznie adresy `https`, więc plik jest poprawny d
 | Urząd Miejski w Przemyślu, zbiór 4581 | CC0 1.0 | rekordy urzędowe |
 | Urząd Miasta Legionowo, zbiór 40593 | CC0 1.0 | rekordy urzędowe |
 | Urząd Miasta Marki, zbiór 4955 | CC BY 4.0 | rekordy urzędowe, z oznaczeniem źródła |
+| Urząd m.st. Warszawy, zbiór 39512 (API „Otwarte dane po warszawsku") | CC BY 4.0 | rekordy urzędowe, z oznaczeniem źródła; kopia listy z 21.11.2026 jest w `apps/api/test/fixtures/sources/warszawa.json` |
 | OpenStreetMap przez openaedmap.org | ODbL 1.0 | osobna warstwa „niepotwierdzone" i potwierdzenie istnienia urządzeń; wartości pól z OSM nie trafiają do rekordów urzędowych ani do plików dla portalu |
 | GUGiK: usługa geokodowania (UUG) i ULDK | – | kody TERYT i położenie z adresu |
 | e-Zamówienia, ogłoszenia o wyniku postępowania (CPV 33182100-0) | – | wskazówki dla Radaru: kto kupił AED |
 
 Zbiór krajowy jest publikowany na CC BY 4.0, bo taką licencję ma najbardziej wymagające źródło urzędowe. Każdy rekord ma kolumny `zrodlo` i `licencja`.
+
+Znamy też wykazy AED Łodzi, Krakowa i Gliwic oraz bazę ratujzsercem.pl. Żaden z nich nie ma podanej licencji, więc nie są w zbiorze; z powodami wymienia je strona „Skąd te dane" (`apps/api/src/pipeline/known.ts`). Przegląd portali otwartych danych Gdyni, Lublina i Metropolii GZM oraz krajowego katalogu metadanych z 21.11.2026 nie znalazł innych zbiorów AED.
 
 XSD harvestera i przykładowy plik XML w `apps/api/test/fixtures/harvester/` pochodzą z otwartego kodu portalu (kopia: github.com/olekstomek/mcod-backend-dane.gov.pl, gałąź `backend_2.62.3`).
 
