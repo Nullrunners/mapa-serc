@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import DeviceList, { pickedFrom, type Picked } from "@/components/device-list";
 import { GuideBanner, GuideIcon, GuidePanel } from "@/components/guide";
 import { MapPlaceholder, MapScreen } from "@/components/map-frame";
@@ -150,18 +150,35 @@ export default function Finder({ title, lead }: { title: string; lead: string })
     return () => navigator.geolocation.clearWatch(watch);
   }, [guiding]);
 
-  const locate = () => {
-    if (!("geolocation" in navigator)) return setLocating("denied");
+  /** `quiet` when we look on our own: a failure then shows no error, the button is still there to try again. */
+  const locate = (quiet = false) => {
+    if (!("geolocation" in navigator)) return setLocating(quiet ? "idle" : "denied");
     setLocating("asking");
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setNear(rounded(position.coords.latitude, position.coords.longitude));
         setLocating("idle");
       },
-      () => setLocating("denied"),
+      () => setLocating(quiet ? "idle" : "denied"),
       { enableHighAccuracy: true, timeout: 10_000 },
     );
   };
+
+  // With location already allowed for this site, the nearest device and the way to it come up as soon as the map
+  // opens. We never ask on our own: the browser's question comes only after the button.
+  const locateOnEntry = useEffectEvent(() => locate(true));
+  useEffect(() => {
+    let left = false;
+    navigator.permissions?.query({ name: "geolocation" }).then(
+      (status) => {
+        if (!left && status.state === "granted") locateOnEntry();
+      },
+      () => {},
+    );
+    return () => {
+      left = true;
+    };
+  }, []);
 
   const controls = (
     <div className="space-y-4">
@@ -185,7 +202,7 @@ export default function Finder({ title, lead }: { title: string; lead: string })
       </form>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <button type="button" onClick={locate} disabled={locating === "asking"} className="btn btn-secondary">
+        <button type="button" onClick={() => locate()} disabled={locating === "asking"} className="btn btn-secondary">
           <LocateIcon />
           {locating === "asking" ? "Ustalam położenie…" : "Pokaż najbliższe mnie"}
         </button>
