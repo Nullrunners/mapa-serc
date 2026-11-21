@@ -93,14 +93,43 @@ const WARSAW = new Intl.DateTimeFormat('en-GB', {
 })
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
+export interface WarsawTime {
+  readonly day: number
+  readonly minute: number
+  readonly date: string
+}
+
+/** A list of devices is checked against one moment, and formatting a date in a time zone is slow: keep the last answer. */
+let lastTime: { ms: number; time: WarsawTime } | null = null
+
 /** Day of the week (0 = Monday), minute of the day and date (YYYY-MM-DD) in Poland, whatever the machine's clock says. */
-export function warsawTime(at: Date): { day: number; minute: number; date: string } {
+export function warsawTime(at: Date): WarsawTime {
+  const ms = at.getTime()
+  if (lastTime?.ms === ms) return lastTime.time
   const parts = Object.fromEntries(WARSAW.formatToParts(at).map((part) => [part.type, part.value]))
-  return { day: WEEKDAYS.indexOf(parts.weekday ?? ''), minute: Number(parts.hour) * 60 + Number(parts.minute), date: `${parts.year}-${parts.month}-${parts.day}` }
+  const time = { day: WEEKDAYS.indexOf(parts.weekday ?? ''), minute: Number(parts.hour) * 60 + Number(parts.minute), date: `${parts.year}-${parts.month}-${parts.day}` }
+  lastTime = { ms, time }
+  return time
 }
 
 /** The calendar day `days` after YYYY-MM-DD. */
 const plusDays = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
+
+/** The same few hundred values come back in every list ("Mo-Fr 08:00-16:00"); each is read once. */
+const RULES_KEPT = 5000
+const rulesByText = new Map<string, Rule[] | null>()
+
+/** The rules of a value as it stands (public holidays included), or null when any part of it is not understood. */
+function rulesOf(text: string): Rule[] | null {
+  let rules = rulesByText.get(text)
+  if (rules === undefined) {
+    rules = parseRules(text)
+    // Hours are free text from many sources; do not let odd values pile up for ever.
+    if (rulesByText.size >= RULES_KEPT) rulesByText.clear()
+    rulesByText.set(text, rules)
+  }
+  return rules
+}
 
 /** All rules of a value, or null when any part of it is not understood. */
 function parseRules(text: string, prepare: (part: string) => string | null = (part) => part): Rule[] | null {
@@ -122,21 +151,32 @@ function parseRules(text: string, prepare: (part: string) => string | null = (pa
  * that day and the day before are public holidays; an ordinary week has none.
  */
 function openAt(rules: Rule[], day: number, minute: number, holiday: { today: boolean; yesterday: boolean } = { today: false, yesterday: false }): boolean {
-  /** The last rule that names a day (or, on a holiday, names holidays) decides that day. */
-  const rangesOn = (weekday: number, isHoliday: boolean) => rules.findLast((rule) => rule.days.has(weekday) || (isHoliday && rule.holiday))?.ranges ?? []
-  const today = rangesOn(day, holiday.today).some(([from, to]) => from <= minute && minute < to)
-  const sinceYesterday = rangesOn((day + 6) % 7, holiday.yesterday).some(([, to]) => minute + DAY_MINUTES < to)
-  return today || sinceYesterday
+  return openIn(rangesOn(rules, day, holiday.today), rangesOn(rules, (day + 6) % 7, holiday.yesterday), minute)
 }
 
-const holidaysAround = (date: string) => ({ today: isPolishHoliday(date), yesterday: isPolishHoliday(plusDays(date, -1)) })
+const NO_RANGES: [number, number][] = []
+
+/** The last rule that names a day (or, on a holiday, names holidays) decides that day. */
+const rangesOn = (rules: Rule[], weekday: number, isHoliday: boolean) => rules.findLast((rule) => rule.days.has(weekday) || (isHoliday && rule.holiday))?.ranges ?? NO_RANGES
+
+/** Open at `minute` by the ranges of that day, or by one of the day before that runs past midnight. */
+const openIn = (today: [number, number][], yesterday: [number, number][], minute: number) =>
+  today.some(([from, to]) => from <= minute && minute < to) || yesterday.some(([, to]) => minute + DAY_MINUTES < to)
+
+let lastHolidays: { date: string; around: { today: boolean; yesterday: boolean } } | null = null
+
+/** Whether a day and the day before it are public holidays; the last day asked about is kept, like the last moment. */
+function holidaysAround(date: string): { today: boolean; yesterday: boolean } {
+  if (lastHolidays?.date !== date) lastHolidays = { date, around: { today: isPolishHoliday(date), yesterday: isPolishHoliday(plusDays(date, -1)) } }
+  return lastHolidays.around
+}
 
 /** Whether the hours in `godziny_dostepnosci` cover the moment `at`. */
 export function availabilityAt(hours: string | null | undefined, at: Date): Availability {
   const text = hours?.trim()
   if (!text) return 'unknown'
   if (text === '24/7') return 'open'
-  const rules = parseRules(text)
+  const rules = rulesOf(text)
   const { day, minute, date } = warsawTime(at)
   if (!rules || day < 0) return 'unknown'
   return openAt(rules, day, minute, holidaysAround(date)) ? 'open' : 'closed'
@@ -163,16 +203,27 @@ const STEP = 5
 export function nextChange(hours: string | null | undefined, at: Date): HoursChange | null {
   const text = hours?.trim()
   if (!text || text === '24/7') return null
-  const rules = parseRules(text)
+  const rules = rulesOf(text)
   const start = warsawTime(at)
   if (!rules || start.day < 0) return null
   const openNow = openAt(rules, start.day, start.minute, holidaysAround(start.date))
+  // Which ranges apply changes only at midnight: look them up once a day, not at every step.
+  let day = -1
+  let today = NO_RANGES
+  let yesterday = NO_RANGES
   let elapsed = STEP - (start.minute % STEP)
   for (; elapsed <= 7 * DAY_MINUTES; elapsed += STEP) {
     const total = start.minute + elapsed
     const days = Math.floor(total / DAY_MINUTES)
     const minute = total % DAY_MINUTES
-    if (openAt(rules, (start.day + days) % 7, minute, holidaysAround(plusDays(start.date, days))) !== openNow) {
+    if (days !== day) {
+      day = days
+      const weekday = (start.day + days) % 7
+      const holiday = holidaysAround(plusDays(start.date, days))
+      today = rangesOn(rules, weekday, holiday.today)
+      yesterday = rangesOn(rules, (weekday + 6) % 7, holiday.yesterday)
+    }
+    if (openIn(today, yesterday, minute) !== openNow) {
       const time = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`
       return { open: openNow, minutes: elapsed, time, days }
     }
