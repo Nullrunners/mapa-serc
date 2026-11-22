@@ -8,8 +8,7 @@ const LINKS = [
   { href: "/", label: "Znajdź AED" },
   { href: "/braki", label: "Gdzie brakuje AED" },
   { href: "/radar", label: "Radar AED" },
-  { href: "/jakosc", label: "Skąd te dane" },
-  { href: "/wzorzec", label: "Wzorzec danych" },
+  // "Skąd te dane" and "Wzorzec danych" are reached from this page.
   { href: "/o-projekcie", label: "O projekcie" },
 ] as const;
 

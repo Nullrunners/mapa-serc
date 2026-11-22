@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { LoadStatus, Stats } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import { count } from "@/lib/format";
@@ -14,28 +13,15 @@ export default function LandingStats() {
     return data;
   });
 
+  if (result.state !== "ready") return <LoadStatus of={result} />;
   return (
-    <section aria-labelledby="liczby" className="space-y-4">
-      <h2 id="liczby" className="text-xl font-bold">
-        Ile defibrylatorów znamy
-      </h2>
-      {result.state === "ready" ? (
-        <Stats
-          className="sm:grid-cols-3"
-          items={[
-            { label: "W danych urzędowych", value: count(result.data.official) },
-            { label: "Jeszcze niepotwierdzone (OpenStreetMap)", value: count(result.data.community) },
-            { label: "Gminy z danymi urzędowymi", value: `${count(result.data.communesWithOfficial)} z ${count(result.data.communesTotal)}` },
-          ]}
-        />
-      ) : (
-        <LoadStatus of={result} />
-      )}
-      <p>
-        <Link href="/jakosc" className="link">
-          Skąd te dane
-        </Link>
-      </p>
-    </section>
+    <Stats
+      className="sm:grid-cols-3"
+      items={[
+        { label: "Defibrylatory w danych urzędowych", value: count(result.data.official) },
+        { label: "Jeszcze niepotwierdzone (OpenStreetMap)", value: count(result.data.community) },
+        { label: "Gminy z danymi urzędowymi", value: `${count(result.data.communesWithOfficial)} z ${count(result.data.communesTotal)}` },
+      ]}
+    />
   );
 }

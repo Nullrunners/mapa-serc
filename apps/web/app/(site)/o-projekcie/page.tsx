@@ -3,20 +3,31 @@ import Link from "next/link";
 import LandingStats from "@/components/landing-stats";
 import { LogoMark } from "@/components/logo";
 import { PhoneIcon } from "@/components/site-header";
-import { BRAND, MOBILE_APP_URL } from "@/lib/brand";
+import { MOBILE_APP_URL } from "@/lib/brand";
 
 export const metadata: Metadata = {
   title: "O projekcie",
   description: "Mapa serc zbiera dane o defibrylatorach AED z całej Polski w jeden otwarty zbiór dla dane.gov.pl.",
 };
 
-const PARTS = [
+interface Part {
+  href: string;
+  title: string;
+  text: string;
+}
+
+// The first one is what most people come for, so it takes the whole first row on a narrow screen and two thirds on a wide one.
+const PARTS: Part[] = [
   { href: "/", title: "Znajdź AED", text: "Najbliższy defibrylator, który jest teraz otwarty, i droga pieszo do niego." },
   { href: "/braki", title: "Gdzie brakuje AED", text: "Miejsca, z których do defibrylatora jest za daleko, i gdzie postawić nowy." },
   { href: "/dostawca", title: "Zgłoś defibrylatory", text: "Jeden pinezką na mapie albo całą listę z pliku Excela." },
   { href: "/opiekun", title: "Opiekujesz się defibrylatorem?", text: "Naklejka z kodem QR i przypomnienia o terminach elektrod i baterii." },
   { href: "/radar", title: "Radar AED", text: "Defibrylatory, których jeszcze nie ma w danych urzędowych." },
-  { href: "/wzorzec", title: "Otwarte dane", text: "Wzorzec danych dla urzędów i cała baza do pobrania za darmo." },
+];
+
+const DATA: Part[] = [
+  { href: "/jakosc", title: "Skąd te dane", text: "Wszystkie źródła, co w nich poprawiliśmy, i cała baza do pobrania." },
+  { href: "/wzorzec", title: "Wzorzec danych", text: "Co podać o każdym defibrylatorze. Szablon w Excelu dla urzędów i firm." },
 ];
 
 const STEPS = [
@@ -25,7 +36,7 @@ const STEPS = [
   { title: "Publikujemy", text: "Dane trafiają do portalu dane.gov.pl i każdy może z nich korzystać." },
 ];
 
-/** The landing page: what Mapa serc is, the numbers today and a way into every part of the site. */
+/** The landing page: what Mapa serc is, a way into every part of the site, the app and the open data. */
 export default function AboutPage() {
   return (
     <div className="space-y-14">
@@ -49,23 +60,45 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <LandingStats />
-
       <section aria-labelledby="co-zrobisz" className="space-y-4">
         <h2 id="co-zrobisz" className="text-xl font-bold">
           Co tu zrobisz
         </h2>
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {PARTS.map((part) => (
-            // The whole card answers a click; the link's name is only the title, so a screen reader's list stays short.
-            <li key={part.href} className="card relative space-y-1 hover:border-gov hover:bg-gov-light/40">
-              <h3 className="font-bold">
-                <Link href={part.href} className="text-gov after:absolute after:inset-0 after:rounded-lg">
-                  {part.title}
-                </Link>
-              </h3>
-              <p className="text-sm text-muted">{part.text}</p>
-            </li>
+          {PARTS.map((part, index) => (
+            <PartCard key={part.href} part={part} className={index === 0 ? "border-gov sm:col-span-2" : ""} />
+          ))}
+        </ul>
+      </section>
+
+      <section id="aplikacja" aria-labelledby="aplikacja-tytul" className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-lg bg-gov-light p-6">
+        <PhoneIcon className="hidden size-14 text-gov sm:block" />
+        <div className="min-w-60 flex-1 space-y-1">
+          <h2 id="aplikacja-tytul" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xl font-bold">
+            Aplikacja mobilna
+            {!MOBILE_APP_URL && <span className="rounded-full border border-gov px-2.5 py-0.5 text-sm font-semibold text-gov">wkrótce</span>}
+          </h2>
+          <p className="text-muted">
+            {MOBILE_APP_URL ? "Najbliższy defibrylator zawsze pod ręką." : "Do tego czasu otwórz tę stronę w telefonie: mapa działa tak samo."}
+          </p>
+        </div>
+        {MOBILE_APP_URL && (
+          <a href={MOBILE_APP_URL} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-lg">
+            <PhoneIcon />
+            Pobierz aplikację
+            <span className="sr-only"> (otworzy się w nowej karcie)</span>
+          </a>
+        )}
+      </section>
+
+      <section aria-labelledby="otwarte-dane" className="space-y-4">
+        <h2 id="otwarte-dane" className="text-xl font-bold">
+          Otwarte dane
+        </h2>
+        <LandingStats />
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {DATA.map((part) => (
+            <PartCard key={part.href} part={part} />
           ))}
         </ul>
       </section>
@@ -88,22 +121,20 @@ export default function AboutPage() {
           ))}
         </ol>
       </section>
-
-      {MOBILE_APP_URL && (
-        <section aria-labelledby="aplikacja" className="flex flex-wrap items-center justify-between gap-4 rounded-lg bg-gov-light p-6">
-          <div className="space-y-1">
-            <h2 id="aplikacja" className="text-xl font-bold">
-              {BRAND.name} w telefonie
-            </h2>
-            <p className="text-muted">Najbliższy defibrylator zawsze pod ręką.</p>
-          </div>
-          <a href={MOBILE_APP_URL} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-lg">
-            <PhoneIcon />
-            Pobierz aplikację
-            <span className="sr-only"> (otworzy się w nowej karcie)</span>
-          </a>
-        </section>
-      )}
     </div>
+  );
+}
+
+/** A part of the site. The whole card answers a click; the link's name is only the title, so a screen reader's list stays short. */
+function PartCard({ part, className = "" }: { part: Part; className?: string }) {
+  return (
+    <li className={`card relative space-y-1 hover:border-gov hover:bg-gov-light/40 ${className}`}>
+      <h3 className="font-bold">
+        <Link href={part.href} className="text-gov after:absolute after:inset-0 after:rounded-lg">
+          {part.title}
+        </Link>
+      </h3>
+      <p className="text-sm text-muted">{part.text}</p>
+    </li>
   );
 }

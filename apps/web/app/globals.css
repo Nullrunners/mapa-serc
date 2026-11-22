@@ -25,12 +25,11 @@
 }
 
 /*
- * `menu-row:` puts the main navigation in one row beside the name from 75rem (1200 px): the six links, the call to
- * providers, the app and "Dostępność" need about 1160 px. Only with the usual text size: with larger text
- * (`data-tekst`, see below) the links would not fit, so they stay folded under "Menu" on every screen.
+ * `menu-row:` is `lg:` for the main navigation, but only with the usual text size: with larger text (`data-tekst`,
+ * see below) the links would not fit in one row beside the name, so they stay folded under "Menu" on every screen.
  */
 @custom-variant menu-row {
-  @media (width >= 75rem) {
+  @media (width >= 64rem) {
     html:not([data-tekst]) & {
       @slot;
     }
