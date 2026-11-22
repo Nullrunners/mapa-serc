@@ -33,6 +33,9 @@ export function createApp() {
   app.use('/dane/*', cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'] }))
   app.use('/feeds/*', cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'] }))
   app.use('/v1/*', cors({ origin: (origin) => (config.corsOrigins.includes(origin) ? origin : null), allowMethods: ['GET', 'POST', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization', 'X-Owner-Token', 'X-Keeper-Session'], maxAge: 86_400 }))
+  // The admin panel of the site calls these with the operator token; where the site and the API have different
+  // addresses (the deployment), the browser asks first, and without an answer here it never sends the request.
+  app.use('/admin/*', cors({ origin: (origin) => (config.corsOrigins.includes(origin) ? origin : null), allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'], maxAge: 86_400 }))
   app.use('/health', cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'] }))
   app.use('/openapi.json', cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'] }))
 
