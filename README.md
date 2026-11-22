@@ -157,7 +157,46 @@ XSD harvestera i przykładowy plik XML w `apps/api/test/fixtures/harvester/` poc
 
 ## Wdrożenie
 
-[compose.yaml](compose.yaml) opisuje obie usługi dla Coolify (zasób typu Docker Compose). Wymagane zmienne: `PUBLIC_API_URL`, `PUBLIC_WEB_URL`, `ADMIN_TOKEN`, `LINK_SECRET`. Obrazy nie były jeszcze budowane – na komputerze, na którym powstał kod, nie ma Dockera.
+[compose.yaml](compose.yaml) opisuje obie usługi dla Coolify (zasób typu Docker Compose). Oba obrazy zbudowaliśmy i uruchomiliśmy 22.11.2026 (podman): API startuje na czystej bazie, a strona odpowiada na wszystkich podstronach.
+
+Kroki na Coolify:
+
+1. Wypchnij repozytorium na GitHub. Coolify buduje obrazy z repozytorium.
+2. Dodaj w Coolify zasób „Docker Compose” z tego repozytorium, z plikiem `compose.yaml`.
+3. Ustaw domeny usług. Port po dwukropku mówi proxy Coolify, do którego portu kontenera kierować ruch:
+   - `api`: `https://api.twoja-domena.pl:8787`,
+   - `web`: `https://twoja-domena.pl:3000`.
+4. Ustaw zmienne:
+   - `PUBLIC_API_URL=https://api.twoja-domena.pl`,
+   - `PUBLIC_WEB_URL=https://twoja-domena.pl`,
+   - `ADMIN_TOKEN` i `LINK_SECRET` jako losowe ciągi (`openssl rand -hex 24`).
+
+   `PUBLIC_API_URL` trafia do kodu strony przy budowaniu, więc po jego zmianie trzeba zbudować stronę od nowa.
+5. Wdróż. Pierwszy start buduje zbiór z kopii plików dołączonych do repozytorium.
+6. Uzupełnij dane. Na czystej bazie 708 urządzeń Warszawy ląduje w „do uzupełnienia”, bo nie mają kodów gmin. Kody ustala się z rejestru ULDK (GUGiK), który po serii szybkich zapytań blokuje adres na około godzinę. Najprościej przenieść bazę z komputera, na którym wszystko jest już policzone (kody gmin, warstwa OpenStreetMap, Radar):
+
+   ```bash
+   # na komputerze: zatrzymaj API (Ctrl+C przy pnpm dev:api), żeby baza była zapisana w całości i nie było obok pliku aed.duckdb.wal
+   scp data/aed.duckdb serwer:/tmp/
+   # na serwerze: nazwa kontenera API z `docker ps`
+   docker stop <kontener-api>
+   docker cp /tmp/aed.duckdb <kontener-api>:/data/aed.duckdb
+   docker run --rm --volumes-from <kontener-api> -u root node:24-bookworm-slim chown -R node:node /data
+   docker start <kontener-api>
+   ```
+
+   Druga droga to uruchomienie zadań na serwerze z własnego komputera. Trwa dłużej, ULDK może po drodze zablokować serwer, a na czystym serwerze tej drogi nie sprawdzaliśmy:
+
+   ```bash
+   API_URL=https://api.twoja-domena.pl ADMIN_TOKEN=… pnpm job pipeline --refresh
+   API_URL=https://api.twoja-domena.pl ADMIN_TOKEN=… pnpm job enrich-osm
+   API_URL=https://api.twoja-domena.pl ADMIN_TOKEN=… pnpm job radar
+   ```
+7. Sprawdź wynik:
+   - `https://api.twoja-domena.pl/health` ma pokazywać 782 urządzenia w `official`,
+   - `https://api.twoja-domena.pl/feeds/dostawcy/um-warszawa/dane-gov-pl.xml` ma się otworzyć bez komentarza o braku https,
+   - `https://twoja-domena.pl/admin` ma przyjąć token.
+8. Wpisz adres strony na górze [INSTRUKCJA-DLA-JURY.md](INSTRUKCJA-DLA-JURY.md), a token administratora w opis zgłoszenia.
 
 Zmienne nieobowiązkowe:
 
