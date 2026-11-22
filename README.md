@@ -4,7 +4,7 @@ Rozwiązanie zadania **„Misja AED – dane na ratunek"** (HackNation 2026, Dep
 
 Dane urzędowe o AED to dziś pięć samorządowych zbiorów w portalu (782 urządzenia): cztery pliki i lista Warszawy wydawana przez API miasta, każdy w innym układzie. Społeczność OpenStreetMap zna ponad 18 tysięcy urządzeń w 2128 gminach, ale na licencji ODbL, której portal nie ma w swoim słowniku licencji. Mapa serc scala to, co już jest, w jednolity zbiór, a przede wszystkim ułatwia pozyskanie reszty: opiekun zgłasza urządzenie w kilku krokach, a system wskazuje, kogo o zgłoszenie poprosić.
 
-Każdy dysponent publikuje w portalu własny zbiór i sam za niego odpowiada. Jedną listę dla całej Polski składa sam portal, podobnie jak dziś składa „Wykaz chronionych danych” (DGA). Zmiana w kodzie portalu jest w [portal/](portal/README.md).
+Każdy dysponent publikuje w portalu własny zbiór i sam za niego odpowiada. Jedną listę dla całej Polski składa sam portal, podobnie jak dziś składa „Wykaz chronionych danych” (DGA), i pokazuje ją jako tabelę na swojej stronie „Wykaz AED”. Zmiana w kodzie portalu jest w [portal/](portal/README.md).
 
 **Dla jury:** [INSTRUKCJA-DLA-JURY.md](INSTRUKCJA-DLA-JURY.md).
 
@@ -23,7 +23,7 @@ Każdy dysponent publikuje w portalu własny zbiór i sam za niego odpowiada. Je
 | Naklejka NFC | na stronie naklejki przycisk zapisuje ten sam adres co w kodzie QR na naklejce NFC (Chrome na Androidzie), w innych przeglądarkach można skopiować adres; nie testowaliśmy tego na telefonie z prawdziwą naklejką |
 | Potok scalania: odczyt plików w dowolnym dialekcie, automatyczne poprawki (także współrzędne w metrach, w układach PUWG 1992 i PUWG 2000), kody TERYT i geokodowanie z rejestrów GUGiK, deduplikacja, pochodzenie każdego pola, ocena jakości | działa |
 | Pliki dla dane.gov.pl osobno dla każdego dostawcy: CSV we wzorcu i XML dla harvestera, zgodny z oficjalnym XSD 1.13 (sprawdzany w testach), z tagiem `wykaz-aed` | działa |
-| Wykaz zbiorczy AED w portalu dane.gov.pl: zmiana w kodzie portalu ([portal/](portal/README.md)), która co noc scala zbiory wszystkich dostawców z tagiem `wykaz-aed` w jeden plik CSV, z dostawcą przy każdym wierszu | rdzeń działa w testach (15) i na naszych 782 urządzeniach; całość uruchomiona w portalu 2.62.3 w Dockerze: nocne zadanie publikuje wykaz z mapą, panel sprawdza kolumny |
+| Wykaz zbiorczy AED w portalu dane.gov.pl: zmiana w kodzie portalu ([portal/](portal/README.md)), która co noc scala zbiory wszystkich dostawców z tagiem `wykaz-aed` w jeden plik CSV, z dostawcą w pierwszej kolumnie, i pokazuje go jako tabelę na stronie portalu „Wykaz AED” | rdzeń działa w testach (17); całość uruchomiona w portalu postawionym u nas (backend 2.62.3, frontend 3.5.2): harvester i panel zasilają portal, nocne zadanie publikuje wykaz z 782 urządzeniami od 5 instytucji, strona portalu pokazuje tabelę |
 | Podgląd scalonej listy: CSV (RFC 4180), GeoJSON, JSON-LD, metadane CSVW | działa |
 | Panel administratora (`/admin`): zatwierdzanie i odrzucanie zgłoszeń z kreatora i pojedynczych urządzeń (z ostrzeżeniem, gdy urządzenie wygląda na już znane), decyzje w Radarze; cofnięcie zatwierdzonego pojedynczego urządzenia przez API (`DELETE /admin/aed/{id}/user-report`) | działa; API w testach, w przeglądarce sprawdzona lista zgłoszeń, odmowa przy złym tokenie i zatwierdzenie pojedynczego urządzenia |
 | Raport jakości dla każdego dostawcy | działa |
@@ -105,7 +105,7 @@ apps/api/          Hono + TypeScript + DuckDB
   src/gaps/        analiza luk: ludność w H3, godziny tygodnia urządzeń, wybór miejsc (zachłanny MCLP)
   reference/       ludność ze spisu 2021 w siatce 1 km (wycinek dla Polski)
 apps/web/          Next.js: mapa z listą, kreator, wzorzec, źródła i jakość, Radar, mapa luk, panel administratora
-portal/            zmiana w kodzie portalu dane.gov.pl: wykazy zbiorcze, pierwszy to wykaz AED
+portal/            zmiana w kodzie portalu dane.gov.pl (backend i strona): wykazy zbiorcze, pierwszy to wykaz AED
 zgloszenie/        pliki do zgłoszenia: wzorzec danych w XLSX, przykładowy plik urzędu do kreatora
 ```
 
@@ -130,11 +130,12 @@ Rdzeń adresowy wzorca jest identyczny z plikiem, który Legionowo już publikuj
 Za dane w portalu odpowiada ten, kto je publikuje. Dlatego nie wystawiamy jednego zbioru krajowego pod jednym dostawcą. Każdy dostawca dostaje własne pliki:
 
 - `/v1/sources/{id}/aed.csv`: jego urządzenia we wzorcu danych,
-- `/feeds/dostawcy/{id}/dane-gov-pl.xml`: plik dla harvestera portalu (schemat 1.13) z jednym zbiorem tego dostawcy, tagiem `wykaz-aed` i zasobem CSV.
+- `/feeds/dostawcy/{id}/dane-gov-pl.xml`: plik dla harvestera portalu (schemat 1.13) z jednym zbiorem tego dostawcy, tagiem `wykaz-aed` i zasobem CSV,
+- `/feeds/dostawcy/{id}/dane-gov-pl.md5`: suma kontrolna tego pliku. Harvester szuka jej pod tym samym adresem i bez niej odrzuca plik XML.
 
 Portal nie ma publicznego API zapisu. Dostawca rejestruje w portalu adres pliku XML jako źródło swojej instytucji albo wgrywa CSV w panelu i dodaje tag `wykaz-aed`. Pliki ma tylko źródło zatwierdzone, z licencją z listy portalu (CC0 1.0, CC BY 4.0); OpenStreetMap ich nie ma. Linki są na stronie „Skąd te dane”, w ostatnim kroku kreatora i w panelu administratora po zatwierdzeniu.
 
-Zbiory z tagiem `wykaz-aed` portal co noc scala w „Wykaz defibrylatorów AED – wykaz zbiorczy”. To robi zmiana w kodzie portalu opisana w [portal/README.md](portal/README.md). Pliki `/dane/aed.*` pokazują, jak taka scalona lista wygląda dziś.
+Zbiory z tagiem `wykaz-aed` portal co noc scala w „Wykaz defibrylatorów AED – wykaz zbiorczy” i pokazuje jako tabelę na stronie „Wykaz AED”. To robi zmiana w kodzie portalu opisana w [portal/README.md](portal/README.md). 22.11.2026 sprawdziliśmy to w portalu postawionym na własnym komputerze: harvester przyjął pliki czterech instytucji, piątą dodaliśmy w panelu, a wykaz ma 782 wiersze. Pliki `/dane/aed.*` pokazują tę samą scaloną listę poza portalem.
 
 Schemat portalu przyjmuje wyłącznie adresy `https`, więc plik XML jest poprawny dopiero na wdrożeniu z ustawionym `PUBLIC_API_URL`. Lokalnie plik zawiera komentarz z tym ostrzeżeniem.
 
