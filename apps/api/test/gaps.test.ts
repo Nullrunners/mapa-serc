@@ -1,11 +1,11 @@
 /** The gap engine: projection, weekly hours, population, coverage, greedy placement and the endpoints. */
-import { cellToLatLng, latLngToCell } from 'h3-js'
+import { cellToLatLng, getResolution, latLngToCell } from 'h3-js'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { weeklyHours } from '@aed/schema'
 import { createApp } from '../src/app'
 import { getContext } from '../src/context'
 import { areaKm2, inShape, parseRing, parseWkt, simplifyRing, type Ring, type Shape } from '../src/gaps/area'
-import { buildCoverage, hexesOfCell, hexState, nationalOverview, RES, type HexState } from '../src/gaps/engine'
+import { buildCoverage, hexesOfCell, hexState, LEVELS, levelFigures, levelIn, nationalOverview, RES, type HexState } from '../src/gaps/engine'
 import { createGeo, memoryCache } from '../src/pipeline/geocode'
 import { recommend } from '../src/gaps/greedy'
 import { laeaToWgs84 } from '../src/gaps/laea'
@@ -127,7 +127,7 @@ describe('coverage and placement', () => {
     expect(first[0]!.gained.residents).toBeGreaterThan(0)
   })
 
-  it('sums the squares into large hexagons, the same however often it steps aside for requests', async () => {
+  it('sums the squares into hexagons of every level, the same however often it steps aside for requests', async () => {
     const [lat, lon] = cellCentre(cells[0]!)
     const coverage = buildCoverage([point(lat, lon, weeklyHours('Mo-Fr 08:00-16:00')!)])
     const quiet = await nationalOverview(cells, coverage)
@@ -137,7 +137,21 @@ describe('coverage and placement', () => {
     expect(quiet.totals.noDevice).toBeLessThan(10_500)
     // Nobody is covered at night by a device in an office.
     expect(quiet.totals.noNight).toBe(10_500)
-    expect([...quiet.areas.values()].reduce((sum, area) => sum + area.residents, 0)).toBeCloseTo(10_500, 6)
+    const sum = (values: Float64Array) => values.reduce((total, value) => total + value, 0)
+    let previous = 0
+    for (const res of LEVELS) {
+      const level = quiet.levels.get(res)!
+      expect(level.hexes.every((hex) => getResolution(hex) === res)).toBe(true)
+      expect(sum(level.residents)).toBeCloseTo(10_500, 6)
+      expect(sum(level.noNight)).toBeCloseTo(10_500, 6)
+      // Each level finer than the one before: more hexagons for the same residents.
+      expect(level.hexes.length).toBeGreaterThanOrEqual(previous)
+      previous = level.hexes.length
+      // Uncovered by day only in part, so less than all residents, yet more than those with no device at all.
+      const uncovered = level.hexes.reduce((total, _, i) => total + levelFigures(level, i).uncovered, 0)
+      expect(uncovered).toBeLessThan(10_500)
+      expect(uncovered).toBeGreaterThan(quiet.totals.noDevice - level.hexes.length)
+    }
 
     // With a request being answered it lets go after every square.
     let asked = 0
@@ -152,7 +166,23 @@ describe('coverage and placement', () => {
     expect(asked).toBe(cells.length)
     expect(turns).toBeGreaterThanOrEqual(cells.length)
     expect(busy.totals).toEqual(quiet.totals)
-    expect([...busy.areas].map(([hex, area]) => [hex, area.result()])).toEqual([...quiet.areas].map(([hex, area]) => [hex, area.result()]))
+    for (const res of LEVELS) expect(busy.levels.get(res)).toEqual(quiet.levels.get(res))
+  })
+
+  it('cuts a level into boxes with every hexagon in exactly one of them', async () => {
+    const level = (await nationalOverview(cells, buildCoverage([]))).levels.get(8)!
+    const [west, east] = [Math.min(...level.lon), Math.max(...level.lon) + 1e-9]
+    const [south, north] = [Math.min(...level.lat), Math.max(...level.lat) + 1e-9]
+    // Cut through a centre, so one of them lies right on the edge between two boxes.
+    const [midLon, midLat] = [level.lon[0]!, level.lat[0]!]
+    const boxes = [
+      [west, south, midLon, midLat],
+      [midLon, south, east, midLat],
+      [west, midLat, midLon, north],
+      [midLon, midLat, east, north],
+    ] as const
+    const found = boxes.flatMap((box) => levelIn(level, box))
+    expect(found.sort((a, b) => a - b)).toEqual(level.hexes.map((_, i) => i))
   })
 
   it('stops when nothing is left to cover', () => {
@@ -260,6 +290,12 @@ describe('gap endpoints', () => {
     const devices = body.method.devices
     expect(devices.total).toBeGreaterThan(0)
     expect(devices.hours + devices.outdoor + devices.assumed + devices.excluded).toBe(devices.total)
+
+    // A map with hexagons of its own asks for the figures and places only.
+    const lean = (await (await app.request('/v1/gaps?bbox=20.88,52.38,20.98,52.43&n=3&hexes=0')).json()) as any
+    expect(lean.hexes.features).toEqual([])
+    expect(lean.totals).toEqual(body.totals)
+    expect(lean.places.map((place: any) => place.hex)).toEqual(body.places.map((place: any) => place.hex))
   })
 
   it('refuses an area too large for one analysis', async () => {
@@ -328,5 +364,23 @@ describe('gap endpoints', () => {
     expect(body.features[0].properties).toHaveProperty('uncovered')
     const country = (await (await app.request('/v1/gaps/hexes.geojson?bbox=14.1,49.0,24.2,54.9')).json()) as any
     expect(country).toMatchObject({ tooLarge: true, features: [] })
+  })
+
+  it('gives the finest level of the grid as the close-up does, kept and tagged, and no resolution it does not have', async () => {
+    const box = 'bbox=20.88,52.38,20.98,52.43'
+    const near = (await (await app.request(`/v1/gaps/hexes.geojson?${box}`)).json()) as any
+    const grid = await app.request(`/v1/gaps/grid.json?res=9&${box}`)
+    expect(grid.status).toBe(200)
+    const body = (await grid.json()) as any
+    expect(body).toMatchObject({ res: 9, tooLarge: false })
+    const properties = near.features.map((feature: any) => feature.properties)
+    expect(body.hexes).toEqual(properties.map((hex: any) => hex.hex))
+    expect(body.residents).toEqual(properties.map((hex: any) => hex.residents))
+    expect(body.uncovered).toEqual(properties.map((hex: any) => hex.uncovered))
+    const etag = grid.headers.get('ETag')
+    expect(etag).toBeTruthy()
+    expect((await app.request(`/v1/gaps/grid.json?res=9&${box}`, { headers: { 'If-None-Match': etag! } })).status).toBe(304)
+    expect((await app.request(`/v1/gaps/grid.json?res=4&${box}`)).status).toBe(422)
+    expect((await app.request(`/v1/gaps/grid.json?res=10&${box}`)).status).toBe(422)
   })
 })

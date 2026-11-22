@@ -5,6 +5,7 @@ import {
   GapsCommune,
   GapsLocalities,
   GapsMethod,
+  GapsGrid,
   GapsNear,
   GapsOverview,
   GapsSummary,
@@ -12,6 +13,7 @@ import {
   type GapsQuery,
   type gapsCommuneRoute,
   type gapsCsvRoute,
+  type gapsGridRoute,
   type gapsLocalitiesRoute,
   type gapsNearRoute,
   type gapsOverviewRoute,
@@ -26,9 +28,10 @@ import { ok } from '../http/respond'
 import { csvCell } from '../publish/files'
 import { areaKm2, parseBbox, parseRing, shapeArea, type Area } from './area'
 import { communeAt, communeByTerc, localitiesNamed } from './commune'
-import { hexPolygon, REACH_M, RES, SENIOR_WEIGHT, type HexState } from './engine'
+import { hexPolygon, levelFigures, levelIn, OVERVIEW_RES, REACH_M, RES, SENIOR_WEIGHT, type HexState } from './engine'
 import { POPULATION_SOURCE } from './population'
 import { analyseView, hexesNear, MAX_CELLS, overviewAtHand, overviewFor, supplyFor, type PlaceReport, type TimedOverview } from './state'
+import { WEEK_HOURS } from '@aed/schema'
 import { ASSUMED_HOURS } from './supply'
 
 const OSM_SOURCE = {
@@ -72,13 +75,11 @@ export const gapsOverviewHandler: RouteHandler<typeof gapsOverviewRoute> = async
   const { store } = await getContext()
   const overview = overviewAtHand(store) ?? (await overviewFor(store))
   const kept = await overviewLayer.get('overview', overview, () => {
-    const features = [...overview.areas.entries()]
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([hex, area]) => {
-        const { residents, noDevice, noNight, coveredShare } = area.result()
-        const uncovered = Math.round(residents * (1 - coveredShare))
-        return { type: 'Feature' as const, geometry: { type: 'Polygon' as const, coordinates: hexPolygon(hex) }, properties: { hex, residents, noDevice, noNight, coveredShare, uncovered } }
-      })
+    const level = overview.levels.get(OVERVIEW_RES)!
+    const features = level.hexes
+      .map((hex, i) => ({ hex, i }))
+      .sort((a, b) => (a.hex < b.hex ? -1 : 1))
+      .map(({ hex, i }) => ({ type: 'Feature' as const, geometry: { type: 'Polygon' as const, coordinates: hexPolygon(hex) }, properties: { hex, ...levelFigures(level, i) } }))
     return keepJson(c, GapsOverview, { type: 'FeatureCollection', features })
   })
   return sendKept(c, kept, 'public, max-age=300')
@@ -95,7 +96,7 @@ const hexFeature = (state: HexState) => ({
     coveredHours: state.coveredHours,
     noDevice: state.noDevice,
     noNight: state.noNight,
-    uncovered: round1((state.residents * (168 - state.coveredHours)) / 168),
+    uncovered: round1((state.residents * (WEEK_HOURS - state.coveredHours)) / WEEK_HOURS),
   },
 })
 
@@ -118,14 +119,15 @@ async function view(query: z.output<typeof GapsQuery>) {
 }
 
 export const gapsHandler: RouteHandler<typeof gapsRoute> = async (c) => {
-  const { store, area, result } = await view(c.req.valid('query'))
+  const query = c.req.valid('query')
+  const { store, area, result } = await view(query)
   return ok(c, GapsView, {
     tooLarge: result.tooLarge,
     cells: result.cells,
     maxCells: MAX_CELLS,
     km2: round1(areaKm2(area)),
     totals: result.totals,
-    hexes: { type: 'FeatureCollection', features: result.hexes.map(hexFeature) },
+    hexes: { type: 'FeatureCollection', features: query.hexes === '0' ? [] : result.hexes.map(hexFeature) },
     places: result.places.map(({ reach: _, ...place }) => ({ ...place, boundary: { type: 'Polygon' as const, coordinates: hexPolygon(place.hex) } })),
     method: method(store),
   })
@@ -136,6 +138,51 @@ export const gapsNearHandler: RouteHandler<typeof gapsNearRoute> = async (c) => 
   const { tooLarge, hexes } = hexesNear(store, parseBbox(c.req.valid('query').bbox))
   c.header('Cache-Control', 'public, max-age=300')
   return ok(c, GapsNear, { type: 'FeatureCollection', tooLarge, features: hexes.map(hexFeature) })
+}
+
+/** Most hexagons one answer of the grid may hold: the whole country at resolution 6 fits, at 7 it does not. */
+const MAX_GRID = 12_000
+
+/** Built answers of the grid, ready to send. Bounded: anyone may ask for any box. */
+const gridAnswers = new KeptBodies<unknown, typeof GapsGrid>(600)
+
+/**
+ * The map asks in boxes of a fixed grid, so the same box comes again and again, from everybody: each is built,
+ * checked and compressed once per count, and a browser that has it gets "304 Not Modified". Resolution 9 is counted
+ * for the box, like the close-up of a view; the coarser ones are cut from the national count.
+ */
+export const gapsGridHandler: RouteHandler<typeof gapsGridRoute> = async (c) => {
+  const { store } = await getContext()
+  const { res, bbox: text } = c.req.valid('query')
+  const bbox = parseBbox(text)
+  const key = `${res}:${bbox.join(',')}`
+  const answer = (hexes: string[], residents: number[], uncovered: number[], tooLarge = false) => keepJson(c, GapsGrid, { res, tooLarge, hexes, residents, uncovered })
+  let kept
+  if (res === RES) {
+    kept = await gridAnswers.get(key, supplyFor(store).key, () => {
+      const { tooLarge, hexes } = hexesNear(store, bbox)
+      return answer(
+        hexes.map((state) => state.hex),
+        hexes.map((state) => round1(state.residents)),
+        hexes.map((state) => round1((state.residents * (WEEK_HOURS - state.coveredHours)) / WEEK_HOURS)),
+        tooLarge,
+      )
+    })
+  } else {
+    const overview = overviewAtHand(store) ?? (await overviewFor(store))
+    kept = await gridAnswers.get(key, overview, () => {
+      const level = overview.levels.get(res)!
+      const found = levelIn(level, bbox)
+      if (found.length > MAX_GRID) return answer([], [], [], true)
+      const figures = found.map((i) => levelFigures(level, i))
+      return answer(
+        found.map((i) => level.hexes[i]!),
+        figures.map((figure) => figure.residents),
+        figures.map((figure) => figure.uncovered),
+      )
+    })
+  }
+  return sendKept(c, kept, 'public, max-age=300')
 }
 
 export const gapsCommuneHandler: RouteHandler<typeof gapsCommuneRoute> = async (c) => {

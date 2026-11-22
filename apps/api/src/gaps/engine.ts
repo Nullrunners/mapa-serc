@@ -115,8 +115,58 @@ export class TotalsBuilder {
 
 export interface Overview {
   totals: Totals
-  /** Per hexagon of OVERVIEW_RES. */
-  areas: Map<string, TotalsBuilder>
+  /** The country at each of LEVELS, the coarser the further out the map is. */
+  levels: Map<number, Level>
+}
+
+/**
+ * Coarser resolutions summed for the whole country in the same pass, from about 250 km² down to 0.7 km². The map
+ * shows the one that suits its zoom: the hexagons get smaller as it comes closer, until those of the analysis (RES).
+ */
+export const LEVELS = [5, 6, 7, 8] as const
+const FINEST = LEVELS.at(-1)!
+
+/**
+ * One resolution of the whole country: its hexagons and their sums in flat arrays, index by index. Resolution 8 has
+ * some 360 000 populated hexagons; as objects they would take several times the memory.
+ */
+export interface Level {
+  res: number
+  hexes: string[]
+  /** Centres, to find the hexagons of a part of the map. */
+  lat: Float64Array
+  lon: Float64Array
+  residents: Float64Array
+  noDevice: Float64Array
+  noNight: Float64Array
+  /** Residents × hours of the week with a device in reach. */
+  coveredHours: Float64Array
+}
+
+/** The figures of one hexagon of a level, rounded as the national ones are. */
+export function levelFigures(level: Level, i: number) {
+  const residents = level.residents[i]!
+  const coveredHours = level.coveredHours[i]!
+  return {
+    residents: Math.round(residents),
+    noDevice: Math.round(level.noDevice[i]!),
+    noNight: Math.round(level.noNight[i]!),
+    coveredShare: residents > 0 ? Math.round((coveredHours / (residents * WEEK_HOURS)) * 1000) / 1000 : 0,
+    /** Residents × share of the week without a device in reach, the measure the map is coloured by. */
+    uncovered: Math.round(residents - coveredHours / WEEK_HOURS),
+  }
+}
+
+/** Indexes of the hexagons of a level whose centre lies in the box; a centre on its east or north edge belongs to the next box. */
+export function levelIn(level: Level, [minLon, minLat, maxLon, maxLat]: readonly [number, number, number, number]): number[] {
+  const found: number[] = []
+  const { lat, lon } = level
+  for (let i = 0; i < lat.length; i++) {
+    const y = lat[i]!
+    const x = lon[i]!
+    if (x >= minLon && x < maxLon && y >= minLat && y < maxLat) found.push(i)
+  }
+  return found
 }
 
 /**
@@ -126,29 +176,86 @@ export interface Overview {
 const SLICE_MS = 4
 
 /**
- * The whole country, summed straight into large hexagons. It lets the server answer every few milliseconds, and
- * while `answering` says a request is being answered, after every square: an answer takes many small steps (read
- * the request, look things up, send the pieces), and each of them would otherwise wait for a whole slice.
+ * Lets the server answer every few milliseconds, and while `answering` says a request is being answered, at every
+ * `breathe()`: an answer takes many small steps (read the request, look things up, send the pieces), and each of
+ * them would otherwise wait for a whole slice.
  */
-export async function nationalOverview(cells: readonly GridCell[], coverage: Coverage, answering: () => boolean = () => false): Promise<Overview> {
-  const total = new TotalsBuilder()
-  const areas = new Map<string, TotalsBuilder>()
+function breather(answering: () => boolean) {
   let sliceEnd = performance.now() + SLICE_MS
-  for (const cell of cells) {
-    for (const demand of hexesOfCell(cell)) {
-      const state = hexState(demand, coverage)
-      total.add(state)
-      const parent = cellToParent(demand.hex, OVERVIEW_RES)
-      let area = areas.get(parent)
-      if (!area) areas.set(parent, (area = new TotalsBuilder()))
-      area.add(state)
-    }
+  return async () => {
     if (answering() || performance.now() >= sliceEnd) {
       await new Promise((done) => setImmediate(done))
       sliceEnd = performance.now() + SLICE_MS
     }
   }
-  return { totals: total.result(), areas }
+}
+
+/** Packs the sums of one level into flat arrays, a slice at a time. */
+async function packLevel(res: number, size: number, sums: Iterable<[string, TotalsBuilder]>, breathe: () => Promise<void>): Promise<Level> {
+  const level: Level = {
+    res,
+    hexes: new Array<string>(size),
+    lat: new Float64Array(size),
+    lon: new Float64Array(size),
+    residents: new Float64Array(size),
+    noDevice: new Float64Array(size),
+    noNight: new Float64Array(size),
+    coveredHours: new Float64Array(size),
+  }
+  let i = 0
+  for (const [hex, sum] of sums) {
+    const [lat, lon] = cellToLatLng(hex)
+    level.hexes[i] = hex
+    level.lat[i] = lat!
+    level.lon[i] = lon!
+    level.residents[i] = sum.residents
+    level.noDevice[i] = sum.noDevice
+    level.noNight[i] = sum.noNight
+    level.coveredHours[i] = sum.coveredResidentHours
+    i++
+    if ((i & 1023) === 0) await breathe()
+  }
+  return level
+}
+
+/**
+ * The whole country, summed straight into the hexagons of every level. The order of the hexagons follows the order of
+ * the squares only, so the same data gives the same layers. Each hexagon of the analysis looks up its parent of the
+ * finest level once; the coarser parents are looked up once per parent, not once per child.
+ */
+export async function nationalOverview(cells: readonly GridCell[], coverage: Coverage, answering: () => boolean = () => false): Promise<Overview> {
+  const breathe = breather(answering)
+  const total = new TotalsBuilder()
+  const coarser = LEVELS.slice(0, -1).map(() => new Map<string, TotalsBuilder>())
+  /** Per hexagon of the finest level: its sums at every level, from the coarsest. */
+  const chains = new Map<string, TotalsBuilder[]>()
+  for (const cell of cells) {
+    for (const demand of hexesOfCell(cell)) {
+      const state = hexState(demand, coverage)
+      total.add(state)
+      const finest = cellToParent(demand.hex, FINEST)
+      let chain = chains.get(finest)
+      if (!chain) {
+        chain = coarser.map((sums, i) => {
+          const parent = cellToParent(finest, LEVELS[i]!)
+          let sum = sums.get(parent)
+          if (!sum) sums.set(parent, (sum = new TotalsBuilder()))
+          return sum
+        })
+        chain.push(new TotalsBuilder())
+        chains.set(finest, chain)
+      }
+      for (const sum of chain) sum.add(state)
+    }
+    await breathe()
+  }
+  const levels = new Map<number, Level>()
+  for (const [i, sums] of coarser.entries()) levels.set(LEVELS[i]!, await packLevel(LEVELS[i]!, sums.size, sums, breathe))
+  const finest = (function* () {
+    for (const [hex, chain] of chains) yield [hex, chain.at(-1)!] as [string, TotalsBuilder]
+  })()
+  levels.set(FINEST, await packLevel(FINEST, chains.size, finest, breathe))
+  return { totals: total.result(), levels }
 }
 
 /** Closed ring of [lon, lat] pairs with 6 decimals (about 10 cm), for GeoJSON. */

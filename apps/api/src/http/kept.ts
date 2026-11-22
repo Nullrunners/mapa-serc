@@ -37,20 +37,28 @@ export async function keepJson<S extends z.ZodType>(c: Context, schema: S, body:
   return { gzipped: bytes(await compress(text, PIECES)), etag, schema }
 }
 
-/** One kept body per key, rebuilt when `version` changes. A build that failed is not kept: the next request tries again. */
+/**
+ * One kept body per key, rebuilt when `version` changes. A build that failed is not kept: the next request tries again.
+ * With `max`, only that many are kept, the ones asked for longest ago going first: for keys anyone can make up.
+ */
 export class KeptBodies<V, S extends z.ZodType = z.ZodType> {
   private readonly entries = new Map<string, { version: V; body: Promise<KeptBody<S>> }>()
 
+  constructor(private readonly max = Infinity) {}
+
   get(key: string, version: V, build: () => Promise<KeptBody<S>>): Promise<KeptBody<S>> {
     let entry = this.entries.get(key)
+    // Asked for again: to the end of the line, the last to go.
+    if (entry) this.entries.delete(key)
     if (entry?.version !== version) {
       entry = { version, body: build() }
       const built = entry
-      this.entries.set(key, built)
       built.body.catch(() => {
         if (this.entries.get(key) === built) this.entries.delete(key)
       })
     }
+    this.entries.set(key, entry)
+    if (this.entries.size > this.max) this.entries.delete(this.entries.keys().next().value!)
     return entry.body
   }
 }

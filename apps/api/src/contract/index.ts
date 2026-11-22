@@ -924,10 +924,24 @@ export const GapsQuery = z
       .optional()
       .openapi({ description: 'A whole commune by its TERC code; look it up with /v1/gaps/commune first, which fetches its boundary', example: '1408011' }),
     n: z.coerce.number().int().min(1).max(20).default(10).openapi({ description: 'How many places to recommend' }),
+    hexes: z
+      .enum(['0', '1'])
+      .default('1')
+      .openapi({ description: '0: leave out the hexagons of the area, for a map that fetches its own from /v1/gaps/grid.geojson' }),
   })
   .refine((query) => [query.bbox, query.area, query.terc].filter((value) => value !== undefined).length === 1, { message: 'Give exactly one of bbox, area or terc.' })
 
 export const GapsNearQuery = z.object({ bbox: bboxParam.openapi({ description: 'The part of the map in view: minLon,minLat,maxLon,maxLat' }) })
+
+export const GapsGridQuery = z.object({
+  res: z.coerce
+    .number()
+    .int()
+    .min(5)
+    .max(9)
+    .openapi({ description: 'H3 resolution: 5 (hexagons of about 250 km²), 6 (36 km²), 7 (5 km²), 8 (0.7 km²) or 9 (0.1 km², the resolution of the analysis)', example: 7 }),
+  bbox: bboxParam.openapi({ description: 'The part of the map: minLon,minLat,maxLon,maxLat; the hexagons whose centre lies in it' }),
+})
 
 export const GapsCommuneQuery = z.object({
   at: z.string().regex(POINT).openapi({ description: 'lon,lat of any point in the commune', example: '20.93,52.40' }),
@@ -1008,6 +1022,18 @@ export const GapsNear = z
   })
   .openapi('GapsNear')
 
+export const GapsGrid = z
+  .object({
+    res: z.number().int(),
+    tooLarge: z.boolean().openapi({ description: 'Too many hexagons of this resolution in the box; none are given then' }),
+    hexes: z.array(z.string()).openapi({
+      description: 'H3 indexes of the hexagons whose centre lies in the box. Their outlines come from any H3 library (cellToBoundary): ten times less to send than GeoJSON',
+    }),
+    residents: z.array(z.number()).openapi({ description: 'Residents of each hexagon, in the order of hexes' }),
+    uncovered: z.array(z.number()).openapi({ description: 'Residents × share of the week without a device in reach, in the order of hexes' }),
+  })
+  .openapi('GapsGrid')
+
 const MultiPolygon = z.object({
   type: z.literal('MultiPolygon'),
   coordinates: z.array(z.array(z.array(z.array(z.number())))).openapi({ description: 'Polygons of rings of [lon, lat] pairs; the first ring of each its outline' }),
@@ -1063,6 +1089,17 @@ export const gapsNearRoute = createRoute({
   summary: 'Small hexagons (H3 resolution 9) of the part of the map in view, without recommendations, for a close-up map',
   request: { query: GapsNearQuery },
   responses: { 200: json(GapsNear, 'Small hexagons, or none with tooLarge when the view holds too many'), ...problems },
+})
+
+export const gapsGridRoute = createRoute({
+  method: 'get',
+  path: '/v1/gaps/grid.json',
+  operationId: 'getGapsGrid',
+  tags: ['gaps'],
+  summary:
+    'Hexagons of a part of the map at the resolution that suits its zoom (the further out, the larger), as H3 indexes with their figures; for a map that shows them smaller as it comes closer',
+  request: { query: GapsGridQuery },
+  responses: { 200: json(GapsGrid, 'Hexagons whose centre lies in the box; resolutions 5–8 wait for the national figures after a start'), ...problems },
 })
 
 export const gapsCommuneRoute = createRoute({

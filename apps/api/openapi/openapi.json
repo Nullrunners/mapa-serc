@@ -2536,6 +2536,46 @@
           "properties"
         ]
       },
+      "GapsGrid": {
+        "type": "object",
+        "properties": {
+          "res": {
+            "type": "integer"
+          },
+          "tooLarge": {
+            "type": "boolean",
+            "description": "Too many hexagons of this resolution in the box; none are given then"
+          },
+          "hexes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "H3 indexes of the hexagons whose centre lies in the box. Their outlines come from any H3 library (cellToBoundary): ten times less to send than GeoJSON"
+          },
+          "residents": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "Residents of each hexagon, in the order of hexes"
+          },
+          "uncovered": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "Residents × share of the week without a device in reach, in the order of hexes"
+          }
+        },
+        "required": [
+          "res",
+          "tooLarge",
+          "hexes",
+          "residents",
+          "uncovered"
+        ]
+      },
       "GapsCommune": {
         "type": "object",
         "properties": {
@@ -5241,6 +5281,75 @@
         "x-status": "live"
       }
     },
+    "/v1/gaps/grid.json": {
+      "get": {
+        "operationId": "getGapsGrid",
+        "tags": [
+          "gaps"
+        ],
+        "summary": "Hexagons of a part of the map at the resolution that suits its zoom (the further out, the larger), as H3 indexes with their figures; for a map that shows them smaller as it comes closer",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 9,
+              "description": "H3 resolution: 5 (hexagons of about 250 km²), 6 (36 km²), 7 (5 km²), 8 (0.7 km²) or 9 (0.1 km², the resolution of the analysis)",
+              "example": 7
+            },
+            "required": true,
+            "description": "H3 resolution: 5 (hexagons of about 250 km²), 6 (36 km²), 7 (5 km²), 8 (0.7 km²) or 9 (0.1 km², the resolution of the analysis)",
+            "name": "res",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?(,-?\\d+(\\.\\d+)?){3}$",
+              "description": "The part of the map: minLon,minLat,maxLon,maxLat; the hexagons whose centre lies in it",
+              "example": "20.85,52.10,21.27,52.37"
+            },
+            "required": true,
+            "description": "The part of the map: minLon,minLat,maxLon,maxLat; the hexagons whose centre lies in it",
+            "name": "bbox",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hexagons whose centre lies in the box; resolutions 5–8 wait for the national figures after a start",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GapsGrid"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
     "/v1/gaps/commune": {
       "get": {
         "operationId": "getGapsCommune",
@@ -5450,6 +5559,21 @@
             "description": "How many places to recommend",
             "name": "n",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ],
+              "default": "1",
+              "description": "0: leave out the hexagons of the area, for a map that fetches its own from /v1/gaps/grid.geojson"
+            },
+            "required": false,
+            "description": "0: leave out the hexagons of the area, for a map that fetches its own from /v1/gaps/grid.geojson",
+            "name": "hexes",
+            "in": "query"
           }
         ],
         "responses": {
@@ -5562,6 +5686,21 @@
             "required": false,
             "description": "How many places to recommend",
             "name": "n",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ],
+              "default": "1",
+              "description": "0: leave out the hexagons of the area, for a map that fetches its own from /v1/gaps/grid.geojson"
+            },
+            "required": false,
+            "description": "0: leave out the hexagons of the area, for a map that fetches its own from /v1/gaps/grid.geojson",
+            "name": "hexes",
             "in": "query"
           }
         ],
