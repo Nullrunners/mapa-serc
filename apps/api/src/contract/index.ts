@@ -144,7 +144,7 @@ export const AedListQuery = z.object({
   availableNow: z.enum(['true', 'false']).optional().openapi({ description: 'true = only devices a passer-by can reach right now (see `availableNow` of a device)' }),
   sort: z.enum(['distance', 'reach']).default('distance').openapi({ description: 'With `near`: distance = nearest first; reach = soonest in hand at this minute (hours, holidays, cabinet, floor)' }),
   at: z.iso.datetime({ offset: true }).optional().openapi({ description: 'Moment to check instead of now, e.g. 2026-11-22T03:00:00+01:00', example: '2026-11-22T03:00:00+01:00' }),
-  limit: z.coerce.number().int().min(1).max(1000).default(100),
+  limit: z.coerce.number().int().min(1).max(1000).default(100).openapi({ description: 'How many devices to return (default 100, at most 1000); with `near`, the nearest ones' }),
   offset: z.coerce.number().int().min(0).default(0),
 })
 
@@ -212,7 +212,7 @@ export const mapRoute = createRoute({
   operationId: 'getMapLayer',
   tags: ['data'],
   summary: 'All devices of a layer as a slim GeoJSON for the map (a MapLibre source with clustering)',
-  request: { query: z.object({ layer: Layer.default('all') }) },
+  request: { query: z.object({ layer: Layer.default('all').openapi({ param: { description: 'Which devices: all (default), official or community (OSM only)' } }) }) },
   responses: { 200: json(MapFeatureCollection, 'Points with the few properties the map needs'), ...problems },
 })
 

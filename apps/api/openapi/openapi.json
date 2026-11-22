@@ -3,7 +3,7 @@
   "info": {
     "title": "Mapa serc API",
     "version": "0.1.0",
-    "description": "One nationwide open dataset of AED defibrillators for dane.gov.pl: merged from municipal datasets and owner submissions, published as CSV, GeoJSON and a harvester feed.\n\nA device record uses the column names of the data pattern (`/v1/schema`, `/dane/schema.json`).\nEvery operation carries `x-status`: `stub` endpoints answer with sample data in the final shape and say so with `stub: true`.\n\nRecords with `publication = community` are known only from OpenStreetMap (ODbL) and are not confirmed by their owner; they are not part of the files under `/dane/aed.*`.",
+    "description": "One nationwide open dataset of AED defibrillators for dane.gov.pl: merged from municipal datasets and owner submissions, published as CSV, GeoJSON and a harvester feed.\n\nA device record uses the column names of the data pattern (`/v1/schema`, `/dane/schema.json`).\nEvery operation carries `x-status`: `live` answers with real data, `stub` with sample data in the final shape and says so with `stub: true`.\n\nTwo apps use it. The web app: the map, the provider wizard, passports, Radar AED and the gaps map. The Mapa serc mobile app, for an emergency:\nthe nearest devices (`GET /v1/aed?near=lat,lon&layer=all&limit=10`, with `distanceM` and `availableNow`), the map layer kept on the phone\n(`GET /v1/aed.geojson`) and, after a sticker is scanned, the device, its passport and reports of passers-by (`/v1/aed/{id}`, `/v1/aed/{id}/passport`,\n`/v1/aed/{id}/reports`, `/v1/aed/{id}/passport/link`).\n\nRecords with `publication = community` are known only from OpenStreetMap (ODbL) and are not confirmed by their owner; they are not part of the files under `/dane/aed.*`.",
     "license": {
       "name": "Apache-2.0",
       "url": "https://www.apache.org/licenses/LICENSE-2.0"
@@ -4042,9 +4042,11 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 1000,
-              "default": 100
+              "default": 100,
+              "description": "How many devices to return (default 100, at most 1000); with `near`, the nearest ones"
             },
             "required": false,
+            "description": "How many devices to return (default 100, at most 1000); with `near`, the nearest ones",
             "name": "limit",
             "in": "query"
           },
@@ -4110,6 +4112,7 @@
               "$ref": "#/components/schemas/Layer"
             },
             "required": false,
+            "description": "Which devices: all (default), official or community (OSM only)",
             "name": "layer",
             "in": "query"
           }
