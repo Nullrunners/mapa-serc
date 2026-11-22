@@ -45,7 +45,7 @@ export default function AboutPage() {
           <h1 id="o-projekcie" className="text-3xl font-bold tracking-tight text-balance sm:text-4xl">
             Każdy defibrylator w Polsce na jednej mapie
           </h1>
-          <p className="text-lg text-muted">Zbieramy dane o defibrylatorach AED w jeden otwarty zbiór. Kiedy liczy się każda minuta, szybciej znajdziesz najbliższy.</p>
+          <p className="text-lg text-muted">Gdy serce przestaje bić, liczy się każda minuta. Sprawdź, gdzie masz najbliższy defibrylator AED, zanim będzie potrzebny.</p>
           <div className="flex flex-wrap gap-3 pt-2">
             <Link href="/" className="btn btn-primary btn-lg">
               Znajdź najbliższy AED
