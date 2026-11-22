@@ -50,7 +50,7 @@ Każdy dysponent (gmina, szpital, firma) publikuje w dane.gov.pl **własny** zbi
 | Nazwa akcji i hasło | „Mapa serc – dane na ratunek”, nagłówek każdej strony | `apps/web/lib/brand.ts` |
 | Logotyp (JPG, PNG, PDF, format otwarty) i księga znaku (PDF) | UZUPEŁNIĆ: ścieżki plików w `zgloszenie/` | |
 | Responsywność | każda strona działa w szerokości telefonu i komputera | `apps/web/` |
-| Dostępność (WCAG 2.2 AA) | strona „Dostępność” (link w stopce): obsługa samą klawiaturą i czytnikiem ekranu, mapa z klawiatury, powiększenie do 400% bez przewijania w bok, ustawienia systemu (większy kontrast, tryb dużego kontrastu Windows, mniej ruchu), znaczki na ikonach mapy dla osób nierozróżniających czerwieni i zieleni. Test axe-core (WCAG 2.2 A/AA) bez błędów na każdej stronie | `apps/web/app/globals.css`, `apps/web/app/(site)/dostepnosc/page.tsx`, `apps/web/components/aed-icon.tsx` |
+| Dostępność (WCAG 2.2 AA) | przycisk „Dostępność” w nagłówku: wielkość tekstu A, A+, A++ i wysoki kontrast (biały i żółty na czarnym). Strona „Dostępność” (link w panelu i w stopce): obsługa samą klawiaturą i czytnikiem ekranu, mapa z klawiatury, powiększenie do 400% bez przewijania w bok, ustawienia systemu (większy kontrast, tryb dużego kontrastu Windows, mniej ruchu), znaczki na ikonach mapy dla osób nierozróżniających czerwieni i zieleni. Test axe-core (WCAG 2.2 A/AA) bez błędów na każdej stronie | `apps/web/components/display-settings.tsx`, `apps/web/app/globals.css`, `apps/web/app/(site)/dostepnosc/page.tsx`, `apps/web/components/aed-icon.tsx` |
 | Użycie AI | opis w zgłoszeniu na platformie | |
 
 ## Uruchomienie u siebie
