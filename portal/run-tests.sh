@@ -9,7 +9,7 @@ set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 target="${1:-$here/mcod-backend}"
-"$here/apply-patch.sh" "$target" >/dev/null
+MCOD_ONLY_BACKEND=1 "$here/apply-patch.sh" "$target" >/dev/null
 
 cd "$target"
 tests=(mcod/resources/tests/test_aggregated_lists_core.py)

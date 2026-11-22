@@ -1,0 +1,533 @@
+diff --git a/proxy.podman.conf.json b/proxy.podman.conf.json
+new file mode 100644
+index 0000000..f09377c
+--- /dev/null
++++ b/proxy.podman.conf.json
+@@ -0,0 +1,32 @@
++{
++  "/api/**": {
++    "target": "http://127.0.0.1:8000",
++    "secure": false,
++    "pathRewrite": {
++      "^/api": ""
++    },
++    "logLevel": "debug",
++    "changeOrigin": true
++  },
++  "/media": {
++    "target": "http://127.0.0.1:8000",
++    "secure": false,
++    "logLevel": "debug",
++    "changeOrigin": true
++  },
++  "/flags": {
++    "target": "https://dane.gov.pl/",
++    "secure": false,
++    "logLevel": "debug",
++    "changeOrigin": true
++  },
++  "/cms": {
++    "target": "http://127.0.0.1:8002",
++    "secure": false,
++    "logLevel": "debug",
++    "changeOrigin": true,
++    "pathRewrite": {
++      "^/cms": ""
++    }
++  }
++}
+diff --git a/src/app/app-routing.module.ts b/src/app/app-routing.module.ts
+index e419033..25de8db 100644
+--- a/src/app/app-routing.module.ts
++++ b/src/app/app-routing.module.ts
+@@ -79,6 +79,11 @@ const routes: Routes = [
+         loadChildren: () =>
+           import('./pages/dga-information-point/dga-information-point.module').then((m) => m.DgaInformationPointModule),
+       },
++      {
++        path: '!aed',
++        data: { breadcrumbs: { translationKey: 'AedList.Self' } },
++        loadChildren: () => import('./pages/aed-list/aed-list.routes').then((mod) => mod.AED_LIST_ROUTES),
++      },
+       {
+         path: '!brokenlinks',
+         data: { breadcrumbs: { translationKey: 'BrokenLinks.Self' } },
+diff --git a/src/app/layout/header/header.component.html b/src/app/layout/header/header.component.html
+index 2c1e400..802acbf 100644
+--- a/src/app/layout/header/header.component.html
++++ b/src/app/layout/header/header.component.html
+@@ -430,6 +430,19 @@
+               </a>
+             </li>
+ 
++            <!-- aed list -->
++            <li class="nav-item" role="presentation">
++              <a
++                class="nav-link"
++                role="menuitem"
++                [routerLink]="['/!' + routerEndpoints.AED] | localize"
++                routerLinkActive="active"
++                #menuLinkAedList="routerLinkActive"
++                [attr.aria-current]="menuLinkAedList.isActive ? true : null">
++                {{ 'Menu.AedList' | translate }}
++              </a>
++            </li>
++
+             <!--  broken links        -->
+             <li class="nav-item expanded-section" role="presentation">
+               <a
+diff --git a/src/app/pages/aed-list/aed-list-table/aed-list-table.component.html b/src/app/pages/aed-list/aed-list-table/aed-list-table.component.html
+new file mode 100644
+index 0000000..397f315
+--- /dev/null
++++ b/src/app/pages/aed-list/aed-list-table/aed-list-table.component.html
+@@ -0,0 +1,2 @@
++<app-resource-table-no-filters *ngIf="resourceId" [resourceId]="resourceId" [tableTitle]="tableTitle">
++</app-resource-table-no-filters>
+diff --git a/src/app/pages/aed-list/aed-list-table/aed-list-table.component.ts b/src/app/pages/aed-list/aed-list-table/aed-list-table.component.ts
+new file mode 100644
+index 0000000..e3500ca
+--- /dev/null
++++ b/src/app/pages/aed-list/aed-list-table/aed-list-table.component.ts
+@@ -0,0 +1,24 @@
++import { NgIf } from '@angular/common';
++import { Component, OnInit } from '@angular/core';
++import { ActivatedRoute } from '@angular/router';
++
++import { ResourceTableNoFiltersComponent } from '@app/shared/resource-table-no-filters/resource-table-no-filters.component';
++
++@Component({
++  selector: 'app-aed-list-table',
++  templateUrl: './aed-list-table.component.html',
++  standalone: true,
++  imports: [NgIf, ResourceTableNoFiltersComponent],
++})
++export class AedListTableComponent implements OnInit {
++  resourceId: string;
++  tableTitle = '';
++
++  constructor(private route: ActivatedRoute) {}
++
++  ngOnInit(): void {
++    const post = this.route.parent.snapshot.data['post'];
++    this.resourceId = post?.resData.resource_id;
++    this.tableTitle = post?.resource?.attributes?.title || '';
++  }
++}
+diff --git a/src/app/pages/aed-list/aed-list.component.html b/src/app/pages/aed-list/aed-list.component.html
+new file mode 100644
+index 0000000..fdf812e
+--- /dev/null
++++ b/src/app/pages/aed-list/aed-list.component.html
+@@ -0,0 +1,87 @@
++<section class="item-view__body vertical-spacing">
++  <div class="container" *ngIf="isReady; else notReady">
++    <h1 class="heading heading--md">
++      {{ pageTitle }}
++    </h1>
++
++    <p class="mt-3">{{ 'AedList.Lead' | translate }}</p>
++
++    <ul class="list-unstyled mt-4 mb-4">
++      <li *ngIf="rowsCount !== null">
++        <strong>{{ 'AedList.RowsCount' | translate }}: </strong> {{ rowsCount }}
++      </li>
++      <li *ngIf="sourcesCount !== null">
++        <strong>{{ 'AedList.SourcesCount' | translate }}: </strong> {{ sourcesCount }}
++      </li>
++      <li>
++        <strong>{{ 'Attribute.ViewsCount' | translate }}: </strong> {{ viewsCount }}
++      </li>
++      <li>
++        <strong>{{ 'Attribute.DownloadCount' | translate }}: </strong> {{ downloadsCount }}
++      </li>
++    </ul>
++
++    <div class="item-view__actions">
++      <div class="d-flex flex-column flex-lg-row align-items-center">
++        <div class="d-flex flex-column">
++          <div class="d-flex align-items-center flex-wrap">
++            <div class="d-flex align-items-baseline" *ngIf="downloadFilesList.length > 0">
++              <span class="font-weight-bold" style="min-width: 85px"> {{ 'Action.Download' | translate }}: </span>
++              <!-- download file -->
++              <div *ngFor="let dataFiles of downloadFilesList">
++                <app-download-link
++                  [fileSize]="dataFiles.file_size"
++                  [fileUrl]="dataFiles.download_url"
++                  [format]="dataFiles.format"
++                  [title]="resource.attributes.title"
++                  [customCssClass]="'btn btn-primary btn-sm mb-1 mr-1'"
++                  [opennessScore]="dataFiles.openness_score"
++                  (click)="downloadResource(resource.attributes.title, dataFiles.download_url)">
++                </app-download-link>
++              </div>
++            </div>
++          </div>
++        </div>
++      </div>
++    </div>
++
++    <p class="mt-3">
++      <a [routerLink]="resourceUrl">{{ 'AedList.GoToResource' | translate }}</a>
++    </p>
++
++    <div class="pb-3">
++      <app-resource-filters [resourceId]="resourceId"></app-resource-filters>
++    </div>
++
++    <div class="mt-2 mb-5">
++      <div class="tabs">
++        <ul class="tab-list row no-gutters" role="tablist">
++          <li class="tab-list__item col-12 col-md-4" role="presentation">
++            <a
++              class="tab-list__link"
++              role="tab"
++              id="tab1"
++              appInfoTooltip="{{ 'Tour.Tooltip.DataResource.Table.text' | translate }}"
++              tooltipTitle="{{ 'Tour.Tooltip.DataResource.Table.title' | translate }}"
++              [routerLink]="['table']"
++              #tabLinkTableView="routerLinkActive"
++              [attr.aria-selected]="tabLinkTableView.isActive ? true : null"
++              routerLinkActive="tab-list__link--active">
++              {{ 'Resources.TableView' | translate }}
++            </a>
++          </li>
++        </ul>
++      </div>
++      <div class="tabs-content">
++        <router-outlet></router-outlet>
++      </div>
++    </div>
++  </div>
++</section>
++
++<ng-template #notReady>
++  <div class="container">
++    <h1 class="heading heading--md">{{ 'AedList.Self' | translate }}</h1>
++    <p class="alert alert-info mt-4">{{ 'AedList.NotReady' | translate }}</p>
++  </div>
++</ng-template>
+diff --git a/src/app/pages/aed-list/aed-list.component.ts b/src/app/pages/aed-list/aed-list.component.ts
+new file mode 100644
+index 0000000..5f1dc07
+--- /dev/null
++++ b/src/app/pages/aed-list/aed-list.component.ts
+@@ -0,0 +1,96 @@
++import { NgForOf, NgIf } from '@angular/common';
++import { Component, OnInit } from '@angular/core';
++import { ActivatedRoute, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
++import { TranslatePipe, TranslateService } from '@ngx-translate/core';
++
++import { IDatasetFile } from '@app/services/models/dataset-resource';
++import { SeoService } from '@app/services/seo.service';
++import { DownloadLinkComponent } from '@app/shared/download-link/download-link.component';
++import { LinkHelper } from '@app/shared/helpers';
++import { InfoTooltipDirective } from '@app/shared/info-tooltip/info-tooltip.directive';
++import { ResourceFiltersComponent } from '@app/shared/resource-filters/resource-filters.component';
++
++/**
++ * AED list: one table with all AED defibrillators published in the portal by many institutions.
++ * Works like the DGA protected data list page, but takes no content from CMS.
++ */
++@Component({
++  selector: 'app-aed-list',
++  templateUrl: './aed-list.component.html',
++  standalone: true,
++  imports: [
++    TranslatePipe,
++    NgIf,
++    NgForOf,
++    DownloadLinkComponent,
++    ResourceFiltersComponent,
++    InfoTooltipDirective,
++    RouterLink,
++    RouterLinkActive,
++    RouterOutlet,
++  ],
++})
++export class AedListComponent implements OnInit {
++  /**
++   * False until the portal builds the list for the first time
++   */
++  isReady = false;
++
++  pageTitle: string;
++  viewsCount: string;
++  downloadsCount: string;
++  resourceId: string;
++  resourceUrl: string;
++  /**
++   * How many rows the last build of the list holds and from how many institutions' resources
++   */
++  rowsCount: number | null = null;
++  sourcesCount: number | null = null;
++
++  dataset: any;
++  resource: any;
++  downloadFilesList: IDatasetFile[] = [];
++
++  constructor(
++    private route: ActivatedRoute,
++    private translate: TranslateService,
++    private seoService: SeoService,
++  ) {}
++
++  ngOnInit(): void {
++    const post = this.route.snapshot.data['post'];
++
++    if (!post?.resource) {
++      this.seoService.setPageTitleByTranslationKey(['AedList.Self']);
++      return;
++    }
++
++    const resData = post.resData;
++    this.resource = post.resource;
++    this.pageTitle = this.resource.attributes.title;
++    this.downloadFilesList = this.resource.attributes?.files || [];
++    this.dataset = post.stats?.data;
++    this.viewsCount = this.dataset?.attributes.views_count;
++    this.downloadsCount = this.dataset?.attributes.downloads_count;
++    this.resourceId = resData.resource_id;
++    this.rowsCount = resData.rows_count ?? null;
++    this.sourcesCount = resData.sources_count ?? null;
++    this.resourceUrl =
++      '/' +
++      this.translate.currentLang +
++      '/dataset/' +
++      resData.dataset_id +
++      ',' +
++      resData.dataset_slug +
++      '/resource/' +
++      resData.resource_id +
++      ',' +
++      resData.resource_slug;
++    this.isReady = true;
++    this.seoService.setPageTitle(this.pageTitle);
++  }
++
++  downloadResource(title: string, url: string) {
++    LinkHelper.downloadResource({ title, url });
++  }
++}
+diff --git a/src/app/pages/aed-list/aed-list.routes.ts b/src/app/pages/aed-list/aed-list.routes.ts
+new file mode 100644
+index 0000000..002319a
+--- /dev/null
++++ b/src/app/pages/aed-list/aed-list.routes.ts
+@@ -0,0 +1,17 @@
++import { Route } from '@angular/router';
++
++import { AedListTableComponent } from '@app/pages/aed-list/aed-list-table/aed-list-table.component';
++import { AedListComponent } from '@app/pages/aed-list/aed-list.component';
++import { breadcrumbsAedListTableDataResolver } from '@app/shared/breadcrumbs/resolvers/breadcrumbs-aed-list-table-data.resolver';
++
++export const AED_LIST_ROUTES: Route[] = [
++  {
++    path: '',
++    component: AedListComponent,
++    children: [
++      { path: '', redirectTo: '!table', pathMatch: 'full' },
++      { path: '!table', component: AedListTableComponent },
++    ],
++    resolve: { post: breadcrumbsAedListTableDataResolver },
++  },
++];
+diff --git a/src/app/pages/sitemap/sitemap.component.html b/src/app/pages/sitemap/sitemap.component.html
+index 5fbf8ae..5af00ab 100644
+--- a/src/app/pages/sitemap/sitemap.component.html
++++ b/src/app/pages/sitemap/sitemap.component.html
+@@ -42,6 +42,11 @@
+         {{ 'Menu.DGAInformationPoint' | translate }}
+       </a>
+     </li>
++    <li role="presentation">
++      <a role="menuitem" [routerLink]="['/!' + routerEndpoints.AED] | localize">
++        {{ 'Menu.AedList' | translate }}
++      </a>
++    </li>
+     <li role="presentation">
+       <a role="menuitem" [routerLink]="['/!' + '/!brokenlinks'] | localize">
+         {{ 'BrokenLinks.Self' | translate }}
+diff --git a/src/app/services/aggregated-list.service.ts b/src/app/services/aggregated-list.service.ts
+new file mode 100644
+index 0000000..5c6d2d7
+--- /dev/null
++++ b/src/app/services/aggregated-list.service.ts
+@@ -0,0 +1,56 @@
++import { DOCUMENT } from '@angular/common';
++import { HttpClient } from '@angular/common/http';
++import { Inject, Injectable, PLATFORM_ID } from '@angular/core';
++import { Router } from '@angular/router';
++import { TranslateService } from '@ngx-translate/core';
++import { CookieService } from 'ngx-cookie-service';
++import { LocalStorageService } from 'ngx-localstorage';
++
++import { ApiConfig } from '@app/services/api';
++import { LoginService } from '@app/services/login-service';
++import { NotificationsService } from '@app/services/notifications.service';
++import { RestService } from '@app/services/rest.service';
++
++/**
++ * Aggregated lists ("wykazy zbiorcze"): one summary resource built by the portal
++ * from resources published by many institutions, e.g. the AED list.
++ */
++@Injectable({
++  providedIn: 'root',
++})
++export class AggregatedListService extends RestService {
++  readonly ApiConfig = ApiConfig;
++
++  constructor(
++    protected http: HttpClient,
++    public translate: TranslateService,
++    public router: Router,
++    public notificationService: NotificationsService,
++    public storageService: LocalStorageService,
++    public cookieService: CookieService,
++    public loginService: LoginService,
++    @Inject(DOCUMENT) public document: any,
++    @Inject(PLATFORM_ID) public platformId: string,
++  ) {
++    super(
++      http,
++      translate,
++      router,
++      notificationService,
++      storageService,
++      cookieService,
++      loginService,
++      document,
++      platformId,
++    );
++  }
++
++  /**
++   * Gets ids and slugs of the dataset and the resource that hold the aggregated list.
++   * API answers 404 until the list is built for the first time, so no redirect to the 404 page here.
++   * @param {string} slug list slug, e.g. 'aed'
++   */
++  getAggregatedList(slug: string) {
++    return this.get(this.ApiConfig.aggregated_lists + '/' + slug, undefined, true);
++  }
++}
+diff --git a/src/app/services/api/api.config.ts b/src/app/services/api/api.config.ts
+index 480743b..a7c8ccf 100644
+--- a/src/app/services/api/api.config.ts
++++ b/src/app/services/api/api.config.ts
+@@ -69,6 +69,7 @@ export enum ApiConfig {
+   rdfDoc = '/doc?urls.primaryName=DANE.GOV.PL%20RDF%20API',
+   licenses = '/licenses/',
+   dga_aggregated = '/dga-aggregated',
++  aggregated_lists = '/aggregated-lists',
+   logingovpl = '/logingovpl',
+   brokenlinks = '/reports/brokenlinks',
+   brokenlinksdata = '/reports/brokenlinks/data',
+diff --git a/src/app/services/models/routerEndpoints.ts b/src/app/services/models/routerEndpoints.ts
+index f6f6c31..74c2fe2 100644
+--- a/src/app/services/models/routerEndpoints.ts
++++ b/src/app/services/models/routerEndpoints.ts
+@@ -17,5 +17,6 @@ export enum RouterEndpoints {
+   NEWS = 'news',
+   DGA = 'dga',
+   DGA_AGGREGATED = 'dga-aggregated',
++  AED = 'aed',
+   BROKEN_LINKS = 'brokenlinks-info',
+ }
+diff --git a/src/app/shared/breadcrumbs/resolvers/breadcrumbs-aed-list-table-data.resolver.ts b/src/app/shared/breadcrumbs/resolvers/breadcrumbs-aed-list-table-data.resolver.ts
+new file mode 100644
+index 0000000..729bf09
+--- /dev/null
++++ b/src/app/shared/breadcrumbs/resolvers/breadcrumbs-aed-list-table-data.resolver.ts
+@@ -0,0 +1,38 @@
++import { inject } from '@angular/core';
++import { combineLatest, Observable, of } from 'rxjs';
++import { catchError, map, switchMap } from 'rxjs/operators';
++
++import { AggregatedListService } from '@app/services/aggregated-list.service';
++import { DatasetService } from '@app/services/dataset.service';
++
++export const AED_LIST_SLUG = 'aed';
++
++export const breadcrumbsAedListTableDataResolver = () => {
++  const aggregatedListService = inject(AggregatedListService);
++  const datasetService = inject(DatasetService);
++
++  const getMoreData = (data): Observable<any> => {
++    return combineLatest([
++      of(data),
++      datasetService.getResourceById(data.resource_id),
++      datasetService.getDatasetsStats(data.dataset_id, data.dataset_slug),
++    ]).pipe(
++      map(([resData, resource, stats]) => {
++        return {
++          resData,
++          resource,
++          stats,
++        };
++      }),
++    );
++  };
++
++  return aggregatedListService.getAggregatedList(AED_LIST_SLUG).pipe(
++    switchMap((responseData) => getMoreData(responseData)),
++    catchError(() => {
++      // the list has not been built yet (or API is down): the page shows a plain message instead of the table
++      console.warn("Couldn't load AED list data");
++      return of(null);
++    }),
++  );
++};
+diff --git a/src/assets/i18n/en.json b/src/assets/i18n/en.json
+index a7fb63a..ac7cb48 100644
+--- a/src/assets/i18n/en.json
++++ b/src/assets/i18n/en.json
+@@ -138,6 +138,14 @@
+     "MacLinkText": "MacOS - application link:",
+     "EnterAuthor": "Enter author"
+   },
++  "AedList": {
++    "Self": "List of AED defibrillators",
++    "Lead": "One table with all AED defibrillators that institutions have published in the portal. Each row shows who provided the data.",
++    "NotReady": "The list is not ready yet. It is built every night from data published by institutions.",
++    "GoToResource": "See this resource in the data catalogue: map, description and API",
++    "RowsCount": "Defibrillators on the list",
++    "SourcesCount": "Institutions' resources the list is built from"
++  },
+   "Applications": {
+     "Self": "Data reuse",
+     "Description": "Description",
+@@ -933,6 +941,7 @@
+     "Regulations": "Regulations",
+     "Showcases": "PoCoTo",
+     "DGAInformationPoint": "DGA Information Point",
++    "AedList": "AED list",
+     "More": "More"
+   },
+   "MyDashboard": {
+diff --git a/src/assets/i18n/pl.json b/src/assets/i18n/pl.json
+index 9622c5c..0272ba8 100644
+--- a/src/assets/i18n/pl.json
++++ b/src/assets/i18n/pl.json
+@@ -138,6 +138,14 @@
+     "MacLinkText": "MacOS - link do aplikacji:",
+     "EnterAuthor": "Wprowadź autora"
+   },
++  "AedList": {
++    "Self": "Wykaz defibrylatorów AED",
++    "Lead": "Jedna tabela ze wszystkimi defibrylatorami AED, które instytucje zgłosiły w portalu. Przy każdym wierszu widać, kto podał dane.",
++    "NotReady": "Wykaz nie jest jeszcze gotowy. Powstaje co noc z danych zgłoszonych przez instytucje.",
++    "GoToResource": "Zobacz ten zasób w katalogu danych: mapa, opis i API",
++    "RowsCount": "Defibrylatory w wykazie",
++    "SourcesCount": "Zasoby instytucji, z których powstał wykaz"
++  },
+   "Applications": {
+     "Self": "Ponowne wykorzystanie danych",
+     "Description": "Opis",
+@@ -933,6 +941,7 @@
+     "Regulations": "Regulamin",
+     "Showcases": "PoCoTo",
+     "DGAInformationPoint": "Punkt informacyjny DGA",
++    "AedList": "Wykaz AED",
+     "More": "Więcej"
+   },
+   "MyDashboard": {
