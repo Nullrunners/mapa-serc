@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import DeviceList, { pickedFrom, type Picked } from "@/components/device-list";
 import { GuideBanner, GuideIcon, GuidePanel, Preview3dIcon } from "@/components/guide";
@@ -337,6 +338,12 @@ export default function Finder({ title, lead }: { title: string; lead: string })
           {list.data.total === 0 ? <p>Nic nie znaleźliśmy. Spróbuj innej nazwy.</p> : <DeviceList items={list.data.items} when={list.data.when} onPick={pick} />}
         </div>
       )}
+      {/* Someone standing by a device the map lacks gets the form's map at their own position. */}
+      <p className="text-sm">
+        <Link href={near ? `/dostawca?tryb=jeden&punkt=${near.lat},${near.lon}` : "/dostawca?tryb=jeden"} className="link">
+          Brakuje defibrylatora? Dodaj go
+        </Link>
+      </p>
     </section>
   );
 
