@@ -60,7 +60,7 @@ Opis jest w [README.md](README.md#uruchomienie). Zmianę w kodzie portalu nakła
 
 ## Ograniczenia, o których warto wiedzieć
 
-- Zmianę w kodzie portalu sprawdziliśmy testami rdzenia (14 testów) i na naszych 782 urządzeniach. Nie uruchomiliśmy jej w pełnym środowisku portalu (Docker z bazą, Elasticsearchem i Celery), szczegóły w [portal/README.md](portal/README.md#ograniczenia).
+- Zmianę w kodzie portalu uruchomiliśmy w backendzie portalu 2.62.3 w Dockerze (baza, Elasticsearch, Celery, panel, API) na danych testowych trzech dysponentów. Strony portalu (frontend) nie uruchamialiśmy. Na naszych 782 urządzeniach sprawdziliśmy sam rdzeń. Zasób dysponenta, którego portal odrzuci przy zwykłym sprawdzeniu danych, nie trafi do wykazu ani do raportu. Szczegóły w [portal/README.md](portal/README.md#sprawdzenie-w-działającym-portalu).
 - Logowanie przez mObywatel jest w wersji pokazowej: zamiast login.gov.pl jest ekran z przykładowymi osobami.
 - E-maile i SMS-y bez skonfigurowanej bramki trafiają tylko do dziennika wiadomości (`/admin/outbox`).
 - Dane z OpenStreetMap (ODbL) pokazujemy jako niepotwierdzone i nie trafiają do plików dla portalu, bo portal nie ma tej licencji na swojej liście.

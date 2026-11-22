@@ -23,7 +23,7 @@ Plik ze zmianą: [mcod-backend.patch](mcod-backend.patch). Nakłada się go na b
    - `zasob_zrodlowy`: adres zasobu w portalu, z którego pochodzi wiersz.
    - `aktualizacja_zasobu_zrodlowego`: data danych tego zasobu.
 7. Wynik trafia jako plik CSV do zasobu „Defibrylatory AED – wykaz zbiorczy (CSV)” w zbiorze „Wykaz defibrylatorów AED – wykaz zbiorczy” Ministerstwa Cyfryzacji. Za pierwszym razem portal zakłada zbiór i zasób. Potem tylko podmienia plik, więc adres zasobu się nie zmienia.
-8. Portal sprawdza nowy plik tak jak każdy inny zasób. Jeśli plik nie przejdzie sprawdzenia, wraca poprzedni.
+8. Portal sprawdza nowy plik tak jak każdy inny zasób. Jeśli plik nie przejdzie sprawdzenia, wraca poprzedni. Typy kolumn portal bierze z wzorca, a nie zgaduje ich z danych, a mapa w podglądzie (szerokość, długość, etykieta `nazwa`) ustawia się sama przy każdej publikacji.
 9. Raport z ostatniego przebiegu zostaje w bazie (tabela `AggregatedListInfo`). Widać w nim, które zasoby weszły do wykazu, które odpadły i dlaczego oraz ile wierszy pominięto.
 
 Wykaz można też zbudować ręcznie, np. na pokazie. To polecenia dla programistów, uruchamiane w kontenerze portalu:
@@ -68,7 +68,7 @@ Ta część jest dla programistów.
 |---|---|---|
 | `mcod/resources/aggregated_lists/definitions.py` (nowy) | rejestr wykazów i definicja wykazu AED: tag, tytuły i opisy zbioru i zasobu, kategorie, właściciel | `AED`, `REGISTRY`; zbiór zbiorczy nie może mieć tagu, z którego sam powstaje (`__post_init__`) |
 | `mcod/resources/aggregated_lists/schemas/aed.json` (nowy) | wzorzec danych AED jako Frictionless Table Schema (kopia `/dane/schema.json` z API Mapy serc) | `constraints.required`, `primaryKey: id` |
-| `mcod/resources/aggregated_lists/core.py` (nowy) | odczyt pliku, sprawdzenie kolumn i wartości, scalanie, zapis CSV; bez Django, więc da się to testować osobno | reguły w opisie na początku pliku, `merge_tables`, kolumny dysponenta `PROVIDER_COLUMNS` |
+| `mcod/resources/aggregated_lists/core.py` (nowy) | odczyt pliku, sprawdzenie kolumn i wartości, scalanie, zapis CSV, schemat wykazu w formacie portalu; bez Django, więc da się to testować osobno | reguły w opisie na początku pliku, `merge_tables`, kolumny dysponenta `PROVIDER_COLUMNS`, `portal_table_schema` |
 | `mcod/resources/aggregated_lists/service.py` (nowy) | część portalowa: wybór zasobów, utworzenie zbioru i zasobu, podmiana pliku, wycofanie zmiany | `get_source_resources`, `publish`, `roll_back` |
 | `mcod/resources/tasks/aggregated_lists.py` (nowy) | zadania Celery: wszystkie wykazy, jeden wykaz, oczekiwanie na walidację z ponawianiem | `check_aggregated_list_task` działa jak sprawdzanie walidacji w zadaniu DGA |
 | `mcod/resources/management/commands/build_aggregated_list.py` (nowy) | ręczne zbudowanie wykazu, także bez publikacji (`--dry-run`) | |
@@ -77,7 +77,7 @@ Ta część jest dla programistów.
 | `mcod/resources/forms.py` | sprawdzenie kolumn przy dodawaniu pliku do zbioru z tagiem wykazu, komunikat po polsku | `_validate_aggregated_list_file` |
 | `mcod/celeryapp.py` | nocne uruchomienie o 3:45 | `aggregated_lists_creation` |
 | `mcod/settings/base.py` | właściciel zbiorów zbiorczych (domyślnie ten sam co dla DGA), adres powiadomień, kolejki zadań | `AGGREGATED_LISTS_*` |
-| `mcod/resources/tests/test_aggregated_lists_core.py` (nowy) | 14 testów rdzenia | |
+| `mcod/resources/tests/test_aggregated_lists_core.py` (nowy) | 15 testów rdzenia | |
 
 ### Kolejny wykaz
 
@@ -94,7 +94,7 @@ portal/apply-patch.sh            # pobiera kod portalu do portal/mcod-backend i 
 portal/run-tests.sh              # to samo, a potem uruchamia testy rdzenia
 ```
 
-Testy potrzebują tylko Pythona z pakietami pandas, openpyxl, pytest i django. Nie potrzebują bazy danych ani reszty portalu. Bez takiego Pythona skrypt użyje Nixa, jeśli jest zainstalowany. Wynik z 22.11.2026: `14 passed`.
+Testy potrzebują tylko Pythona z pakietami pandas, openpyxl, pytest i django. Nie potrzebują bazy danych ani reszty portalu. Bez takiego Pythona skrypt użyje Nixa, jeśli jest zainstalowany. Wynik z 22.11.2026: `15 passed`, zarówno na Pythonie 3.13, jak i w obrazie portalu (Python 3.8, pandas 1.5.3).
 
 Ręcznie, w katalogu portalu z nałożoną zmianą:
 
@@ -108,15 +108,58 @@ W pełnym środowisku portalu (Docker, `docker-compose.yml` z repozytorium porta
 python manage.py migrate resources
 ```
 
+## Sprawdzenie w działającym portalu
+
+22.11.2026 uruchomiliśmy backend portalu 2.62.3 z tą zmianą w Dockerze, według instrukcji z repozytorium portalu: PostgreSQL, Elasticsearch, RabbitMQ, Redis, Fuseki, nginx, panel administracyjny, API i Celery. Bez forum Discourse i bez strony portalu (frontend), więc wynik widać w panelu i w API portalu.
+
+Dane testowe: trzech dysponentów, każdy ze zbiorem z tagiem `wykaz-aed`.
+
+| Dysponent | Plik | Co się stało |
+|---|---|---|
+| Urząd Miasta Legionowo | CSV ze średnikami, przecinkiem dziesiętnym, kodem TERC bez zera z przodu i kolumną spoza wzorca | 3 wiersze, 2 w wykazie; trzeci ma identyfikator, który wcześniej podał szpital |
+| Szpital Wojewódzki w Krośnie | XLSX: 3 poprawne wiersze i 1 ze statusem spoza listy | 3 wiersze w wykazie, wiersz z błędnym statusem pominięty |
+| Gmina Testowa | CSV bez kolumn `id` i `kod_terc` | plik pominięty w całości, powód w raporcie |
+
+Sprawdziliśmy:
+
+- migracja `0075_aggregatedlistinfo` przechodzi, a `makemigrations --check` nie widzi różnic między nią a modelem,
+- Celery rejestruje trzy nowe zadania; nocne zadanie `build_all_aggregated_lists_task` uruchomione przez kolejkę:
+  - za pierwszym razem zakłada zbiór (Ministerstwo Cyfryzacji, kategorie „Zdrowie” i „Regiony i miasta”) i zasób,
+  - plik przechodzi sprawdzenie pliku, linku i danych portalu, a zasób ma ocenę otwartości 4,
+  - 5 wierszy trafia do Elasticsearcha i API portalu (`/resources/<id>/data`), a portal sam pokazuje mapę z 5 punktami,
+  - raport przebiegu jest w `AggregatedListInfo`,
+- drugi przebieg podmienia plik w tym samym zasobie: ten sam identyfikator i adres, mapa zostaje,
+- wycofanie: gdy plik wykazu nie przeszedł sprawdzenia, portal usunął zbiór i zasób z nieudanego pierwszego przebiegu,
+- polecenie `build_aggregated_list aed --dry-run` daje plik i raport bez zmian w portalu,
+- w panelu: plik bez wymaganych kolumn dodany do zbioru z tagiem dostaje komunikat o brakujących kolumnach; poprawny plik i zbiór bez tagu go nie dostają.
+
+Uruchomienie w portalu wykryło błąd, który poprawiliśmy. Portal zgadywał typy kolumn z danych: numery budynków „57” i „41” dawały kolumnę liczbową, a „50B” w kolejnym wierszu odrzucał cały plik wykazu. Przy setkach urządzeń wykaz nie przeszedłby sprawdzenia nigdy. Teraz zasób wykazu dostaje przy każdej publikacji schemat z wzorca (`portal_table_schema`). Typ liczbowy lub datowy mają w nim tylko kolumny wymagane, bo tylko ich wartości sprawdza rdzeń. Pozostałe są tekstem.
+
+### Jak postawić portal u siebie
+
+Z katalogu `portal/mcod-backend` (po `portal/apply-patch.sh`), według README portalu, z czterema różnicami:
+
+1. W `.env` (kopia `env.sample`) ustaw `DISCOURSE_FORUM_ENABLED=false`, bo obraz forum jest w rejestrze portalu, który wymaga logowania. Ustaw też własny `FIELD_ENCRYPTION_KEYS`.
+2. Załóż pusty katalog `logs/`, bez niego obraz aplikacji się nie zbuduje.
+3. W `mcod/settings/local.py` (kopia `local.py.sample`) usuń `"timeout": 1` z ustawień indeksów, bo Elasticsearch 6.8 go nie przyjmuje.
+4. Jeśli sieć 172.18.18.0/24 zajmuje inna sieć Dockera, przenieś sieć `backend` i adresy usług plikiem `docker-compose.override.yml`. Ten sam przedrostek adresu podaj w zmiennych `MCOD_NGINX_*` w `.env`.
+
+```bash
+docker compose -f docker-compose.local.yml build
+docker compose -f docker-compose.local.yml up -d mcod-db mcod-rabbitmq mcod-redis mcod-elasticsearch mcod-rdfdb mcod-smtp
+docker compose -f docker-compose.local.yml run --rm --no-deps mcod-local-admin python manage.py init_mcod_db
+docker compose -f docker-compose.local.yml run --rm --no-deps mcod-local-admin python manage.py search_index --rebuild -f
+docker compose -f docker-compose.local.yml up -d mcod-nginx mcod-local-admin mcod-local-api mcod-local-celery
+```
+
+Panel: https://admin.mcod.local (admin@mcod.local / testadmin123!), API: https://api.mcod.local. Nazwy trzeba dopisać w `/etc/hosts` na adres usługi `mcod-nginx` albo na 127.0.0.1, bo nginx wystawia porty 80 i 443. Właściciel wykazu (domyślnie instytucja 2844, jak dla DGA) musi istnieć w bazie albo trzeba wskazać innego w `AGGREGATED_LISTS_OWNER_ORGANIZATION_PK`.
+
 ## Ograniczenia
 
-- **Części portalowej nie uruchomiliśmy w działającym portalu.** Na komputerze, na którym powstała zmiana, nie było Dockera, a portal potrzebuje m.in. PostgreSQL, Elasticsearcha, RabbitMQ i Celery. Nieuruchomione są: `service.py`, zadania Celery, polecenie `build_aggregated_list`, sprawdzenie w formularzu i migracja. Ten kod trzyma się możliwie blisko działającego kodu wykazu DGA.
-- Sprawdziliśmy:
-  - 14 testów rdzenia,
-  - przebieg rdzenia na prawdziwych danych: 782 urządzenia z pliku krajowego Mapy serc podzielone na 5 dysponentów; wszystkie wiersze przeszły sprawdzenie, a w wyniku każdy ma swojego dysponenta,
-  - poprawność składni wszystkich zmienionych plików,
-  - nałożenie łatki na czystą gałąź `backend_2.62.3` (`git apply --check`).
+- **Zasób, który nie przeszedł zwykłego sprawdzenia danych portalu, nie wchodzi do wykazu i nie ma go w raporcie.** Tak samo filtruje wykaz DGA. W teście plik szpitala z numerem „57A” po kilku numerach bez litery portal odrzucił, bo uznał kolumnę za liczbową. Dysponent może ustawić typy kolumn swojego zasobu w panelu. Lepiej byłoby wpisywać takie zasoby do raportu z powodem, a dysponentom wykazu podawać typy z wzorca, tak jak robimy to dla samego wykazu.
+- Dodatkowo sprawdziliśmy przebieg rdzenia na prawdziwych danych: 782 urządzenia z pliku krajowego Mapy serc podzielone na 5 dysponentów. Wszystkie wiersze przeszły sprawdzenie, a w wyniku każdy ma swojego dysponenta. W działającym portalu testowaliśmy na kilku wierszach (tabela wyżej), nie na tych 782.
+- Wycofanie przy podmianie pliku (powrót do poprzedniego pliku) nie było uruchomione; sprawdziliśmy wycofanie pierwszego przebiegu.
 - Tag `wykaz-aed` może dodać każdy dysponent. Przed złymi danymi chroni sprawdzenie kolumn i wartości, a każdy wiersz jest podpisany przez swojego dysponenta. Jeśli to za mało, można dopuścić tylko wybrane rodzaje instytucji, tak jak DGA (`ALLOWED_DGA_INSTITUTIONS`).
-- Duplikaty portal rozpoznaje tylko po identyfikatorze (`id`). To samo urządzenie opublikowane przez dwóch dysponentów pod różnymi identyfikatorami pojawi się dwa razy. Mapa serc łączy takie duplikaty, zanim dysponent opublikuje plik.
-- Wartości kolumn niewymaganych przechodzą bez sprawdzania.
-- Strona portalu (frontend) się nie zmienia: wykaz jest zwykłym zasobem. Mapę w podglądzie danych ustawia się raz w panelu (rola kolumn: szerokość, długość, etykieta). Nie sprawdzaliśmy, czy to ustawienie przetrwa nocną podmianę pliku.
+- Duplikaty portal rozpoznaje tylko po identyfikatorze (`id`). Wiersz zostaje u dysponenta, który jest pierwszy alfabetycznie, a u pozostałych odpada. To samo urządzenie opublikowane przez dwóch dysponentów pod różnymi identyfikatorami pojawi się dwa razy. Mapa serc łączy takie duplikaty, zanim dysponent opublikuje plik.
+- Wartości kolumn niewymaganych przechodzą bez sprawdzania, dlatego w schemacie wykazu są tekstem.
+- Strona portalu (frontend) się nie zmienia: wykaz jest zwykłym zasobem. Nie uruchamialiśmy jej.
