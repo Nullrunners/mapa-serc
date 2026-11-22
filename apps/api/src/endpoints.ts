@@ -50,6 +50,7 @@ import {
   mapRoute,
   patternDocRoute,
   patternXlsxRoute,
+  providerFeedHashRoute,
   providerFeedRoute,
   removeSourceRoute,
   schemaRoute,
@@ -74,6 +75,7 @@ import {
   patternDocHandler,
   patternXlsxHandler,
   providerFeedHandler,
+  providerFeedHashHandler,
   schemaHandler,
   sourceScopeHandler,
   sourcesHandler,
@@ -149,6 +151,7 @@ export const endpoints: Endpoint[] = [
   live(communityRoute, communityHandler),
   live(sourceScopeRoute, sourceScopeHandler),
   live(providerFeedRoute, providerFeedHandler),
+  live(providerFeedHashRoute, providerFeedHashHandler),
 
   live(importPreviewRoute, importPreviewHandler),
   live(importCommitRoute, importCommitHandler),

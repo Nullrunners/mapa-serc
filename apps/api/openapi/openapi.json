@@ -5038,6 +5038,78 @@
         "x-status": "live"
       }
     },
+    "/feeds/dostawcy/{id}/dane-gov-pl.md5": {
+      "get": {
+        "operationId": "getProviderFeedHash",
+        "tags": [
+          "files"
+        ],
+        "summary": "MD5 of one provider's harvester feed. The dane.gov.pl harvester fetches it from the feed's address with .md5 in place of .xml and refuses a feed without it",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MD5 of the feed, 32 hexadecimal digits",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No source with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The source cannot be published in dane.gov.pl yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
     "/v1/import/preview": {
       "post": {
         "operationId": "previewImport",

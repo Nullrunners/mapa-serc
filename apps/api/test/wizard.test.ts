@@ -1,4 +1,5 @@
 /** The provider wizard over HTTP, in-process: preview a file, submit it, approve it, download it back. */
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -225,5 +226,15 @@ describe('feeds for dane.gov.pl', () => {
     expect(osm.feedUrl).toBeNull()
     expect((await app.request(`/feeds/dostawcy/${osm.id}/dane-gov-pl.xml`)).status).toBe(409)
     expect((await app.request('/feeds/dostawcy/nie-ma-takiego/dane-gov-pl.xml')).status).toBe(404)
+  })
+
+  it('serves the MD5 of a feed next to it, because the harvester refuses a feed without one', async () => {
+    const feed = await app.request('/feeds/dostawcy/dane-gov-pl-54632/dane-gov-pl.xml')
+    const hash = await app.request('/feeds/dostawcy/dane-gov-pl-54632/dane-gov-pl.md5')
+    expect(hash.status).toBe(200)
+    expect(hash.headers.get('content-type')).toContain('text/plain')
+    // The harvester hashes the bytes it downloaded and compares them with the first 32 hex digits of this file.
+    expect((await hash.text()).trim()).toBe(createHash('md5').update(Buffer.from(await feed.arrayBuffer())).digest('hex'))
+    expect((await app.request('/feeds/dostawcy/nie-ma-takiego/dane-gov-pl.md5')).status).toBe(404)
   })
 })

@@ -367,6 +367,21 @@ export const providerFeedRoute = createRoute({
   },
 })
 
+export const providerFeedHashRoute = createRoute({
+  method: 'get',
+  path: '/feeds/dostawcy/{id}/dane-gov-pl.md5',
+  operationId: 'getProviderFeedHash',
+  tags: ['files'],
+  summary: "MD5 of one provider's harvester feed. The dane.gov.pl harvester fetches it from the feed's address with .md5 in place of .xml and refuses a feed without it",
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    200: file('text/plain', 'MD5 of the feed, 32 hexadecimal digits'),
+    404: problem('No source with this id'),
+    409: problem('The source cannot be published in dane.gov.pl yet'),
+    ...problems,
+  },
+})
+
 // -------------------------------------------------------------------- wizard
 
 const MappingTargetSchema = z.string().openapi({ description: 'Pole wzorca albo jedna z kolumn złożonych: adres, ulica, wspolrzedne', example: 'szerokosc_geograficzna' })

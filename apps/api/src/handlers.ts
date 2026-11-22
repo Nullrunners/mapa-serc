@@ -1,4 +1,5 @@
 /** Handlers of the endpoints that answer from real data. Each is typed against its route in src/contract. */
+import { createHash } from 'node:crypto'
 import type { RouteHandler } from '@hono/zod-openapi'
 import { FIELDS, GROUPS, SCHEMA_NAME, SCHEMA_TITLE, SCHEMA_VERSION, SYSTEM_FIELDS, csvHeader, csvwMetadata, fieldDocsMarkdown, reachableNow, tableSchema, type AedRecord, type FieldDef } from '@aed/schema'
 import { config, now, today } from './config'
@@ -16,6 +17,7 @@ import {
   type healthRoute,
   type jobRoute,
   type mapRoute,
+  type providerFeedHashRoute,
   type providerFeedRoute,
   type schemaRoute,
   type sourcesRoute,
@@ -295,9 +297,8 @@ export const templateHandler: FileHandler = (c) => {
   return send(c, `${csvHeader().join(',')}\r\n${example.join(',')}\r\n`, 'text/csv; charset=utf-8', 'szablon-aed.csv')
 }
 
-/** One provider's dataset for the portal's harvester; the portal merges every provider into the summary list. */
-export const providerFeedHandler: RouteHandler<typeof providerFeedRoute> = async (c) => {
-  const { id } = c.req.valid('param')
+/** The feed of one provider, exactly as served: the harvester compares its MD5 with the .md5 file next to it. */
+const providerFeedXml = async (id: string): Promise<string> => {
   const { store } = await getContext()
   const report = store.reports.find((candidate) => candidate.id === id)
   if (!report) throw new ApiError(404, 'not_found', `No source with id ${id}.`)
@@ -317,10 +318,22 @@ export const providerFeedHandler: RouteHandler<typeof providerFeedRoute> = async
   // The portal's schema accepts only https links. A local or misconfigured deployment still serves the feed,
   // so that it can be inspected, but says plainly why the portal would refuse it.
   if (!config.publicApiUrl.startsWith('https://')) {
-    c.header('X-Feed-Warning', 'PUBLIC_API_URL is not https; dane.gov.pl will reject the resource links')
-    return send(c, xml.replace('\n', '\n<!-- PUBLIC_API_URL is not https: dane.gov.pl accepts only https resource links. Set PUBLIC_API_URL in the deployment. -->\n'), 'application/xml; charset=utf-8')
+    return xml.replace('\n', '\n<!-- PUBLIC_API_URL is not https: dane.gov.pl accepts only https resource links. Set PUBLIC_API_URL in the deployment. -->\n')
   }
+  return xml
+}
+
+/** One provider's dataset for the portal's harvester; the portal merges every provider into the summary list. */
+export const providerFeedHandler: RouteHandler<typeof providerFeedRoute> = async (c) => {
+  const xml = await providerFeedXml(c.req.valid('param').id)
+  if (!config.publicApiUrl.startsWith('https://')) c.header('X-Feed-Warning', 'PUBLIC_API_URL is not https; dane.gov.pl will reject the resource links')
   return send(c, xml, 'application/xml; charset=utf-8')
+}
+
+/** The harvester reads this before the feed (same address, .md5 instead of .xml) and rejects a feed whose MD5 differs. */
+export const providerFeedHashHandler: RouteHandler<typeof providerFeedHashRoute> = async (c) => {
+  const xml = await providerFeedXml(c.req.valid('param').id)
+  return send(c, `${createHash('md5').update(xml, 'utf8').digest('hex')}\n`, 'text/plain; charset=utf-8')
 }
 
 // ---------------------------------------------------------------------- admin
