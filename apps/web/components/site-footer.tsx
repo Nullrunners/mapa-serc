@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { BRAND } from "@/lib/brand";
 
 /** What every page says at its end: the emergency number, where the data comes from, and who made the site. */
@@ -15,7 +16,10 @@ export function FooterNotes() {
         Dane: instytucje podane przy urządzeniach (CC0 1.0 lub CC BY 4.0), niepotwierdzone © autorzy OpenStreetMap (ODbL). Mapa: OpenFreeMap © OpenMapTiles.
       </p>
       <p>
-        {BRAND.name} – {BRAND.slogan}. Prototyp z HackNation 2026.
+        {BRAND.name} – {BRAND.slogan}. Prototyp z HackNation 2026.{" "}
+        <Link href="/dostepnosc" className="link">
+          Dostępność
+        </Link>
       </p>
     </>
   );
