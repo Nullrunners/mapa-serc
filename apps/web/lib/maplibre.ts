@@ -2,7 +2,7 @@
  * Shared MapLibre setup. Import this module before creating a map, from every component that draws one,
  * so the map works whichever page a person opens first.
  */
-import { FullscreenControl, Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource, type MapOptions } from "maplibre-gl";
+import { FullscreenControl, Map as MapLibreMap, NavigationControl, setWorkerUrl, type FilterSpecification, type GeoJSONSource, type MapOptions } from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
 
 // maplibre-gl 6 looks for its worker next to its own module (import.meta.url). Once Turbopack bundles it
@@ -60,6 +60,7 @@ export function createMap(container: HTMLElement, frame: HTMLElement | null, set
   map.once("style.load", () => {
     namePlacesInPolish(map);
     hidePlacesOfInterest(map);
+    skipFeaturesWithoutField(map);
   });
   if (setup.bare) return map;
   map.addControl(new NavigationControl({ showCompass: false }), "top-right");
@@ -94,6 +95,27 @@ function hidePlacesOfInterest(map: MapLibreMap): void {
   for (const layer of map.getStyle().layers) {
     if (layer.type === "symbol" && (layer["source-layer"] === "poi" || layer["source-layer"] === "aerodrome_label")) map.setLayoutProperty(layer.id, "visibility", "none");
   }
+}
+
+/**
+ * The style's road-number shields keep roads with `["<=", ["get", "ref_length"], 6]`, but most roads have no number,
+ * so MapLibre warns in the console each time it compares that missing value with 6. Ask whether the field is there
+ * first: `all` stops at the first false, so the comparison is skipped and the layer shows exactly what it did before.
+ */
+function skipFeaturesWithoutField(map: MapLibreMap): void {
+  for (const layer of map.getStyle().layers) {
+    if (!("filter" in layer) || !Array.isArray(layer.filter) || layer.filter[0] !== "all") continue;
+    const tests: unknown[] = layer.filter.slice(1);
+    const fields = [...new Set(tests.flatMap(comparedField))];
+    if (fields.length) map.setFilter(layer.id, ["all", ...fields.map((field) => ["has", field]), ...tests] as FilterSpecification);
+  }
+}
+
+/** The field a test like `["<=", ["get", "ref_length"], 6]` compares with a number, if it is one. */
+function comparedField(test: unknown): string[] {
+  if (!Array.isArray(test) || !["<", "<=", ">", ">="].includes(test[0]) || typeof test[2] !== "number") return [];
+  const [get, field] = Array.isArray(test[1]) ? test[1] : [];
+  return get === "get" && typeof field === "string" && test[1].length === 2 ? [field] : [];
 }
 
 /**
