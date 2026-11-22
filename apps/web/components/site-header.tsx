@@ -24,7 +24,7 @@ export default function SiteHeader({ wide = false }: { wide?: boolean }) {
           <Suspense fallback={<Nav current={null} />}>
             <CurrentNav />
           </Suspense>
-          {MOBILE_APP_URL && <AppLink />}
+          <AppLink />
           <DisplaySettings wide={wide} />
         </div>
       </div>
@@ -32,12 +32,24 @@ export default function SiteHeader({ wide = false }: { wide?: boolean }) {
   );
 }
 
-/** The mobile app, beside "Dostępność" and shown the same way: the word drops to an icon where the row is tight. */
+/**
+ * The mobile app, beside "Dostępność" and shown the same way: the word drops to an icon where the row is tight.
+ * Until the app has an address it leads to its part of the page "O projekcie".
+ */
 function AppLink() {
+  const word = <span className="sr-only sm:not-sr-only lg:sr-only 2xl:not-sr-only">Aplikacja</span>;
+  if (!MOBILE_APP_URL)
+    return (
+      <Link href="/o-projekcie#aplikacja" title="Aplikacja mobilna" className="btn btn-secondary btn-sm">
+        <PhoneIcon />
+        {word}
+        <span className="sr-only"> mobilna</span>
+      </Link>
+    );
   return (
     <a href={MOBILE_APP_URL} target="_blank" rel="noopener noreferrer" title="Aplikacja mobilna" className="btn btn-secondary btn-sm">
       <PhoneIcon />
-      <span className="sr-only sm:not-sr-only lg:sr-only 2xl:not-sr-only">Aplikacja</span>
+      {word}
       <span className="sr-only"> mobilna (otworzy się w nowej karcie)</span>
     </a>
   );
