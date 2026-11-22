@@ -16,6 +16,30 @@ index 62a338f..dc91814 100644
          "kibana-statistics": {
              "task": "mcod.counters.tasks.kibana_statistics",
              "options": default_options,
+diff --git a/mcod/core/api/utils/views.py b/mcod/core/api/utils/views.py
+index e9f8530..b3c2f48 100644
+--- a/mcod/core/api/utils/views.py
++++ b/mcod/core/api/utils/views.py
+@@ -99,6 +99,11 @@ class OpenApiSpec:
+             schema=res_responses.AggregatedDGAInfoApiResponse,
+             many=False,
+         )
++        spec.components.schema(
++            "AggregatedListInfo",
++            schema=res_responses.AggregatedListInfoApiResponse,
++            many=False,
++        )
+         spec.components.schema("Charts", schema=res_responses.ChartApiResponse, many=True)
+         spec.components.schema("Chart", schema=res_responses.ChartApiResponse, many=False)
+         spec.components.schema("ResourceTable", schema=res_responses.TableApiResponse, many=True)
+@@ -120,6 +125,7 @@ class OpenApiSpec:
+         spec.path(resource=res_views.ResourcesView)
+         spec.path(resource=res_views.ResourceView)
+         spec.path(resource=res_views.AggregatedDGAInfoView)
++        spec.path(resource=res_views.AggregatedListInfoView)
+         spec.path(resource=res_views.ResourceTableView)
+         spec.path(resource=res_views.ResourceTableRowView)
+         spec.path(resource=search_views.SearchView)
 diff --git a/mcod/resources/aggregated_lists/__init__.py b/mcod/resources/aggregated_lists/__init__.py
 new file mode 100644
 index 0000000..64b5a72
@@ -33,10 +57,10 @@ index 0000000..64b5a72
 +"""
 diff --git a/mcod/resources/aggregated_lists/core.py b/mcod/resources/aggregated_lists/core.py
 new file mode 100644
-index 0000000..f23bf82
+index 0000000..cf339c5
 --- /dev/null
 +++ b/mcod/resources/aggregated_lists/core.py
-@@ -0,0 +1,378 @@
+@@ -0,0 +1,430 @@
 +"""
 +Core of the aggregated lists ("wykazy zbiorcze"): reading a provider's table, checking it against the
 +list's standard (a Frictionless Table Schema), cleaning rows and merging all providers into one table.
@@ -74,12 +98,20 @@ index 0000000..f23bf82
 +
 +SUPPORTED_EXTENSIONS: Tuple[str, ...] = ("csv", "xlsx", "xls")
 +
-+# Provider columns appended to every row of a summary list. Named like the pattern's own columns
++# Provider columns added to every row of a summary list (order: `output_columns`). Named like the pattern's own columns
 +# (Polish snake_case) so the summary stays one consistent table.
 +PROVIDER_NAME_COLUMN = "dysponent_danych"
 +PROVIDER_RESOURCE_COLUMN = "zasob_zrodlowy"
 +PROVIDER_UPDATED_COLUMN = "aktualizacja_zasobu_zrodlowego"
 +PROVIDER_COLUMNS: Tuple[str, ...] = (PROVIDER_NAME_COLUMN, PROVIDER_RESOURCE_COLUMN, PROVIDER_UPDATED_COLUMN)
++
++
++def output_columns(schema: "TableSchema") -> List[str]:
++    """
++    Columns of the summary table. The provider's name comes first, as in the DGA summary ("Nazwa dysponenta
++    zasobu"), so the table shows at once who answers for a row; the source resource and its date close the row.
++    """
++    return [PROVIDER_NAME_COLUMN] + schema.column_names + [PROVIDER_RESOURCE_COLUMN, PROVIDER_UPDATED_COLUMN]
 +
 +# Reasons a row or a whole table is left out; the keys go into the build report.
 +SKIP_EMPTY_REQUIRED = "brak_wymaganej_wartosci"
@@ -321,7 +353,7 @@ index 0000000..f23bf82
 +    Cleans each provider's table and concatenates them, adding the provider columns.
 +    A table that cannot be used is reported with `error` and contributes no rows.
 +    """
-+    columns = schema.column_names + list(PROVIDER_COLUMNS)
++    columns = output_columns(schema)
 +    frames: List[pd.DataFrame] = []
 +    reports: List[SourceReport] = []
 +    seen_keys = set()
@@ -376,7 +408,7 @@ index 0000000..f23bf82
 +    by_name = {f.name: f for f in schema.fields}
 +    fields: List[Dict[str, Any]] = []
 +    geo: Dict[str, Dict[str, Any]] = {}
-+    for index, name in enumerate(schema.column_names + list(PROVIDER_COLUMNS)):
++    for index, name in enumerate(output_columns(schema)):
 +        schema_field = by_name.get(name)
 +        typed = schema_field is not None and schema_field.required and schema_field.type in ("number", "integer", "date")
 +        entry: Dict[str, Any] = {"name": name, "type": schema_field.type if typed else "string", "format": "default"}
@@ -387,6 +419,50 @@ index 0000000..f23bf82
 +        fields.append(entry)
 +    result: Dict[str, Any] = {"fields": fields, "missingValues": list(missing_values)}
 +    if geo:
++        result["geo"] = geo
++    return result
++
++
++def member_table_schema(inferred: Dict[str, Any], schema: TableSchema) -> Dict[str, Any]:
++    """
++    The portal's schema of a provider's resource that feeds the list, built from the schema the portal
++    inferred for the file (`inferred`: columns in the file's own order, types guessed from the first rows).
++
++    Guessed types reject valid files: an empty `kod_simc` after a few numeric ones, or house number "50B"
++    after "57" and "41", fail the portal's data validation, and the provider's resource then has no table.
++    So every column becomes text, except the standard's required numeric and date columns that the portal
++    also guessed as such (in practice the coordinates and the update date). When both coordinates stay
++    numeric the map roles of the standard are set, so the provider's own resource gets a map preview too.
++    """
++    by_name = {f.name: f for f in schema.fields}
++    fields: List[Dict[str, Any]] = []
++    kept_roles: Dict[str, Dict[str, Any]] = {}
++    labels: Dict[str, Dict[str, Any]] = {}
++    for index, original in enumerate(inferred.get("fields") or []):
++        entry = {key: value for key, value in original.items() if key != "geo"}
++        schema_field = by_name.get(normalise_header(str(entry.get("name", ""))))
++        typed = (
++            schema_field is not None
++            and schema_field.required
++            and schema_field.type in ("number", "integer", "date")
++            and entry.get("type") == schema_field.type
++        )
++        if not typed:
++            entry["type"] = "string"
++            entry["format"] = "default"
++        role = schema_field.portal_geo if schema_field is not None else None
++        if role:
++            target = kept_roles if typed else labels if schema_field.type == "string" else {}
++            target[role] = {"col_name": entry.get("name"), "col_index": index}
++        fields.append(entry)
++
++    result = {key: value for key, value in inferred.items() if key not in ("fields", "geo")}
++    result["fields"] = fields
++    # latitude ("b") and longitude ("l") must both be numbers, or the portal cannot draw the map
++    if {"b", "l"} <= set(kept_roles):
++        geo = {**kept_roles, **labels}
++        for role, column in geo.items():
++            fields[column["col_index"]]["geo"] = role
 +        result["geo"] = geo
 +    return result
 +
@@ -417,7 +493,7 @@ index 0000000..f23bf82
 +    )
 diff --git a/mcod/resources/aggregated_lists/definitions.py b/mcod/resources/aggregated_lists/definitions.py
 new file mode 100644
-index 0000000..cf48f6b
+index 0000000..b177d95
 --- /dev/null
 +++ b/mcod/resources/aggregated_lists/definitions.py
 @@ -0,0 +1,102 @@
@@ -442,7 +518,7 @@ index 0000000..cf48f6b
 +from pathlib import Path
 +from typing import Dict, List, Optional, Tuple
 +
-+from mcod.resources.aggregated_lists.core import PROVIDER_COLUMNS, TableSchema
++from mcod.resources.aggregated_lists.core import TableSchema, output_columns
 +
 +SCHEMAS_DIR = Path(__file__).resolve().parent / "schemas"
 +
@@ -481,7 +557,7 @@ index 0000000..cf48f6b
 +
 +    @property
 +    def output_columns(self) -> List[str]:
-+        return self.schema.column_names + list(PROVIDER_COLUMNS)
++        return output_columns(self.schema)
 +
 +
 +AED = AggregatedListDefinition(
@@ -977,10 +1053,10 @@ index 0000000..eaa5c87
 +}
 diff --git a/mcod/resources/aggregated_lists/service.py b/mcod/resources/aggregated_lists/service.py
 new file mode 100644
-index 0000000..695533d
+index 0000000..2bea3a5
 --- /dev/null
 +++ b/mcod/resources/aggregated_lists/service.py
-@@ -0,0 +1,357 @@
+@@ -0,0 +1,376 @@
 +"""
 +Portal side of the aggregated lists ("wykazy zbiorcze"): finding the providers' resources, building the
 +summary table and publishing it as a resource of the summary dataset.
@@ -1022,6 +1098,7 @@ index 0000000..695533d
 +    Provider,
 +    SourceReadError,
 +    SourceReport,
++    member_table_schema,
 +    merge_tables,
 +    normalise_header,
 +    portal_table_schema,
@@ -1029,7 +1106,7 @@ index 0000000..695533d
 +    summarise,
 +    to_csv_bytes,
 +)
-+from mcod.resources.aggregated_lists.definitions import AggregatedListDefinition
++from mcod.resources.aggregated_lists.definitions import AggregatedListDefinition, definitions_for_tags
 +
 +if TYPE_CHECKING:
 +    from mcod.datasets.models import Dataset
@@ -1081,8 +1158,12 @@ index 0000000..695533d
 +
 +def get_source_resources(definition: AggregatedListDefinition) -> QuerySet:
 +    """
-+    Published CSV/XLSX/XLS resources of published datasets carrying the list's tag, whose file, link and
-+    data validation succeeded (the same prefilter as the DGA summary). Ordered by institution.
++    Published CSV/XLSX/XLS resources of published datasets carrying the list's tag, whose file and link
++    validation succeeded. Ordered by institution.
++
++    Unlike the DGA summary, the portal's data validation is not required: the list checks every row itself
++    (`core.clean_table`), keeps the valid ones and reports the rest, so one bad row does not hide a whole
++    provider, and a resource left out always shows up in the report with the reason.
 +    """
 +    Resource = apps.get_model("resources", "Resource")
 +    Dataset = apps.get_model("datasets", "Dataset")
@@ -1092,7 +1173,6 @@ index 0000000..695533d
 +        dataset__in=member_datasets,
 +        status="published",
 +        format__in=SUPPORTED_EXTENSIONS,
-+        data_tasks_last_status=states.SUCCESS,
 +        file_tasks_last_status=states.SUCCESS,
 +        link_tasks_last_status=states.SUCCESS,
 +    )
@@ -1102,6 +1182,21 @@ index 0000000..695533d
 +    if info and info.dataset_id:
 +        queryset = queryset.exclude(dataset_id=info.dataset_id)
 +    return queryset.select_related("dataset__organization").order_by("dataset__organization__title", "pk")
++
++
++def table_schema_for_member(resource: "Resource", inferred: Dict[str, Any]) -> Dict[str, Any]:
++    """
++    Column types for a resource whose dataset feeds an aggregated list: taken from the list's standard
++    instead of guessed from the data (see `core.member_table_schema`). Any other resource keeps `inferred`.
++    Called when the portal first works out the schema of a resource's file.
++    """
++    if not resource.dataset_id or not inferred:
++        return inferred
++    # The summary dataset never carries a membership tag, so the summary keeps the schema set in publish().
++    definitions = definitions_for_tags(resource.dataset.tags.values_list("name", flat=True))
++    if not definitions:
++        return inferred
++    return member_table_schema(inferred, definitions[0].schema)
 +
 +
 +def _read_from_tabular_data(resource: "Resource") -> pd.DataFrame:
@@ -1592,6 +1687,34 @@ index 6c9ac63..0d8a8fd 100644
  class Chart(ExtendedModel):
      SIGNALS_MAP = {
          "updated": (update_chart_resource,),
+diff --git a/mcod/resources/serializers.py b/mcod/resources/serializers.py
+index 556b15c..a355361 100644
+--- a/mcod/resources/serializers.py
++++ b/mcod/resources/serializers.py
+@@ -694,3 +694,23 @@ class AggregatedDGAInfoApiResponse(ExtSchema):
+     dataset_slug = fields.Str(attribute="resource.dataset.slug", data_key="dataset_slug")
+     resource_id = fields.Int(attribute="resource.id", data_key="resource_id")
+     resource_slug = fields.Str(attribute="resource.slug", data_key="resource_slug")
++
++
++class AggregatedListInfoApiResponse(ExtSchema):
++    """Where an aggregated list ("wykaz zbiorczy") lives. Same fields as AggregatedDGAInfoApiResponse, plus the list."""
++
++    slug = fields.Str()
++    dataset_id = fields.Int(attribute="resource.dataset.id", data_key="dataset_id")
++    dataset_slug = fields.Str(attribute="resource.dataset.slug", data_key="dataset_slug")
++    resource_id = fields.Int(attribute="resource.id", data_key="resource_id")
++    resource_slug = fields.Str(attribute="resource.slug", data_key="resource_slug")
++    # Last build: when the list was published, how many rows it holds and from how many source resources.
++    published_at = fields.DateTime(allow_none=True)
++    rows_count = fields.Method("get_rows_count")
++    sources_count = fields.Method("get_sources_count")
++
++    def get_rows_count(self, obj):
++        return (obj.report or {}).get("rows_published")
++
++    def get_sources_count(self, obj):
++        return (obj.report or {}).get("sources_used")
 diff --git a/mcod/resources/tasks/__init__.py b/mcod/resources/tasks/__init__.py
 index 3309d6b..dc423fa 100644
 --- a/mcod/resources/tasks/__init__.py
@@ -1732,12 +1855,28 @@ index 0000000..d809058
 +        raise
 +
 +    service.mark_published(definition, resource)
+diff --git a/mcod/resources/tasks/process_resource_file_data.py b/mcod/resources/tasks/process_resource_file_data.py
+index a7621f0..f25a350 100644
+--- a/mcod/resources/tasks/process_resource_file_data.py
++++ b/mcod/resources/tasks/process_resource_file_data.py
+@@ -25,6 +25,11 @@ def _resolve_tabular_data_schema(resource: "Resource") -> Dict[str, Any]:
+     tds = resource.tabular_data_schema
+     if not tds or tds.get("missingValues") != resource.special_signs_symbols_list:
+         tds = resource.data.get_schema(revalidate=True)
++        # A resource that feeds an aggregated list ("wykaz zbiorczy") takes its column types from the list's
++        # standard: guessed types would reject valid files (house numbers "57", "41", then "50B").
++        from mcod.resources.aggregated_lists.service import table_schema_for_member
++
++        tds = table_schema_for_member(resource, tds)
+ 
+     if resource.from_resource and resource.from_resource.tabular_data_schema:
+         old_fields = deepcopy(resource.from_resource.tabular_data_schema.get("fields"))
 diff --git a/mcod/resources/tests/test_aggregated_lists_core.py b/mcod/resources/tests/test_aggregated_lists_core.py
 new file mode 100644
-index 0000000..c2c3650
+index 0000000..efcb212
 --- /dev/null
 +++ b/mcod/resources/tests/test_aggregated_lists_core.py
-@@ -0,0 +1,257 @@
+@@ -0,0 +1,311 @@
 +"""
 +Tests of the aggregated lists core (reading, checking and merging provider tables).
 +
@@ -1761,6 +1900,7 @@ index 0000000..c2c3650
 +    TableSchema,
 +    check_columns,
 +    clean_table,
++    member_table_schema,
 +    merge_tables,
 +    portal_table_schema,
 +    read_table,
@@ -1811,7 +1951,8 @@ index 0000000..c2c3650
 +        "data_aktualizacji",
 +    }
 +    assert SCHEMA.primary_key == ("id",)
-+    assert AED.output_columns == SCHEMA.column_names + list(PROVIDER_COLUMNS)
++    # who answers for the row comes first, as in the DGA summary; the source resource and its date come last
++    assert AED.output_columns == [PROVIDER_COLUMNS[0]] + SCHEMA.column_names + list(PROVIDER_COLUMNS[1:])
 +
 +
 +def test_definition_lookup_by_slug_and_tag():
@@ -1995,6 +2136,123 @@ index 0000000..c2c3650
 +    # the portal keeps a stored schema only while missingValues equals the resource's special signs
 +    assert portal["missingValues"] == []
 +    assert portal_table_schema(SCHEMA, ["-"])["missingValues"] == ["-"]
++
++
++def test_member_schema_replaces_guessed_types_with_the_standard():
++    # what the portal guesses from the first rows of a provider's file, in the file's own column order
++    inferred = {
++        "fields": [
++            {"name": "Nazwa", "type": "string", "format": "default"},
++            {"name": "nr_budynku", "type": "integer", "format": "default"},
++            {"name": "kod_simc", "type": "integer", "format": "default"},
++            {"name": "szerokosc_geograficzna", "type": "number", "format": "default"},
++            {"name": "dlugosc_geograficzna", "type": "number", "format": "default", "geo": "l"},
++            {"name": "data_aktualizacji", "type": "date", "format": "default"},
++            {"name": "termin_waznosci_baterii", "type": "date", "format": "default"},
++            {"name": "uwagi urzędu", "type": "boolean", "format": "default"},
++        ],
++        "missingValues": ["-"],
++    }
++    member = member_table_schema(inferred, SCHEMA)
++    assert [f["name"] for f in member["fields"]] == [f["name"] for f in inferred["fields"]]
++    types = {f["name"]: f["type"] for f in member["fields"]}
++    # guesses that reject valid files ("50B" after "57", an empty kod_simc) become text
++    assert types["nr_budynku"] == types["kod_simc"] == "string"
++    # optional and unknown columns pass unchecked, so they are text as well
++    assert types["termin_waznosci_baterii"] == types["uwagi urzędu"] == "string"
++    # required columns keep the standard's type when the portal guessed the same
++    assert types["szerokosc_geograficzna"] == types["dlugosc_geograficzna"] == "number"
++    assert types["data_aktualizacji"] == "date"
++    assert member["missingValues"] == ["-"]
++    assert member["geo"] == {
++        "label": {"col_name": "Nazwa", "col_index": 0},
++        "b": {"col_name": "szerokosc_geograficzna", "col_index": 3},
++        "l": {"col_name": "dlugosc_geograficzna", "col_index": 4},
++    }
++    assert [f.get("geo") for f in member["fields"]] == ["label", None, None, "b", "l", None, None, None]
++    # the input is left as the portal produced it
++    assert inferred["fields"][1]["type"] == "integer"
++
++
++def test_member_schema_has_no_map_when_coordinates_are_not_numbers():
++    # decimal commas: the portal reads the coordinates as text, the list still accepts the rows
++    inferred = {
++        "fields": [
++            {"name": "nazwa", "type": "string", "format": "default"},
++            {"name": "szerokosc_geograficzna", "type": "string", "format": "default"},
++            {"name": "dlugosc_geograficzna", "type": "number", "format": "default"},
++        ]
++    }
++    member = member_table_schema(inferred, SCHEMA)
++    assert [f["type"] for f in member["fields"]] == ["string", "string", "number"]
++    assert "geo" not in member
++    assert all("geo" not in f for f in member["fields"])
++
+diff --git a/mcod/resources/views.py b/mcod/resources/views.py
+index f01eca0..99c3ef0 100644
+--- a/mcod/resources/views.py
++++ b/mcod/resources/views.py
+@@ -50,6 +50,7 @@ from mcod.resources.documents import ResourceDocument
+ from mcod.resources.models import RESOURCE_TYPE_FILE, AggregatedDGAInfo, ResourceFile
+ from mcod.resources.serializers import (
+     AggregatedDGAInfoApiResponse,
++    AggregatedListInfoApiResponse,
+     ChartApiResponse,
+     CommentApiResponse,
+     GeoApiResponse,
+@@ -775,6 +776,39 @@ class AggregatedDGAInfoView(JsonAPIView):
+             return self.serializer.dump(self.response.context.data)
+ 
+ 
++class AggregatedListInfoView(JsonAPIView):
++    """
++    Where the summary of an aggregated list ("wykaz zbiorczy") is published, e.g. /aggregated-lists/aed.
++    The generic twin of AggregatedDGAInfoView (/dga-aggregated): the portal's frontend asks it for the
++    resource to embed as a table on the list's page.
++    """
++
++    @falcon.before(login_optional)
++    @versioned
++    def on_get(self, request, response, *args, **kwargs):
++        """
++        ---
++        doc_template: docs/resources/aggregated_list_info_view.yml
++        """
++        self.handle(request, response, self.GET, *args, **kwargs)
++
++    class GET(BaseHdlr):
++        database_model = apps.get_model("resources", "AggregatedListInfo")
++        serializer_schema = AggregatedListInfoApiResponse
++
++        def _get_data(self, cleaned, slug, *args, **kwargs):
++            data = (
++                self.database_model.objects.select_related("resource", "resource__dataset").filter(slug=slug).first()
++            )
++            if not data or data.summary_resource is None or data.summary_resource.dataset.is_removed:
++                raise falcon.HTTPNotFound
++            return data
++
++        def serialize(self, *args, **kwargs):
++            self.prepare_context(*args, **kwargs)
++            return self.serializer.dump(self.response.context.data)
++
++
+ class ResourceAutocompleteView(autocomplete.Select2QuerySetView):
+     def get_result_label(self, result):
+         return result.label_from_instance
+diff --git a/mcod/routes.py b/mcod/routes.py
+index 3ddec0b..b98dad8 100644
+--- a/mcod/routes.py
++++ b/mcod/routes.py
+@@ -145,6 +145,8 @@ routes = [
+     ("/resources/{id:int},{slug}/comments", res_views.ResourceCommentsView()),
+     # DGA
+     ("/dga-aggregated", res_views.AggregatedDGAInfoView()),
++    # Aggregated lists ("wykazy zbiorcze"), e.g. /aggregated-lists/aed
++    ("/aggregated-lists/{slug}", res_views.AggregatedListInfoView()),
+     # Depricated views
+     ("/resources/{id:int}/incr_download_count", res_views.ResourceDownloadCounter()),
+     (
 diff --git a/mcod/settings/base.py b/mcod/settings/base.py
 index 9e567f1..fac88cf 100644
 --- a/mcod/settings/base.py
@@ -2026,3 +2284,33 @@ index 9e567f1..fac88cf 100644
  PASSWORD_RESET_PATH = "/user/reset-password/%s/"
  EMAIL_VALIDATION_PATH = "/user/verify-email/%s/"
  
+diff --git a/mcod/templates/docs/resources/aggregated_list_info_view.yml b/mcod/templates/docs/resources/aggregated_list_info_view.yml
+new file mode 100644
+index 0000000..90e11f1
+--- /dev/null
++++ b/mcod/templates/docs/resources/aggregated_list_info_view.yml
+@@ -0,0 +1,24 @@
++{% load i18n %}
++---
++tags:
++   - API Endpoints
++summary: Returns info about an aggregated list (e.g. the AED list)
++description: |
++  {% spaceless %}
++      <p>Returns where the summary of an aggregated list is published - especially resource_id and dataset_id.
++      The list is identified by its slug, e.g. <code>aed</code>.</p>
++  {% endspaceless %}
++parameters:
++  - name: slug
++    in: path
++    description: Aggregated list slug, e.g. aed
++    required: true
++    schema:
++      type: string
++responses:
++  200:
++    description: valid response in jsonapi format
++    content:
++      application/vnd.api+json:
++        schema:
++          $ref: '#/components/schemas/AggregatedListInfo'
