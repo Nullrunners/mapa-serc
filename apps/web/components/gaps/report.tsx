@@ -6,6 +6,7 @@ import { hours } from "@/lib/aed-text";
 import type { GapsMethod, GapsPlace } from "@/lib/api/client";
 import { distance } from "@/lib/format";
 import { BASIS, county, coverageNow, justification, people, placeName } from "@/lib/gaps-text";
+import { scrollMotion } from "@/lib/motion";
 import { googlePlace } from "@/lib/route";
 
 export interface GapReportProps {
@@ -23,7 +24,7 @@ export default function GapReport({ place, method, csvHref, onClose }: GapReport
 
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
-    heading.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    heading.current?.scrollIntoView({ behavior: scrollMotion(), block: "nearest" });
   }, [place.rank]);
 
   const copy = async () => {

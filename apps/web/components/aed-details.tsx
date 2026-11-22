@@ -8,6 +8,7 @@ import { BackButton, ExternalLink, LoadStatus, Status } from "@/components/ui";
 import { AVAILABILITY, STATUS_WARNING, access, addressLine, hours, spot, title } from "@/lib/aed-text";
 import { api, type AedItem } from "@/lib/api/client";
 import { date } from "@/lib/format";
+import { scrollMotion } from "@/lib/motion";
 import type { PassportPublic } from "@/lib/passport-text";
 import { googleDirections, type Point } from "@/lib/route";
 import { useLoad } from "@/lib/use-load";
@@ -59,7 +60,7 @@ export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClo
   useEffect(() => {
     if (!ready || guided || !heading.current) return;
     heading.current.focus({ preventScroll: true });
-    heading.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    heading.current.scrollIntoView({ behavior: scrollMotion(), block: "nearest" });
   }, [ready, guided, picked.id]);
 
   return (

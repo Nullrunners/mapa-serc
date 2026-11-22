@@ -7,6 +7,10 @@
  */
 @theme inline {
   --font-sans: var(--font-open-sans), "Open Sans", Arial, Helvetica, sans-serif;
+}
+
+/* Not `inline`: the utilities read these variables, so the stronger contrast below can swap them. */
+@theme {
   --color-gov: #0052a5;
   --color-gov-dark: #003d7a;
   --color-gov-light: #e8f1fa;
@@ -18,6 +22,24 @@
   --color-ok: #0b6b3a;
   --color-warn: #8a4b00;
   --color-danger: #b00020;
+}
+
+/*
+ * "More contrast" in the system settings (Windows, macOS, iOS, Android): grey text and lines turn nearly black and
+ * the colours darker, for people who see less. The layout stays the same.
+ */
+@media (prefers-contrast: more) {
+  :root {
+    --color-gov: #003d7a;
+    --color-gov-dark: #002850;
+    --color-ink: #000000;
+    --color-muted: #333a42;
+    --color-line: #6b7280;
+    --color-field: #1b1b1b;
+    --color-ok: #064d29;
+    --color-warn: #663600;
+    --color-danger: #8a001a;
+  }
 }
 
 body {
@@ -38,8 +60,62 @@ body {
   box-shadow: none;
 }
 
+/*
+ * Less motion, as set in the system: no fades or glides on the page. The maps follow the same setting on their own
+ * (MapLibre jumps instead of flying), and the 3D walk starts paused.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * Windows high contrast (forced colours) paints every background in one system colour, so a choice marked only by its
+ * fill would look like the others. There the chosen one takes the system's colour for selected items.
+ */
+@media (forced-colors: active) {
+  [aria-pressed="true"],
+  .chip:has(input:checked) {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+  [aria-current="page"],
+  [aria-current="step"] {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+  }
+}
+
 .maplibregl-map {
   font-family: inherit;
+}
+
+/*
+ * The map takes the keyboard (arrows move it, + and − zoom). The map box cuts off anything drawn outside it, so its
+ * focus ring is drawn inside, over the map.
+ */
+.maplibregl-canvas:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.maplibregl-map:has(.maplibregl-canvas:focus-visible)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  outline: 3px solid #ffbf47;
+  outline-offset: -8px;
+  box-shadow: inset 0 0 0 5px #1b1b1b;
 }
 
 /* The few building blocks used on every page. Utilities still win over them, so `btn btn-primary w-full` works. */
@@ -84,9 +160,12 @@ body {
     @apply rounded-lg border border-line p-4;
   }
 
-  /* A choice that looks like a pill: a toggle button (aria-pressed) or a label around a hidden radio button. */
+  /*
+   * A choice that looks like a pill: a toggle button (aria-pressed) or a label around a hidden radio button. Its border
+   * is what shows it can be chosen, so it has the contrast of a field's border (3:1).
+   */
   .chip {
-    @apply inline-flex cursor-pointer items-center rounded-full border border-line bg-white px-3 py-1 text-sm font-semibold hover:border-gov;
+    @apply inline-flex cursor-pointer items-center rounded-full border border-field bg-white px-3 py-1 text-sm font-semibold hover:border-gov;
   }
   .chip[aria-pressed="true"],
   .chip:has(input:checked) {
