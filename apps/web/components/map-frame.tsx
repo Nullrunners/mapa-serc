@@ -48,14 +48,17 @@ export function MapScreen({ title, lead, focused = false, view, tallMap = false,
   );
 }
 
-/** The MapLibre map fills the whole field; the legend is drawn over it, and goes full screen with it. */
-export function MapFrame({ frameRef, containerRef, label, children }: { frameRef: Ref<HTMLDivElement>; containerRef: Ref<HTMLDivElement>; label: string; children?: ReactNode }) {
+/**
+ * The MapLibre map fills the whole field; the legend is drawn over it, and goes full screen with it. The map's name
+ * for screen readers is on its canvas, which takes the keyboard: pass it as `label` to useMapLibre.
+ */
+export function MapFrame({ frameRef, containerRef, children }: { frameRef: Ref<HTMLDivElement>; containerRef: Ref<HTMLDivElement>; children?: ReactNode }) {
   return (
     <div ref={frameRef} className="absolute inset-0 overflow-hidden bg-surface">
       {/* MapLibre's own CSS sets `.maplibregl-map { position: relative }` outside any cascade layer, so it beats
           Tailwind's layered `absolute` and the map collapses to 0 px. The positioning lives on a wrapper instead. */}
       <div className="absolute inset-0">
-        <div ref={containerRef} className="h-full w-full" role="region" aria-label={label} />
+        <div ref={containerRef} className="h-full w-full" />
       </div>
       {children}
     </div>

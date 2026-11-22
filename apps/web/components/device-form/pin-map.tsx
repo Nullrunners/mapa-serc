@@ -44,7 +44,7 @@ export default function PinMap({ target, onMove }: PinMapProps) {
       });
       tell();
     },
-    { options: { maxZoom: 19, doubleClickZoom: false } },
+    { options: { maxZoom: 19, doubleClickZoom: false }, label: "Mapa: przesuń ją tak, żeby pinezka stała na defibrylatorze" },
   );
 
   // The first place is jumped to; later ones are flown to, so the person sees where the map went.
@@ -66,7 +66,7 @@ export default function PinMap({ target, onMove }: PinMapProps) {
   if (!drawable) return <MapUnavailable>Ta przeglądarka nie pokaże mapy. Wpisz adres albo użyj swojej lokalizacji.</MapUnavailable>;
 
   return (
-    <MapFrame frameRef={frame} containerRef={container} label="Mapa: przesuń ją tak, żeby pinezka stała na defibrylatorze">
+    <MapFrame frameRef={frame} containerRef={container}>
       {/* The pin's tip is the middle of the map: the icon stands on a short stem that ends there. */}
       <div aria-hidden className="pointer-events-none absolute top-1/2 left-1/2 flex -translate-x-1/2 -translate-y-full flex-col items-center drop-shadow">
         <AedIcon kind={AED_KINDS[0]} size={36} />

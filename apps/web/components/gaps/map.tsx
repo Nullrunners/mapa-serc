@@ -114,7 +114,9 @@ export default function GapsMap(props: GapsMapProps) {
     live.current.props = props;
   });
 
-  const { frame, container, map: mapRef, drawable } = useMapLibre((map) => addLayers(map, live));
+  const { frame, container, map: mapRef, drawable } = useMapLibre((map) => addLayers(map, live), {
+    label: "Mapa luk w dostępie do defibrylatorów. Te same liczby i miejsca są w panelu obok.",
+  });
 
   const hexes = grid?.hexes;
   useEffect(() => {
@@ -173,7 +175,7 @@ export default function GapsMap(props: GapsMapProps) {
   const { steps } = level;
   const finest = level === LEVELS.at(-1);
   return (
-    <MapFrame frameRef={frame} containerRef={container} label="Mapa luk w dostępie do defibrylatorów. Te same liczby i miejsca są w panelu obok.">
+    <MapFrame frameRef={frame} containerRef={container}>
       {/* Top left: the tools, then the legend. The zoom buttons take the top right and the credits the bottom, which
           MapLibre keeps unfolded on a narrow map until it is dragged by hand. */}
       <div className="@container pointer-events-none absolute top-2 right-12 left-2 flex flex-col items-start gap-1.5">

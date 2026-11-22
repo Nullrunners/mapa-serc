@@ -21,7 +21,6 @@ export const EMPTY: SourceData = { type: "FeatureCollection", features: [] };
 
 /** Polish names of the map's own buttons; they are read out by screen readers. */
 const LOCALE = {
-  "Map.Title": "Mapa",
   "NavigationControl.ZoomIn": "Przybliż",
   "NavigationControl.ZoomOut": "Oddal",
   "FullscreenControl.Enter": "Pokaż mapę na pełnym ekranie",
@@ -42,6 +41,18 @@ export function canDrawMap(): boolean {
 export interface MapSetup {
   options?: Partial<Omit<MapOptions, "container" | "style">>;
   bare?: boolean;
+  /** What the map shows, read out by a screen reader when the map takes the keyboard. */
+  label?: string;
+}
+
+/** Said after the label of a map that can be moved, the first time the keyboard reaches it. */
+const KEYS = "Strzałki przesuwają mapę, plus i minus ją przybliżają.";
+
+/** The name of the map for screen readers, with the keys that move it. */
+function mapTitle(setup: MapSetup): string {
+  const label = setup.label ?? "Mapa";
+  const sentence = /[.!?]$/.test(label) ? label : `${label}.`;
+  return setup.options?.interactive === false ? sentence : `${sentence} ${KEYS}`;
 }
 
 /**
@@ -52,7 +63,15 @@ export interface MapSetup {
 export function createMap(container: HTMLElement, frame: HTMLElement | null, setup: MapSetup = {}): MapLibreMap | null {
   let map: MapLibreMap;
   try {
-    map = new MapLibreMap({ container, style: MAP_STYLE, bounds: POLAND, fitBoundsOptions: { padding: 16 }, maxBounds: POLAND_LIMIT, locale: LOCALE, ...setup.options });
+    map = new MapLibreMap({
+      container,
+      style: MAP_STYLE,
+      bounds: POLAND,
+      fitBoundsOptions: { padding: 16 },
+      maxBounds: POLAND_LIMIT,
+      locale: { ...LOCALE, "Map.Title": mapTitle(setup) },
+      ...setup.options,
+    });
   } catch {
     return null;
   }

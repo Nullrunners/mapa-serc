@@ -8,6 +8,7 @@ import { GuideBanner } from "@/components/guide";
 import { MapFrame, MapUnavailable } from "@/components/map-frame";
 import { distance, minutes } from "@/lib/format";
 import { lineFeature, pointFeature, useMapLibre, type SourceData } from "@/lib/maplibre";
+import { lessMotion } from "@/lib/motion";
 import { pointAhead, walkAt, type Point, type WalkingRoute } from "@/lib/route";
 import { guideWords, type GuideWords } from "@/lib/route-text";
 
@@ -295,7 +296,7 @@ export default function Route3D({ route, onClose, onGuide }: Route3DProps) {
   /** Where the turn buttons stop: the start, and a few steps before each turn and before the device. */
   const stops = useMemo(() => [0, ...route.steps.filter((step) => step.turn !== "start").map((step) => Math.max(0, step.atM - BEFORE_TURN_M))], [route]);
 
-  const [still] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [still] = useState(lessMotion);
   const [phase, setPhase] = useState<Phase>("loading");
   const [playing, setPlaying] = useState(!still);
   const [kmh, setKmh] = useState(firstKmh);
@@ -374,6 +375,7 @@ export default function Route3D({ route, onClose, onGuide }: Route3DProps) {
     },
     {
       bare: true,
+      label: "Widok trasy w 3D",
       options: { bounds, fitBoundsOptions: { padding: 48, maxZoom: 17 }, maxPitch: 85, interactive: false, pixelRatio: Math.min(window.devicePixelRatio, 2) },
     },
   );
@@ -563,7 +565,7 @@ export default function Route3D({ route, onClose, onGuide }: Route3DProps) {
         onPointerCancel={() => letGo(sim.current)}
       >
         {drawable ? (
-          <MapFrame frameRef={frame} containerRef={container} label="Widok trasy w 3D">
+          <MapFrame frameRef={frame} containerRef={container}>
             {phase !== "loading" && <GuideBanner words={words} />}
             {phase === "loading" && <p className="absolute top-2 left-2 rounded-md bg-white/95 px-2.5 py-1.5 text-sm shadow-sm">Wczytuję mapę…</p>}
             {phase !== "loading" && (
