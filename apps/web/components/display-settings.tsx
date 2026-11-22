@@ -45,7 +45,10 @@ export default function DisplaySettings({ wide = false }: { wide?: boolean }) {
         button.current?.focus();
       }}
       onBlur={(event) => {
-        if (open && !event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+        // Only when the keyboard moves to something outside. A press on an option's label takes the focus off the
+        // button and puts it nowhere (no `relatedTarget`): folding then would hide the option before the click lands.
+        const next = event.relatedTarget as Node | null;
+        if (open && next && !event.currentTarget.contains(next)) setOpen(false);
       }}
     >
       <button ref={button} type="button" aria-expanded={open} aria-controls="wyglad" title="Dostępność" onClick={() => setOpen(!open)} className="btn btn-secondary btn-sm">
