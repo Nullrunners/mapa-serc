@@ -2100,6 +2100,7 @@ export interface operations {
                 sort?: "distance" | "reach";
                 /** @description Moment to check instead of now, e.g. 2026-11-22T03:00:00+01:00 */
                 at?: string;
+                /** @description How many devices to return (default 100, at most 1000); with `near`, the nearest ones */
                 limit?: number;
                 offset?: number | null;
             };
@@ -2141,6 +2142,7 @@ export interface operations {
     getMapLayer: {
         parameters: {
             query?: {
+                /** @description Which devices: all (default), official or community (OSM only) */
                 layer?: components["schemas"]["Layer"];
             };
             header?: never;
