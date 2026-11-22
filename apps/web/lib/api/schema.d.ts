@@ -446,6 +446,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/import/device": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reports one device, without logging in; it waits for an operator, who adds it to the shared source of user reports */
+        post: operations["submitDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/device-submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Single devices reported through the form and waiting for a decision, oldest first */
+        get: operations["listDeviceSubmissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/device-submissions/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approves a reported device: it joins the shared source of user reports and the dataset is rebuilt */
+        post: operations["approveDeviceSubmission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/device-submissions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Rejects a reported device: the report is deleted together with the keeper address it had */
+        delete: operations["rejectDeviceSubmission"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/aed/{id}/user-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Takes an approved user report back out of the dataset (approved by mistake, spam); a device known only from it disappears */
+        delete: operations["removeUserReport"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geo/nearest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The address point nearest to a position, within 100 m (state address register UUG); for the map of the single-device form */
+        get: operations["getNearestAddress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geo/address": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Finds an address or a town in the state address register (UUG), e.g. "Białe Błota, Szubińska 7" or "Legionowo" */
+        get: operations["findAddress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/candidates": {
         parameters: {
             query?: never;
@@ -842,7 +961,7 @@ export interface components {
             reach?: components["schemas"]["Reach"];
         };
         /**
-         * @description official = dane od opiekuna lub ze zbioru urzędowego, trafia do pliku dla dane.gov.pl. community = znane tylko z OpenStreetMap (ODbL), niepotwierdzone. pending = zgłoszenie z kreatora czeka na zatwierdzenie przez operatora. incomplete = brakuje pola wymaganego, zwykle położenia.
+         * @description official = dane od opiekuna, ze zbioru urzędowego albo zatwierdzone zgłoszenie użytkownika, trafia do pliku dla dane.gov.pl. community = znane tylko z OpenStreetMap (ODbL), niepotwierdzone. pending = zgłoszenie z kreatora czeka na zatwierdzenie przez operatora. incomplete = brakuje pola wymaganego, zwykle położenia.
          * @enum {string}
          */
         Publication: "official" | "community" | "pending" | "incomplete";
@@ -1209,8 +1328,11 @@ export interface components {
         /** @description Raport jakości dla dostawcy: co odczytano, co poprawiono, czego nie udało się naprawić. */
         SourceReport: {
             id: string;
-            /** @enum {string} */
-            kind: "official" | "osm" | "owner" | "upload";
+            /**
+             * @description user = wspólne źródło zatwierdzonych zgłoszeń pojedynczych urządzeń od użytkowników
+             * @enum {string}
+             */
+            kind: "official" | "osm" | "owner" | "upload" | "user";
             /** @description Zgłoszenie z kreatora, którego operator jeszcze nie zatwierdził */
             awaitingApproval: boolean;
             name: string;
@@ -1414,6 +1536,114 @@ export interface components {
             /** @enum {boolean} */
             removed: true;
         };
+        DeviceReportResult: {
+            id: string;
+            /** @enum {string} */
+            status: "pending";
+        };
+        DeviceReport: {
+            /** @description Pola wzorca, które da się podać, patrząc na urządzenie. Adres, gminę i kod TERC system bierze z państwowych rejestrów. */
+            record: {
+                /** @example Apteka Pod Lipami */
+                nazwa: string;
+                /** @example 53.0951 */
+                szerokosc_geograficzna: number;
+                /** @example 17.9172 */
+                dlugosc_geograficzna: number;
+                /** @example Przy wejściu, na lewo od kas */
+                opis_lokalizacji?: string;
+                /** @enum {string} */
+                dostep?: "publiczny" | "ograniczony" | "prywatny";
+                /**
+                 * @description Składnia opening_hours albo zwykły zapis („pn-pt 8-16”, „całodobowo”), który system przepisze
+                 * @example pn-pt 8-16
+                 */
+                godziny_dostepnosci?: string;
+                wewnatrz_budynku?: boolean;
+            };
+            /**
+             * Format: email
+             * @description Tylko gdy zgłasza opiekun urządzenia: po zatwierdzeniu wyślemy tu naklejkę QR i link do panelu opiekuna. Nie jest publikowany.
+             */
+            keeperEmail?: string;
+            /**
+             * @description Zgoda na udostępnienie opisu jako otwartych danych (CC0 1.0); w opisie nie ma danych osobowych
+             * @enum {boolean}
+             */
+            consent: true;
+        };
+        DeviceSubmissionList: {
+            items: components["schemas"]["DeviceSubmission"][];
+        };
+        DeviceSubmission: {
+            id: string;
+            createdAt: string;
+            record: components["schemas"]["SubmittedDevice"];
+            /** @description Czego system nie odczytał, np. godzin w nieznanym zapisie */
+            warnings: string[];
+            /** @description Adres opiekuna, zamaskowany; null, gdy zgłasza przechodzień */
+            keeperEmail: string | null;
+            /** @description Urządzenie już znane systemowi, które wygląda na to samo */
+            duplicateOf: {
+                id: string;
+                nazwa: string;
+                distanceM: number;
+                /** @enum {string} */
+                decision: "auto" | "review";
+                publication: components["schemas"]["Publication"];
+            } | null;
+        };
+        /** @description Zgłoszone urządzenie po uporządkowaniu, z adresem i gminą z rejestrów */
+        SubmittedDevice: {
+            nazwa: string | null;
+            szerokosc_geograficzna: number | null;
+            dlugosc_geograficzna: number | null;
+            cecha_ulicy: string | null;
+            nazwa_ulicy: string | null;
+            nr_budynku: string | null;
+            kod_pocztowy: string | null;
+            miejscowosc: string | null;
+            kod_terc: string | null;
+            opis_lokalizacji: string | null;
+            wewnatrz_budynku: boolean | null;
+            /** @enum {string|null} */
+            dostep: "publiczny" | "ograniczony" | "prywatny" | null;
+            godziny_dostepnosci: string | null;
+            uwagi_dostepu: string | null;
+        };
+        DeviceApproval: {
+            id: string;
+            /** @description The device the report became or joined */
+            device: {
+                id: string;
+                publication: components["schemas"]["Publication"];
+            } | null;
+            /**
+             * @description sent = naklejka i link do panelu poszły do opiekuna; not_asked = zgłaszał przechodzień; not_published = urządzenie nie jest oficjalne; shared = połączone z urządzeniem instytucji, więc linku nie wysłaliśmy; has_keeper = urządzenie ma już opiekuna
+             * @enum {string}
+             */
+            keeper: "sent" | "not_asked" | "not_published" | "shared" | "has_keeper";
+        };
+        RemovedReport: {
+            id: string;
+            /** @enum {boolean} */
+            removed: true;
+        };
+        GeoAnswer: {
+            address: components["schemas"]["GeoAddress"];
+        };
+        /** @description Punkt adresowy z państwowego rejestru adresów (UUG) */
+        GeoAddress: {
+            /** @example Szubińska 7, Białe Błota */
+            label: string;
+            lat: number;
+            lon: number;
+            city: string;
+            /** @description Pusta w miejscowości bez nazw ulic */
+            street: string;
+            number: string;
+            postcode: string;
+        } | null;
         CandidateList: {
             stub: boolean;
             total: number;
@@ -2967,6 +3197,395 @@ export interface operations {
             };
             /** @description Unexpected error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    submitDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceReport"];
+            };
+        };
+        responses: {
+            /** @description Saved; waits for approval */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceReportResult"];
+                };
+            };
+            /** @description This client has left too many reports waiting today */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many reports wait for the operator */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listDeviceSubmissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Waiting reports */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceSubmissionList"];
+                };
+            };
+            /** @description Missing or wrong operator token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    approveDeviceSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approved and merged */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceApproval"];
+                };
+            };
+            /** @description Missing or wrong operator token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No waiting report with this id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The commune register did not answer, so the device has no commune yet */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    rejectDeviceSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemovedReport"];
+                };
+            };
+            /** @description Missing or wrong operator token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No waiting report with this id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    removeUserReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed; id is the device */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemovedReport"];
+                };
+            };
+            /** @description Missing or wrong operator token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The device has no approved user report */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getNearestAddress: {
+        parameters: {
+            query: {
+                /** @description lon,lat */
+                at: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The address, or null when none is within 100 m */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoAnswer"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The state address register did not answer, or this client asked too often */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    findAddress: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The first match, or null */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoAnswer"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The state address register did not answer, or this client asked too often */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

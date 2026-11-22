@@ -1,14 +1,18 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import SubmitEntry from "@/components/submit-entry";
 import { PageHeader } from "@/components/ui";
-import Wizard from "@/components/wizard";
 
 export const metadata: Metadata = { title: "Zgłoś urządzenia" };
 
+/** One device on a map or a list from a file; which one is in the address, known only in the browser. */
 export default function ProviderPage() {
   return (
     <div className="space-y-8">
-      <PageHeader title="Zgłoś swoje defibrylatory" lead="Wgraj listę urządzeń z urzędu, szkoły czy firmy. Resztą zajmiemy się my." />
-      <Wizard />
+      <PageHeader title="Zgłoś defibrylatory" />
+      <Suspense fallback={<p className="text-muted">Wczytuję…</p>}>
+        <SubmitEntry />
+      </Suspense>
     </div>
   );
 }
