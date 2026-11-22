@@ -209,5 +209,16 @@ describe('OpenStreetMap', () => {
       expect(unseen.input.nr_budynku).toBeUndefined()
       expect(unseen.fixes).toEqual([])
     })
+
+    it('does not remember a refusal of the register as "no address here"', async () => {
+      let refused = true
+      const flaky = createGeo(memoryCache(), async () =>
+        refused ? new Response('{"notice":"blocked for abuse"}') : new Response(JSON.stringify({ results: { '1': REGISTER['POINT(22.7678 49.7838)'] } })),
+      )
+      await expect(flaky.nearestAddress(49.7838, 22.7678)).rejects.toThrow('blocked for abuse')
+      await expect(flaky.address('Przemyśl, Tadeusza Kościuszki 7')).rejects.toThrow()
+      refused = false
+      expect(await flaky.nearestAddress(49.7838, 22.7678)).toMatchObject({ city: 'Przemyśl', number: '7' })
+    })
   })
 })

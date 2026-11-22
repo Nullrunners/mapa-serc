@@ -112,7 +112,10 @@ export function createGeo(cache: GeoCache, fetchImpl: typeof fetch = fetch): Geo
 
   /** First result of the address register. A village without street names comes back with no street. */
   const uug = async (query: string): Promise<GeocodedAddress | null> => {
-    const body = JSON.parse(await text(`https://services.gugik.gov.pl/uug/?${query}`)) as { results?: Record<string, Record<string, string | null>> | null }
+    const body = JSON.parse(await text(`https://services.gugik.gov.pl/uug/?${query}`)) as { notice?: string; results?: Record<string, Record<string, string | null>> | null }
+    // "blocked for abuse" and the like come without a results field: a refusal, not "no address here", so it must
+    // not be remembered (the cache keeps whatever this returns).
+    if (!('results' in body)) throw new Error(`UUG refused: ${body.notice ?? 'no results field'}`)
     const first = body.results ? Object.values(body.results)[0] : undefined
     const lat = Number(first?.y)
     const lon = Number(first?.x)
