@@ -25,7 +25,7 @@ Każdy dysponent publikuje w portalu własny zbiór i sam za niego odpowiada. Je
 | Pliki dla dane.gov.pl osobno dla każdego dostawcy: CSV we wzorcu i XML dla harvestera, zgodny z oficjalnym XSD 1.13 (sprawdzany w testach), z tagiem `wykaz-aed` | działa |
 | Wykaz zbiorczy AED w portalu dane.gov.pl: zmiana w kodzie portalu ([portal/](portal/README.md)), która co noc scala zbiory wszystkich dostawców z tagiem `wykaz-aed` w jeden plik CSV, z dostawcą przy każdym wierszu | rdzeń działa w testach (14) i na naszych 782 urządzeniach; części portalowej nie uruchomiliśmy w pełnym środowisku portalu |
 | Podgląd scalonej listy: CSV (RFC 4180), GeoJSON, JSON-LD, metadane CSVW | działa |
-| Panel administratora (`/admin`): zatwierdzanie zgłoszeń z kreatora i decyzje w Radarze | działa; w przeglądarce sprawdzona lista zgłoszeń i odmowa przy złym tokenie |
+| Panel administratora (`/admin`): zatwierdzanie i odrzucanie zgłoszeń z kreatora, decyzje w Radarze | działa; API w testach, w przeglądarce sprawdzona lista zgłoszeń i odmowa przy złym tokenie |
 | Raport jakości dla każdego dostawcy | działa |
 | Mapa z listą najbliższych urządzeń, strona wzorca, strona źródeł | działa; obejrzane na zrzutach ekranu w szerokości komputera i telefonu. W przeglądarce bez WebGL2 zamiast mapy jest komunikat, a lista działa dalej |
 | Droga pieszo do defibrylatora na mapie „Znajdź AED": po podaniu położenia mapa obraca się i pochyla tak, żeby urządzenie było przed użytkownikiem, a „Prowadź mnie" prowadzi krok po kroku jak nawigacja (najbliższy zakręt i odległość do niego, następny manewr, ile zostało, strzałka w miejscu użytkownika, nowa droga po zejściu z trasy, cała droga jako lista). Trasę i zakręty wyznacza publiczny router OSRM (FOSSGIS) na danych OpenStreetMap | działa; sprawdzone w przeglądarce z podstawionym położeniem, na komputerze i w szerokości telefonu. Nie sprawdzaliśmy tego w terenie, z prawdziwym GPS-em w telefonie |
@@ -177,4 +177,4 @@ Regulamin dopuszcza wcześniej przygotowany kod pod warunkiem wskazania go:
 
 ## Narzędzia AI
 
-Opis użycia narzędzi AI jest w [AI-USAGE.md](AI-USAGE.md).
+Opis użycia narzędzi AI jest w zgłoszeniu na platformie HackNation.
