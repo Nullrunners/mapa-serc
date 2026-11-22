@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import DisplaySettings from "@/components/display-settings";
 import { LogoMark } from "@/components/logo";
 import { CurrentNav, Nav } from "@/components/site-nav";
-import { BRAND } from "@/lib/brand";
+import { BRAND, MOBILE_APP_URL } from "@/lib/brand";
 
 /** `wide` spans the whole screen, like the full-screen map under it; otherwise it lines up with the page column. */
 export default function SiteHeader({ wide = false }: { wide?: boolean }) {
@@ -24,9 +24,30 @@ export default function SiteHeader({ wide = false }: { wide?: boolean }) {
           <Suspense fallback={<Nav current={null} />}>
             <CurrentNav />
           </Suspense>
+          {MOBILE_APP_URL && <AppLink />}
           <DisplaySettings wide={wide} />
         </div>
       </div>
     </header>
+  );
+}
+
+/** The mobile app, beside "Dostępność" and shown the same way: the word drops to an icon where the row is tight. */
+function AppLink() {
+  return (
+    <a href={MOBILE_APP_URL} target="_blank" rel="noopener noreferrer" title="Aplikacja mobilna" className="btn btn-secondary btn-sm">
+      <PhoneIcon />
+      <span className="sr-only sm:not-sr-only lg:sr-only 2xl:not-sr-only">Aplikacja</span>
+      <span className="sr-only"> mobilna (otworzy się w nowej karcie)</span>
+    </a>
+  );
+}
+
+export function PhoneIcon({ className = "size-5" }: { className?: string }) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" className={`shrink-0 ${className}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="6" y="2" width="12" height="20" rx="2.5" />
+      <path d="M11 18.5h2" />
+    </svg>
   );
 }
