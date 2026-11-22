@@ -64,6 +64,16 @@ export function GuideIcon() {
   );
 }
 
+/** On the button that opens the way in 3D: a block standing on the ground. */
+export function Preview3dIcon() {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+      <path d="M12 3 20 7.5v9L12 21l-8-4.5v-9Z" />
+      <path d="m4 7.5 8 4.5 8-4.5M12 12v9" />
+    </svg>
+  );
+}
+
 /**
  * What to do next, over the map, where the legend usually is. The panel says the same in words a screen reader
  * announces, so this one stays out of its way.

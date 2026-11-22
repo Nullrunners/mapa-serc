@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import DeviceList, { pickedFrom, type Picked } from "@/components/device-list";
-import { GuideBanner, GuideIcon, GuidePanel } from "@/components/guide";
+import { GuideBanner, GuideIcon, GuidePanel, Preview3dIcon } from "@/components/guide";
 import { MapPlaceholder, MapScreen } from "@/components/map-frame";
 import { ExternalLink } from "@/components/ui";
 import { addressLine, title as deviceTitle, type When } from "@/lib/aed-text";
@@ -18,6 +18,8 @@ import type { GuideOnMap, WalkOnMap } from "./aed-map";
 
 // MapLibre needs a browser; it is loaded only on the client, after the list is already usable.
 const AedMap = dynamic(() => import("./aed-map"), { ssr: false, loading: () => <MapPlaceholder /> });
+// The way in 3D is loaded only when someone opens it.
+const Route3D = dynamic(() => import("./route-3d"), { ssr: false });
 
 const LIMIT = 20;
 
@@ -49,6 +51,9 @@ export default function Finder({ title, lead }: { title: string; lead: string })
   const wayRef = useRef<WalkingRoute | null>(null);
   const noWayRef = useRef(false);
   const reroutedAt = useRef(0);
+  // The way shown in 3D, kept as it was when opened: a new list or position behind it does not restart the walk.
+  const [preview, setPreview] = useState<{ route: WalkingRoute; to: Picked } | null>(null);
+  const previewOpener = useRef<HTMLElement | null>(null);
 
   const startGuiding = (picked: Picked) => {
     reroutedAt.current = 0;
@@ -131,6 +136,16 @@ export default function Finder({ title, lead }: { title: string; lead: string })
     [position, progress],
   );
   const words = position ? guideWords(progress, route.state === "loading") : null;
+
+  const openPreview = (to: Picked, opener: HTMLElement) => {
+    if (!way) return;
+    previewOpener.current = opener;
+    setPreview({ route: way, to });
+  };
+  const closePreview = () => {
+    setPreview(null);
+    requestAnimationFrame(() => previewOpener.current?.focus());
+  };
 
   useEffect(() => {
     wayRef.current = way;
@@ -244,6 +259,12 @@ export default function Finder({ title, lead }: { title: string; lead: string })
                 Prowadź mnie
               </button>
             )}
+            {way && (
+              <button type="button" onClick={(event) => openPreview(pickedFrom(nearest), event.currentTarget)} className="btn btn-secondary">
+                <Preview3dIcon />
+                Zobacz trasę w 3D
+              </button>
+            )}
             <ExternalLink href={googleDirections(near, pickedFrom(nearest))} className={canGuide ? "btn btn-secondary" : "btn btn-primary"}>
               Trasa w Mapach Google
             </ExternalLink>
@@ -320,33 +341,48 @@ export default function Finder({ title, lead }: { title: string; lead: string })
   );
 
   return (
-    <MapScreen
-      title={title}
-      lead={lead}
-      focused={selected !== null}
-      view={selected ? `urzadzenie-${selected.id}` : "lista"}
-      tallMap={guiding}
-      map={<AedMap showCommunity={showCommunity} focus={near} walk={walk} guide={guideOnMap} banner={words && <GuideBanner words={words} />} selected={selected} onSelect={pick} />}
-    >
-      {selected ? (
-        <AedDetails
-          picked={selected}
-          from={near}
-          layer={layer}
-          onlyAvailable={onlyAvailable}
-          onPick={pick}
-          onClose={closeDetails}
-          walkNote={guiding ? null : walkNote}
-          onGuide={!guiding && canGuide ? () => startGuiding(selected) : undefined}
-          guidance={words && <GuidePanel words={words} steps={way?.steps ?? []} next={progress && !progress.arrived ? progress.next : null} lost={lost} onStop={stopGuiding} />}
+    <>
+      <MapScreen
+        title={title}
+        lead={lead}
+        focused={selected !== null}
+        view={selected ? `urzadzenie-${selected.id}` : "lista"}
+        tallMap={guiding}
+        map={<AedMap showCommunity={showCommunity} focus={near} walk={walk} guide={guideOnMap} banner={words && <GuideBanner words={words} />} selected={selected} onSelect={pick} />}
+      >
+        {selected ? (
+          <AedDetails
+            picked={selected}
+            from={near}
+            layer={layer}
+            onlyAvailable={onlyAvailable}
+            onPick={pick}
+            onClose={closeDetails}
+            walkNote={guiding ? null : walkNote}
+            onGuide={!guiding && canGuide ? () => startGuiding(selected) : undefined}
+            onPreview={!guiding && way ? (opener) => openPreview(selected, opener) : undefined}
+            guidance={words && <GuidePanel words={words} steps={way?.steps ?? []} next={progress && !progress.arrived ? progress.next : null} lost={lost} onStop={stopGuiding} />}
+          />
+        ) : (
+          <>
+            {controls}
+            {results}
+          </>
+        )}
+      </MapScreen>
+      {preview && (
+        <Route3D
+          route={preview.route}
+          onClose={closePreview}
+          onGuide={() => {
+            // The 3D view goes away without closing itself, so this does not hand the focus back to its button:
+            // the guidance takes it.
+            setPreview(null);
+            startGuiding(preview.to);
+          }}
         />
-      ) : (
-        <>
-          {controls}
-          {results}
-        </>
       )}
-    </MapScreen>
+    </>
   );
 }
 

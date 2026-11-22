@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, type ReactNode, type Ref } from "react";
 import DeviceList, { type Picked } from "@/components/device-list";
-import { GuideIcon } from "@/components/guide";
+import { GuideIcon, Preview3dIcon } from "@/components/guide";
 import { BackButton, ExternalLink, LoadStatus, Status } from "@/components/ui";
 import { AVAILABILITY, STATUS_WARNING, access, addressLine, hours, spot, title } from "@/lib/aed-text";
 import { api, type AedItem } from "@/lib/api/client";
@@ -27,12 +27,14 @@ export interface AedDetailsProps {
   walkNote?: ReactNode;
   /** Starts leading the person to this device on our map; there only when the device is within a walk. */
   onGuide?: () => void;
+  /** Opens the way to this device in 3D; there once the way is known. Focus goes back to `opener` afterwards. */
+  onPreview?: (opener: HTMLElement) => void;
   /** Shown above the device while the person is led to it: what to do next on the way. */
   guidance?: ReactNode;
 }
 
 /** Everything we know about one device, plus the closest other devices in case this one cannot be reached. */
-export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClose, from = null, walkNote, onGuide, guidance }: AedDetailsProps) {
+export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClose, from = null, walkNote, onGuide, onPreview, guidance }: AedDetailsProps) {
   const heading = useRef<HTMLHeadingElement>(null);
 
   const loaded = useLoad(`${picked.id}|${layer}|${onlyAvailable}`, async (signal) => {
@@ -70,7 +72,7 @@ export default function AedDetails({ picked, layer, onlyAvailable, onPick, onClo
 
       {loaded.state === "ready" && (
         <>
-          <Device item={loaded.data.item} passport={loaded.data.passport} headingRef={heading} from={from} walkNote={walkNote} onGuide={onGuide} guided={guided} />
+          <Device item={loaded.data.item} passport={loaded.data.passport} headingRef={heading} from={from} walkNote={walkNote} onGuide={onGuide} onPreview={onPreview} guided={guided} />
 
           <section aria-labelledby="najblizsze-naglowek" className="space-y-2 border-t border-line pt-5">
             <h3 id="najblizsze-naglowek" className="font-bold">
@@ -93,11 +95,12 @@ interface DeviceProps {
   from: Point | null;
   walkNote: ReactNode;
   onGuide?: () => void;
+  onPreview?: (opener: HTMLElement) => void;
   /** The person is being led here on our map, so Google Maps is only the other way to go. */
   guided: boolean;
 }
 
-function Device({ item, passport, headingRef, from, walkNote, onGuide, guided }: DeviceProps) {
+function Device({ item, passport, headingRef, from, walkNote, onGuide, onPreview, guided }: DeviceProps) {
   const { record } = item;
   const warning = STATUS_WARNING[record.status];
   const availability = AVAILABILITY.now[item.availableNow];
@@ -153,6 +156,12 @@ function Device({ item, passport, headingRef, from, walkNote, onGuide, guided }:
           <button type="button" onClick={onGuide} className="btn btn-primary">
             <GuideIcon />
             Prowadź mnie
+          </button>
+        )}
+        {onPreview && (
+          <button type="button" onClick={(event) => onPreview(event.currentTarget)} className="btn btn-secondary">
+            <Preview3dIcon />
+            Zobacz trasę w 3D
           </button>
         )}
         <ExternalLink href={googleDirections(from, { lat: record.szerokosc_geograficzna, lon: record.dlugosc_geograficzna })} className={onGuide || guided ? "btn btn-secondary" : "btn btn-primary"}>

@@ -227,13 +227,40 @@ function pointAt({ line, alongM }: WalkingRoute, metres: number): Point {
 
 /** Finds the person on the way: how much of it is left, which way to go and what to do next. */
 export function follow(route: WalkingRoute, here: Point): Progress {
-  const { line, alongM, steps } = route;
-  const totalM = alongM[alongM.length - 1];
+  const { line, alongM } = route;
   const { segment, part, offM } = closest(line, here);
   const doneM = alongM[segment] + part * (alongM[segment + 1] - alongM[segment]);
-  const leftM = totalM - doneM;
   const [a, b] = [line[segment], line[segment + 1]];
   const at = offM <= ON_WAY_M ? { lat: a[1] + part * (b[1] - a[1]), lon: a[0] + part * (b[0] - a[0]) } : here;
+  return progressAt(route, at, doneM, segment, offM);
+}
+
+/**
+ * The same for someone exactly this many metres along the way, as in the 3D preview. Not found by the nearest point:
+ * a way that passes the same spot twice would then jump between its two passes.
+ */
+export function walkAt(route: WalkingRoute, metres: number): Progress {
+  const { line, alongM } = route;
+  const doneM = Math.min(alongM[alongM.length - 1], Math.max(0, metres));
+  let segment = 0;
+  while (segment + 2 < line.length && alongM[segment + 1] < doneM) segment++;
+  return progressAt(route, pointAt(route, doneM), doneM, segment, 0);
+}
+
+/** The point this many metres from `from` in a compass direction; over a few dozen metres the Earth is flat. */
+export function pointAhead(from: Point, degrees: number, metres: number): Point {
+  const angle = degrees * RAD;
+  return {
+    lat: from.lat + (metres * Math.cos(angle)) / EARTH_M / RAD,
+    lon: from.lon + (metres * Math.sin(angle)) / (EARTH_M * Math.cos(from.lat * RAD)) / RAD,
+  };
+}
+
+/** What is left, which way to go and what to do next, for a person at `at`, `doneM` along the way, on `segment`. */
+function progressAt(route: WalkingRoute, at: Point, doneM: number, segment: number, offM: number): Progress {
+  const { line, alongM, steps } = route;
+  const totalM = alongM[alongM.length - 1];
+  const leftM = totalM - doneM;
 
   // Off the way the direction leads back to it; at its very end there is nothing ahead, so keep the last direction.
   const ahead = pointAt(route, Math.min(totalM, doneM + LOOK_AHEAD_M));

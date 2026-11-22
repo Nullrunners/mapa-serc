@@ -2,7 +2,7 @@
  * Shared MapLibre setup. Import this module before creating a map, from every component that draws one,
  * so the map works whichever page a person opens first.
  */
-import { FullscreenControl, Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
+import { FullscreenControl, Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource, type MapOptions } from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
 
 // maplibre-gl 6 looks for its worker next to its own module (import.meta.url). Once Turbopack bundles it
@@ -38,15 +38,21 @@ export function canDrawMap(): boolean {
   }
 }
 
+/** A map that differs from the usual one: its own options on top of ours, and no buttons when `bare`. */
+export interface MapSetup {
+  options?: Partial<Omit<MapOptions, "container" | "style">>;
+  bare?: boolean;
+}
+
 /**
  * A map of Poland that cannot be moved away from it, with our style, Polish names and Polish labels on its buttons,
  * or null when the browser refuses WebGL (blocked driver, too many open maps). The full-screen button takes `frame`
  * there, so the legend drawn over the map goes with it.
  */
-export function createMap(container: HTMLElement, frame: HTMLElement | null): MapLibreMap | null {
+export function createMap(container: HTMLElement, frame: HTMLElement | null, setup: MapSetup = {}): MapLibreMap | null {
   let map: MapLibreMap;
   try {
-    map = new MapLibreMap({ container, style: MAP_STYLE, bounds: POLAND, fitBoundsOptions: { padding: 16 }, maxBounds: POLAND_LIMIT, locale: LOCALE });
+    map = new MapLibreMap({ container, style: MAP_STYLE, bounds: POLAND, fitBoundsOptions: { padding: 16 }, maxBounds: POLAND_LIMIT, locale: LOCALE, ...setup.options });
   } catch {
     return null;
   }
@@ -55,6 +61,7 @@ export function createMap(container: HTMLElement, frame: HTMLElement | null): Ma
     namePlacesInPolish(map);
     hidePlacesOfInterest(map);
   });
+  if (setup.bare) return map;
   map.addControl(new NavigationControl({ showCompass: false }), "top-right");
   map.addControl(new FullscreenControl(frame ? { container: frame } : {}), "top-right");
   return map;
@@ -107,16 +114,18 @@ function dimOutsidePoland(map: MapLibreMap): void {
  * Our layers go on as soon as the style of the base map is known, not when its first tiles are drawn ("load"):
  * the devices are then fetched together with the tiles instead of after them.
  */
-export function useMapLibre(onLoad: (map: MapLibreMap) => void) {
+export function useMapLibre(onLoad: (map: MapLibreMap) => void, setup?: MapSetup) {
   const frame = useRef<HTMLDivElement>(null);
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   const load = useRef(onLoad);
+  // Read once, when the map is made; a later change would need a new map.
+  const setupRef = useRef(setup);
   const [drawable, setDrawable] = useState(canDrawMap);
 
   useEffect(() => {
     if (!drawable || !container.current) return;
-    const created = createMap(container.current, frame.current);
+    const created = createMap(container.current, frame.current, setupRef.current);
     if (!created) {
       // The browser reported WebGL2 and still refused a context.
       setDrawable(false);
