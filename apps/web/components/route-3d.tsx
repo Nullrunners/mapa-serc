@@ -178,11 +178,45 @@ function makeWalker(still: boolean): { element: HTMLElement; steps: Animation[] 
   return { element, steps };
 }
 
+/** Roughly how wide each kind of road of the base map is on the ground, in metres; the first name that fits wins. */
+const ROAD_WIDTHS: [string, number][] = [
+  ["motorway_link", 4.5],
+  ["service_track", 3.5],
+  ["path_pedestrian", 2],
+  ["secondary_tertiary", 7],
+  ["trunk_primary", 9],
+  ["motorway", 10],
+  ["link", 4.5],
+  ["minor", 5],
+  ["street", 5],
+];
+
+/**
+ * The base map's roads stop growing at zoom 20, where a street is a metre wide; up close they get their width on the
+ * ground instead. Further out they keep the style's own widths.
+ */
+function widenRoads(map: MapLibreMap, lat: number) {
+  const pixelsPerMetre = (zoom: number) => (512 * 2 ** zoom) / (EARTH_CIRCUMFERENCE_M * Math.cos((lat * Math.PI) / 180));
+  for (const layer of map.getStyle().layers) {
+    if (layer.type !== "line" || layer["source-layer"] !== "transportation" || layer.id.includes("rail")) continue;
+    const road = ROAD_WIDTHS.find(([name]) => layer.id.includes(name));
+    const width: unknown = map.getPaintProperty(layer.id, "line-width");
+    if (!road || !Array.isArray(width) || width[0] !== "interpolate" || !Array.isArray(width[2]) || width[2][0] !== "zoom") continue;
+    const stops = width.slice(3);
+    if (stops.some((stop) => typeof stop !== "number")) continue;
+    const widthM = road[1] + (layer.id.includes("casing") ? 1 : 0);
+    const far = stops.flatMap((stop, index) => (index % 2 === 0 && stop <= 16 ? [stop, stops[index + 1]] : []));
+    const near = [17, 18, 19, 20, 21, 22, 23, 24].flatMap((zoom) => [zoom, widthM * pixelsPerMetre(zoom)]);
+    map.setPaintProperty(layer.id, "line-width", ["interpolate", width[1], ["zoom"], ...far, ...near]);
+  }
+}
+
 /** The base map as a small city: solid buildings that hide what is behind them, a sky, street names and nothing else. */
 function buildWorld(map: MapLibreMap, route: WalkingRoute) {
   const end = route.line[route.line.length - 1];
   const target = { lat: end[1], lon: end[0] };
   const lat = route.line[0][1];
+  widenRoads(map, lat);
 
   map.setSky({ "sky-color": "#8ec5f5", "horizon-color": "#f8f4f0", "sky-horizon-blend": 0.6 });
   map.setLight({ anchor: "map", position: [1.5, 135, 50], intensity: 0.4 });
