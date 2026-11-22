@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui";
 export const metadata: Metadata = { title: "Dostępność" };
 
 const WORKS = [
+  "Przycisk „Dostępność” w nagłówku powiększa tekst i włącza wysoki kontrast: biały i żółty na czarnym. Przeglądarka zapamięta wybór.",
   "Całą stronę obsłużysz samą klawiaturą. Na początku każdej strony jest link „Przejdź do treści”.",
   "Czytnik ekranu odczyta przyciski, pola, komunikaty i wskazówki drogi do defibrylatora.",
   "Wszystko, co jest na mapie, znajdziesz też na liście obok niej.",
@@ -84,7 +85,8 @@ export default function AccessibilityPage() {
           Jak to sprawdziliśmy
         </h2>
         <p>
-          Sami, 22 listopada 2026 r.: testem automatycznym axe-core na każdej stronie, samą klawiaturą, w powiększeniu 200% i w trybie dużego kontrastu. Strona jest
+          Sami, 22 listopada 2026 r.: testem automatycznym axe-core na każdej stronie, także z największym tekstem i w wysokim kontraście, samą klawiaturą, w
+          powiększeniu 200% i w trybie dużego kontrastu Windows. Strona jest
           częściowo zgodna z WCAG 2.2 na poziomie AA, z wyjątkami opisanymi wyżej.
         </p>
       </section>

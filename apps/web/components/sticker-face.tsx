@@ -24,7 +24,7 @@ export default function StickerFace({ id, aed }: { id: string; aed: AedItem | nu
   return (
     <figure
       aria-label={aed ? `Naklejka: ${title(aed)}` : "Podgląd naklejki"}
-      className="flex h-[100mm] w-[100mm] flex-col overflow-hidden rounded-lg border-2 border-ink bg-white text-ink print:rounded-none print:border-0"
+      className="as-printed flex h-[100mm] w-[100mm] flex-col overflow-hidden rounded-lg border-2 border-ink bg-white text-ink print:rounded-none print:border-0"
     >
       <div className="flex items-center justify-between bg-ok px-[4mm] py-[2.5mm] text-white">
         <span className="text-[7mm] font-extrabold leading-none tracking-wide">AED</span>

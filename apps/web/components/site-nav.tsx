@@ -18,7 +18,8 @@ export function CurrentNav() {
 }
 
 /**
- * Links to every part of the site, and the call to providers at the end. On a phone they fold under "Menu".
+ * Links to every part of the site, and the call to providers at the end. On a phone, and with larger text on any
+ * screen (`menu-row:` in app/globals.css), they fold under "Menu".
  * `current` is null while the address is not known yet (a page with a device number, before the browser takes over).
  */
 export function Nav({ current }: { current: string | null }) {
@@ -37,12 +38,12 @@ export function Nav({ current }: { current: string | null }) {
         toggle.current?.focus();
       }}
     >
-      <button ref={toggle} type="button" aria-expanded={open} aria-controls="menu" onClick={() => setOpen(!open)} className="btn btn-secondary btn-sm lg:hidden">
+      <button ref={toggle} type="button" aria-expanded={open} aria-controls="menu" onClick={() => setOpen(!open)} className="btn btn-secondary btn-sm menu-row:hidden">
         Menu
       </button>
       <ul
         id="menu"
-        className={`${open ? "flex" : "hidden"} absolute inset-x-0 top-full z-30 flex-col gap-1 border-b border-line bg-white p-3 shadow-md lg:static lg:flex lg:flex-row lg:items-center lg:border-0 lg:p-0 lg:shadow-none`}
+        className={`${open ? "flex" : "hidden"} absolute inset-x-0 top-full z-30 flex-col gap-1 border-b border-line bg-white p-3 shadow-md menu-row:static menu-row:flex menu-row:flex-row menu-row:items-center menu-row:border-0 menu-row:p-0 menu-row:shadow-none`}
       >
         {LINKS.map((link) => (
           <li key={link.href}>
@@ -50,13 +51,13 @@ export function Nav({ current }: { current: string | null }) {
               href={link.href}
               aria-current={here(link.href)}
               onClick={close}
-              className="block rounded-md px-3 py-2 font-semibold text-ink/80 hover:bg-surface hover:text-gov aria-[current=page]:bg-gov-light aria-[current=page]:text-gov lg:text-sm"
+              className="block rounded-md px-3 py-2 font-semibold text-ink/80 hover:bg-surface hover:text-gov aria-[current=page]:bg-gov-light aria-[current=page]:text-gov menu-row:px-2.5 menu-row:text-sm xl:px-3"
             >
               {link.label}
             </Link>
           </li>
         ))}
-        <li className="mt-2 lg:mt-0 lg:ml-3">
+        <li className="mt-2 menu-row:mt-0 menu-row:ml-3">
           <Link href="/dostawca" aria-current={here("/dostawca")} onClick={close} className="btn btn-primary btn-sm w-full">
             Zgłoś urządzenia
           </Link>
