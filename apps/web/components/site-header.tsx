@@ -47,10 +47,10 @@ function AppLink() {
       </Link>
     );
   return (
-    <a href={MOBILE_APP_URL} target="_blank" rel="noopener noreferrer" title="Aplikacja mobilna" className="btn btn-secondary btn-sm">
+    <a href={MOBILE_APP_URL} target="_blank" rel="noopener noreferrer" title="Aplikacja na Androida" className="btn btn-secondary btn-sm">
       <PhoneIcon />
       {word}
-      <span className="sr-only"> mobilna (otworzy się w nowej karcie)</span>
+      <span className="sr-only"> na Androida (otworzy się w nowej karcie)</span>
     </a>
   );
 }

@@ -76,17 +76,19 @@ export default function AboutPage() {
         <div className="min-w-60 flex-1 space-y-1">
           <h2 id="aplikacja-tytul" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xl font-bold">
             Aplikacja mobilna
-            {!MOBILE_APP_URL && <span className="rounded-full border border-gov px-2.5 py-0.5 text-sm font-semibold text-gov">wkrótce</span>}
+            <span className="rounded-full border border-gov px-2.5 py-0.5 text-sm font-semibold text-gov">{MOBILE_APP_URL ? "Android" : "wkrótce"}</span>
           </h2>
           <p className="text-muted">
             Na nagły wypadek: szybko znajdziesz w niej najbliższy defibrylator.
-            {!MOBILE_APP_URL && " Na razie otwórz tę stronę w telefonie: mapa działa tak samo."}
+            {MOBILE_APP_URL
+              ? " Na iPhonie otwórz tę stronę w przeglądarce: mapa działa tak samo."
+              : " Na razie otwórz tę stronę w telefonie: mapa działa tak samo."}
           </p>
         </div>
         {MOBILE_APP_URL && (
           <a href={MOBILE_APP_URL} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-lg">
             <PhoneIcon />
-            Pobierz aplikację
+            Pobierz na Androida
             <span className="sr-only"> (otworzy się w nowej karcie)</span>
           </a>
         )}

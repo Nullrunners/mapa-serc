@@ -7,6 +7,7 @@ export const BRAND = { name: "Mapa serc", slogan: "kierunek ratunek", logo: "/lo
 
 /**
  * Where the mobile app is downloaded from: a store page, a file or a repository. While it is empty, the header and
- * the page "O projekcie" leave the app out.
+ * the page "O projekcie" mark the app as coming soon. Now the newest release on GitHub: an .apk for Android, with
+ * the install steps on the release page (file names carry the version, so a direct file link would go stale).
  */
-export const MOBILE_APP_URL: string = "";
+export const MOBILE_APP_URL: string = "https://github.com/Nullrunners/mapa-serca-mobile/releases/latest";
