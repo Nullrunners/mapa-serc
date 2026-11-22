@@ -53,7 +53,7 @@ export default function AdminPanel() {
   );
 }
 
-/** Wizard submissions that wait for the operator. Approving one publishes it and gives the provider its feed for dane.gov.pl. */
+/** Wizard submissions that wait for the operator. Approving one publishes it and gives the provider its feed for dane.gov.pl; rejecting deletes it. */
 function PendingSources({ token }: { token: () => string }) {
   const [version, setVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +75,19 @@ function PendingSources({ token }: { token: () => string }) {
     setBusy(null);
     if (!data) return setError(response?.status === 401 ? "Wpisz token administratora powyżej." : "Nie udało się zatwierdzić. Spróbuj za chwilę.");
     setApproved({ name: source.name, feed: data.files.feed, csv: data.files.csv });
+    setVersion(version + 1);
+  }
+
+  async function reject(source: SourceReport) {
+    if (!window.confirm(`Odrzucić zgłoszenie „${source.name}”? Plik i jego wiersze zostaną usunięte.`)) return;
+    setError(null);
+    setBusy(source.id);
+    const { data, response } = await api
+      .DELETE("/admin/sources/{id}", { params: { path: { id: source.id } }, headers: { Authorization: `Bearer ${token()}` } })
+      .catch(() => ({ data: undefined, response: undefined }));
+    setBusy(null);
+    if (!data) return setError(response?.status === 401 ? "Wpisz token administratora powyżej." : "Nie udało się odrzucić. Spróbuj za chwilę.");
+    setApproved(null);
     setVersion(version + 1);
   }
 
@@ -120,9 +133,14 @@ function PendingSources({ token }: { token: () => string }) {
                   </a>
                 </p>
               </div>
-              <button type="button" onClick={() => approve(source)} disabled={busy !== null} className="btn btn-primary btn-sm">
-                {busy === source.id ? "Zatwierdzam…" : "Zatwierdź"}
-              </button>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => approve(source)} disabled={busy !== null} className="btn btn-primary btn-sm">
+                  {busy === source.id ? "Chwilę…" : "Zatwierdź"}
+                </button>
+                <button type="button" onClick={() => reject(source)} disabled={busy !== null} className="btn btn-secondary btn-sm">
+                  Odrzuć
+                </button>
+              </div>
             </li>
           ))}
         </ul>

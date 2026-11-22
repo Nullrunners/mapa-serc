@@ -429,6 +429,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/sources/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Rejects a wizard submission: deletes its file and rows and rebuilds the dataset without them */
+        delete: operations["removeSource"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/candidates": {
         parameters: {
             query?: never;
@@ -1374,6 +1391,11 @@ export interface components {
                 passportUrl: string;
                 stickerUrl: string;
             }[];
+        };
+        RemovedSource: {
+            sourceId: string;
+            /** @enum {boolean} */
+            removed: true;
         };
         CandidateList: {
             stub: boolean;
@@ -2840,6 +2862,64 @@ export interface operations {
                 };
             };
             /** @description No submission with this id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    removeSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemovedSource"];
+                };
+            };
+            /** @description Missing or wrong operator token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No wizard submission with this id */
             404: {
                 headers: {
                     [name: string]: unknown;
