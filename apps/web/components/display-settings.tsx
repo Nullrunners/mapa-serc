@@ -12,7 +12,8 @@ const SIZES: Record<TextSize, { shown: string; said: string; className: string }
 };
 
 /**
- * "Dostępność" in the header: larger text and the high-contrast version, remembered in this browser. The panel opens
+ * "Dostępność" in the header, shown as the icon alone at every width (the word stays for screen readers and as the
+ * tooltip): larger text and the high-contrast version, remembered in this browser. The panel opens
  * under the header row at its right edge (`wide`: the header's wider side padding), wherever the button itself has
  * wrapped to, and folds away on Esc, on a click elsewhere and when the keyboard leaves it.
  */
@@ -49,7 +50,7 @@ export default function DisplaySettings({ wide = false }: { wide?: boolean }) {
     >
       <button ref={button} type="button" aria-expanded={open} aria-controls="wyglad" title="Dostępność" onClick={() => setOpen(!open)} className="btn btn-secondary btn-sm">
         <AccessIcon />
-        <span className="sr-only sm:not-sr-only lg:sr-only 2xl:not-sr-only">Dostępność</span>
+        <span className="sr-only">Dostępność</span>
       </button>
 
       <div

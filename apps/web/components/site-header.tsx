@@ -33,7 +33,7 @@ export default function SiteHeader({ wide = false }: { wide?: boolean }) {
 }
 
 /**
- * The mobile app, beside "Dostępność" and shown the same way: the word drops to an icon where the row is tight.
+ * The mobile app, beside "Dostępność": the word drops to an icon where the row is tight.
  * Until the app has an address it leads to its part of the page "O projekcie".
  */
 function AppLink() {
