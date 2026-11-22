@@ -33,10 +33,10 @@ index 0000000..64b5a72
 +"""
 diff --git a/mcod/resources/aggregated_lists/core.py b/mcod/resources/aggregated_lists/core.py
 new file mode 100644
-index 0000000..8a8b7dd
+index 0000000..f23bf82
 --- /dev/null
 +++ b/mcod/resources/aggregated_lists/core.py
-@@ -0,0 +1,344 @@
+@@ -0,0 +1,378 @@
 +"""
 +Core of the aggregated lists ("wykazy zbiorcze"): reading a provider's table, checking it against the
 +list's standard (a Frictionless Table Schema), cleaning rows and merging all providers into one table.
@@ -116,6 +116,8 @@ index 0000000..8a8b7dd
 +    maximum: Optional[float] = None
 +    enum: Optional[Tuple[str, ...]] = None
 +    pattern: Optional[str] = None
++    # Role of the column on the portal's map preview (`x-dane-gov-pl-geo` in the schema): b, l or label.
++    portal_geo: Optional[str] = None
 +
 +    def problem(self, value: str) -> Optional[str]:
 +        """Why a non-empty value breaks the schema, or None when it is fine."""
@@ -161,6 +163,7 @@ index 0000000..8a8b7dd
 +                    maximum=constraints.get("maximum"),
 +                    enum=tuple(enum) if enum is not None else None,
 +                    pattern=constraints.get("pattern"),
++                    portal_geo=raw.get("x-dane-gov-pl-geo"),
 +                )
 +            )
 +        primary_key = data.get("primaryKey", ())
@@ -355,6 +358,37 @@ index 0000000..8a8b7dd
 +    else:
 +        merged = pd.DataFrame(columns=columns)
 +    return merged, reports
++
++
++def portal_table_schema(schema: TableSchema, missing_values: Sequence[str] = ()) -> Dict[str, Any]:
++    """
++    The summary table's schema in the form the portal stores for a resource (`Resource.tabular_data_schema`).
++
++    Without it the portal guesses column types from the data and rejects the whole summary when a guess
++    fails, e.g. house numbers "57", "41" make the column an integer and "50B" breaks it. Only required
++    columns get their schema type: their values are checked by `clean_table`, so they always cast. Every
++    other column is text, because its values pass unchecked. The map roles (`x-dane-gov-pl-geo`) set the
++    map preview, so it survives the nightly replacement of the file.
++
++    `missing_values` must equal the resource's special signs, or the portal discards this schema and
++    guesses again (mcod/resources/tasks/process_resource_file_data.py, `_resolve_tabular_data_schema`).
++    """
++    by_name = {f.name: f for f in schema.fields}
++    fields: List[Dict[str, Any]] = []
++    geo: Dict[str, Dict[str, Any]] = {}
++    for index, name in enumerate(schema.column_names + list(PROVIDER_COLUMNS)):
++        schema_field = by_name.get(name)
++        typed = schema_field is not None and schema_field.required and schema_field.type in ("number", "integer", "date")
++        entry: Dict[str, Any] = {"name": name, "type": schema_field.type if typed else "string", "format": "default"}
++        role = schema_field.portal_geo if schema_field is not None else None
++        if role:
++            entry["geo"] = role
++            geo[role] = {"col_name": name, "col_index": index}
++        fields.append(entry)
++    result: Dict[str, Any] = {"fields": fields, "missingValues": list(missing_values)}
++    if geo:
++        result["geo"] = geo
++    return result
 +
 +
 +def to_csv_bytes(df: pd.DataFrame) -> bytes:
@@ -943,10 +977,10 @@ index 0000000..eaa5c87
 +}
 diff --git a/mcod/resources/aggregated_lists/service.py b/mcod/resources/aggregated_lists/service.py
 new file mode 100644
-index 0000000..a7f8e31
+index 0000000..695533d
 --- /dev/null
 +++ b/mcod/resources/aggregated_lists/service.py
-@@ -0,0 +1,352 @@
+@@ -0,0 +1,357 @@
 +"""
 +Portal side of the aggregated lists ("wykazy zbiorcze"): finding the providers' resources, building the
 +summary table and publishing it as a resource of the summary dataset.
@@ -990,6 +1024,7 @@ index 0000000..a7f8e31
 +    SourceReport,
 +    merge_tables,
 +    normalise_header,
++    portal_table_schema,
 +    read_table,
 +    summarise,
 +    to_csv_bytes,
@@ -1225,6 +1260,8 @@ index 0000000..a7f8e31
 +                contains_protected_data=False,
 +                status="published",
 +                data_date=today,
++                # a new resource has no special signs yet
++                tabular_data_schema=portal_table_schema(definition.schema),
 +            )
 +            # post_save of a new main file of a published resource runs all validation tasks
 +            ResourceFile.objects.create(resource=resource, is_main=True, file=_summary_file(definition, result.content))
@@ -1239,11 +1276,13 @@ index 0000000..a7f8e31
 +            resource_file, created = ResourceFile.objects.update_or_create(
 +                resource=resource, is_main=True, defaults={"file": _summary_file(definition, result.content)}
 +            )
-+            # Statuses of the previous file must not count as the result for the new one.
++            # Statuses of the previous file must not count as the result for the new one. The schema is
++            # written again each run, so a changed standard (or special signs added in the panel) applies.
 +            Resource.raw.filter(pk=resource.pk).update(
 +                data_tasks_last_status=states.PENDING,
 +                file_tasks_last_status=states.PENDING,
 +                link_tasks_last_status=states.PENDING,
++                tabular_data_schema=portal_table_schema(definition.schema, resource.special_signs_symbols_list),
 +            )
 +            if not created:
 +                entrypoint_process_resource_file_validation_task.apply_async_on_commit(
@@ -1695,10 +1734,10 @@ index 0000000..d809058
 +    service.mark_published(definition, resource)
 diff --git a/mcod/resources/tests/test_aggregated_lists_core.py b/mcod/resources/tests/test_aggregated_lists_core.py
 new file mode 100644
-index 0000000..179fdb5
+index 0000000..c2c3650
 --- /dev/null
 +++ b/mcod/resources/tests/test_aggregated_lists_core.py
-@@ -0,0 +1,233 @@
+@@ -0,0 +1,257 @@
 +"""
 +Tests of the aggregated lists core (reading, checking and merging provider tables).
 +
@@ -1723,6 +1762,7 @@ index 0000000..179fdb5
 +    check_columns,
 +    clean_table,
 +    merge_tables,
++    portal_table_schema,
 +    read_table,
 +    summarise,
 +    to_csv_bytes,
@@ -1932,6 +1972,29 @@ index 0000000..179fdb5
 +    schema = TableSchema.from_dict({"fields": [{"name": "a", "constraints": {"required": True}}], "primaryKey": "a"})
 +    assert schema.primary_key == ("a",)
 +    assert schema.required_names == ["a"]
++
++
++def test_portal_schema_types_only_checked_columns_and_sets_the_map():
++    portal = portal_table_schema(SCHEMA)
++    names = [f["name"] for f in portal["fields"]]
++    assert names == AED.output_columns
++    types = {f["name"]: f["type"] for f in portal["fields"]}
++    # checked by clean_table, so they always cast
++    assert types["szerokosc_geograficzna"] == types["dlugosc_geograficzna"] == "number"
++    assert types["data_aktualizacji"] == "date"
++    # unchecked values stay text: "50B" after "57", "41" must not break the summary's validation
++    assert types["nr_budynku"] == "string"
++    assert types["wewnatrz_budynku"] == "string"
++    assert types["termin_waznosci_baterii"] == "string"
++    assert all(types[name] == "string" for name in PROVIDER_COLUMNS)
++    assert portal["geo"] == {
++        "label": {"col_name": "nazwa", "col_index": names.index("nazwa")},
++        "b": {"col_name": "szerokosc_geograficzna", "col_index": names.index("szerokosc_geograficzna")},
++        "l": {"col_name": "dlugosc_geograficzna", "col_index": names.index("dlugosc_geograficzna")},
++    }
++    # the portal keeps a stored schema only while missingValues equals the resource's special signs
++    assert portal["missingValues"] == []
++    assert portal_table_schema(SCHEMA, ["-"])["missingValues"] == ["-"]
 diff --git a/mcod/settings/base.py b/mcod/settings/base.py
 index 9e567f1..fac88cf 100644
 --- a/mcod/settings/base.py
