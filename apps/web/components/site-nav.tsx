@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/radar", label: "Radar AED" },
   { href: "/jakosc", label: "Skąd te dane" },
   { href: "/wzorzec", label: "Wzorzec danych" },
+  { href: "/o-projekcie", label: "O projekcie" },
 ] as const;
 
 /** The navigation with the page the person is on marked. */

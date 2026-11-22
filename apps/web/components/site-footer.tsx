@@ -17,6 +17,10 @@ export function FooterNotes() {
       </p>
       <p>
         {BRAND.name} – {BRAND.slogan}. Prototyp z HackNation 2026.{" "}
+        <Link href="/o-projekcie" className="link">
+          O projekcie
+        </Link>
+        {" · "}
         <Link href="/dostepnosc" className="link">
           Dostępność
         </Link>
