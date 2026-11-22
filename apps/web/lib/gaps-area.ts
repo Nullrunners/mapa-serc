@@ -96,15 +96,6 @@ export function outsideOf(outline: Outline) {
   };
 }
 
-/** The box a little bigger than `bbox` and snapped outwards to a grid, so a small pan stays inside it. */
-export function snapOut([west, south, east, north]: Bbox, step = 0.02, margin = 0.1): Bbox {
-  const [dx, dy] = [(east - west) * margin, (north - south) * margin];
-  const snap = (value: number, down: boolean) => Number(((down ? Math.floor(value / step) : Math.ceil(value / step)) * step).toFixed(4));
-  return [snap(west - dx, true), snap(south - dy, true), snap(east + dx, false), snap(north + dy, false)];
-}
-
-export const contains = (outer: Bbox, inner: Bbox) => inner[0] >= outer[0] && inner[1] >= outer[1] && inner[2] <= outer[2] && inner[3] <= outer[3];
-
 function offset(p: [number, number], a: [number, number], b: [number, number]): number {
   const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
   const length = dx * dx + dy * dy;

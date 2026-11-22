@@ -23,8 +23,6 @@ export type GapsPlace = components["schemas"]["GapsPlace"];
 export type GapsMethod = components["schemas"]["GapsMethod"];
 export type GapsTotals = components["schemas"]["GapsTotals"];
 export type GapsNearbyDevice = components["schemas"]["GapsNearbyDevice"];
-export type GapsHexes = components["schemas"]["GapsHexes"];
-export type GapsNear = components["schemas"]["GapsNear"];
 export type GapsCommune = components["schemas"]["GapsCommune"];
 export type GapsLocality = components["schemas"]["GapsLocalities"]["items"][number];
 

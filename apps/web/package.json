@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@aed/schema": "workspace:*",
+    "h3-js": "^4.5.0",
     "maplibre-gl": "^6.18.0",
     "next": "16.4.6",
     "openapi-fetch": "^0.17.0",

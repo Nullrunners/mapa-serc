@@ -4,24 +4,22 @@ import type { ExpressionSpecification, Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { MapFrame, MapUnavailable } from "@/components/map-frame";
-import { API_URL, type GapsHexes, type GapsPlace } from "@/lib/api/client";
+import { API_URL, type GapsPlace } from "@/lib/api/client";
 import { count } from "@/lib/format";
 import { outsideOf, type Area, type Ring } from "@/lib/gaps-area";
 import { EMPTY, pointerOver, setData, useMapLibre, whenLoaded, type SourceData } from "@/lib/maplibre";
 import { startDraw, type Drawn } from "./draw";
-import { AREA_STEPS, FAINT, HEX_STEPS, SCALE, type MapView, type Tool } from "./shared";
+import type { Grid } from "./hooks";
+import { FAINT, LEVELS, SCALE, type MapView, type Tool } from "./shared";
 
-/** Nobody without a device: no colour. Fewer than the first step: a faint tint. Then the scale. */
-const ramp = (steps: readonly number[]): ExpressionSpecification =>
-  ["step", ["get", "uncovered"], "rgba(0,0,0,0)", 0.5, FAINT, steps[0]!, SCALE[0], steps[1]!, SCALE[1], steps[2]!, SCALE[2], steps[3]!, SCALE[3], steps[4]!, SCALE[4]] as ExpressionSpecification;
+/** By the tone each hexagon got with the scale of its own level (toneOf): nobody without a device, no colour. */
+const FILL = ["match", ["get", "tone"], 1, FAINT, 2, SCALE[0], 3, SCALE[1], 4, SCALE[2], 5, SCALE[3], 6, SCALE[4], "rgba(0,0,0,0)"] as ExpressionSpecification;
 
 const FIT = { padding: 24, duration: 0 };
 
 export interface GapsMapProps {
-  /** The country in large hexagons; off where small ones fill the view. */
-  overview: boolean;
-  /** Small hexagons: of the analysed area, or of the close-up in view. */
-  hexes: GapsHexes | null;
+  /** The hexagons of the level that suits the zoom: smaller as the map comes closer. */
+  grid: Grid | null;
   area: Area | null;
   places: GapsPlace[];
   selected: number | null;
@@ -42,8 +40,8 @@ interface Live {
 }
 
 /**
- * From the bottom: large and small hexagons and the veil outside the analysed area, all under the street names; the
- * names; then the outline of the area, the shape being drawn, known devices and the numbered places on top.
+ * From the bottom: the hexagons and the veil outside the analysed area, both under the street names; the names; then
+ * the outline of the area, the shape being drawn, known devices and the numbered places on top.
  */
 function addLayers(map: MapLibreMap, live: RefObject<Live>) {
   // North stays up: a rectangle on the screen is then a rectangle on the map.
@@ -68,12 +66,9 @@ function addLayers(map: MapLibreMap, live: RefObject<Live>) {
 
   const firstLabel = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
 
-  map.addSource("overview", { type: "geojson", data: `${API_URL}/v1/gaps/overview.geojson` });
-  map.addLayer({ id: "overview-fill", type: "fill", source: "overview", paint: { "fill-color": ramp(AREA_STEPS), "fill-opacity": ["interpolate", ["linear"], ["zoom"], 9, 0.65, 14, 0.4] } }, firstLabel);
-
   map.addSource("hexes", { type: "geojson", data: EMPTY });
   // Lighter when zoomed in, so streets and buildings stay readable under the colour.
-  map.addLayer({ id: "hexes-fill", type: "fill", source: "hexes", paint: { "fill-color": ramp(HEX_STEPS), "fill-opacity": ["interpolate", ["linear"], ["zoom"], 12, 0.6, 16, 0.35] } }, firstLabel);
+  map.addLayer({ id: "hexes-fill", type: "fill", source: "hexes", paint: { "fill-color": FILL, "fill-opacity": ["interpolate", ["linear"], ["zoom"], 9, 0.65, 16, 0.35] } }, firstLabel);
   map.addLayer({ id: "hexes-line", type: "line", source: "hexes", minzoom: 13, paint: { "line-color": "#7b8591", "line-width": 0.5, "line-opacity": 0.35 } }, firstLabel);
 
   map.addSource("outside", { type: "geojson", data: EMPTY });
@@ -113,7 +108,7 @@ const polygon = (ring: Ring): SourceData => ({ type: "Feature", properties: {}, 
 
 /** The map of gaps. Everything on it is also in the panel next to it: the numbers, the places and their reports. */
 export default function GapsMap(props: GapsMapProps) {
-  const { overview, hexes, area, places, selected, tool, children } = props;
+  const { grid, area, places, selected, tool, children } = props;
   const live = useRef<Live>({ props, follow: false });
   useEffect(() => {
     live.current.props = props;
@@ -121,11 +116,7 @@ export default function GapsMap(props: GapsMapProps) {
 
   const { frame, container, map: mapRef, drawable } = useMapLibre((map) => addLayers(map, live));
 
-  useEffect(() => {
-    const map = mapRef.current;
-    if (map) whenLoaded(map, "overview", () => map.setLayoutProperty("overview-fill", "visibility", overview ? "visible" : "none"));
-  }, [mapRef, overview]);
-
+  const hexes = grid?.hexes;
   useEffect(() => {
     const map = mapRef.current;
     if (map) whenLoaded(map, "hexes", () => setData(map, "hexes", (hexes ?? EMPTY) as SourceData));
@@ -178,7 +169,9 @@ export default function GapsMap(props: GapsMapProps) {
   if (!drawable)
     return <MapUnavailable>Ta przeglądarka nie wyświetli mapy. Wybierz miasto albo gminę w panelu obok.</MapUnavailable>;
 
-  const steps = overview ? AREA_STEPS : HEX_STEPS;
+  const level = grid?.level ?? LEVELS[0]!;
+  const { steps } = level;
+  const finest = level === LEVELS.at(-1);
   return (
     <MapFrame frameRef={frame} containerRef={container} label="Mapa luk w dostępie do defibrylatorów. Te same liczby i miejsca są w panelu obok.">
       {/* Top left: the tools, then the legend. The zoom buttons take the top right and the credits the bottom, which
@@ -186,7 +179,9 @@ export default function GapsMap(props: GapsMapProps) {
       <div className="@container pointer-events-none absolute top-2 right-12 left-2 flex flex-col items-start gap-1.5">
         {children}
         <div role="group" aria-label="Legenda mapy" className="pointer-events-auto max-w-xs rounded-md bg-white/95 px-2.5 py-1.5 text-xs shadow-sm">
-          <p className="mb-1 font-semibold">Mieszkańcy bez AED w pobliżu</p>
+          <p className="mb-1">
+            <span className="font-semibold">Mieszkańcy bez AED w pobliżu</span> <span className="text-muted">na {level.km2} km²</span>
+          </p>
           <ul className="flex flex-wrap gap-x-2 gap-y-0.5">
             <li className="flex items-center gap-1">
               <span aria-hidden className="inline-block size-3 rounded-sm border border-line" style={{ background: FAINT }} />
@@ -201,7 +196,7 @@ export default function GapsMap(props: GapsMapProps) {
           </ul>
           {/* On a phone the map has a part of the screen only; the note would cover too much of it. */}
           <p className="mt-1 hidden text-muted md:block">
-            {overview ? "Przybliż, żeby zobaczyć szczegóły." : "Bez koloru: wszyscy mają AED w pobliżu."}
+            {finest ? "Bez koloru: wszyscy mają AED w pobliżu." : "Przybliż, a sześciokąty się zmniejszą."}
           </p>
         </div>
       </div>

@@ -15,14 +15,49 @@ export type Tool = "move" | "rect" | "lasso" | "commune";
 export const SCALE = ["#fde0dd", "#fbb4b9", "#f768a1", "#c51b8a", "#7a0177"] as const;
 /** Below the first step: a few people without a device. Faint, so a quiet village still shows as counted. */
 export const FAINT = "#fdf1f3";
-/** Residents of a small hexagon (about 0.1 km²) without a device in reach, counting the hours of the week. */
-export const HEX_STEPS = [10, 50, 150, 400, 800] as const;
-/** The same for a large hexagon (about 36 km²). */
-export const AREA_STEPS = [500, 2000, 5000, 15000, 50000] as const;
 /** From this zoom the view is small enough to count exactly ("Policz dla widoku mapy"). */
 export const DETAIL_ZOOM = 10;
-/** From this zoom the map shows small hexagons of what is in view, without asking. */
-export const NEAR_ZOOM = 12;
+
+/**
+ * The hexagons get smaller as the map comes closer. A level (H3 resolution) starts at its zoom, its hexagons some
+ * 15 px across, and gives way to the next when they are some 40 px: each is seven times smaller than the one before.
+ */
+export interface Level {
+  res: 5 | 6 | 7 | 8 | 9;
+  from: number;
+  /** Area of one hexagon, for the legend. */
+  km2: string;
+  /** Residents of one hexagon without a device in reach, counting the hours of the week: where the colours change. */
+  steps: readonly [number, number, number, number, number];
+  /**
+   * Side of the boxes the level is fetched in, in degrees of longitude (half of it in latitude). Powers of two, so a
+   * box has a short, exact address. A view takes a few boxes, and a pan fetches only the new ones.
+   */
+  tile: number;
+}
+
+/**
+ * The steps of 6 and 9 are those the map had before it had levels. The others are set from the counts of November
+ * 2026 so that each colour covers about as many hexagons as on the levels next to it: zooming in, the map does not
+ * suddenly turn pale or dark.
+ */
+export const LEVELS: readonly Level[] = [
+  { res: 5, from: 0, km2: "250", steps: [5000, 15000, 40000, 90000, 250000], tile: 16 },
+  { res: 6, from: 6.5, km2: "36", steps: [500, 2000, 5000, 15000, 50000], tile: 8 },
+  { res: 7, from: 8, km2: "5", steps: [80, 300, 700, 1500, 7000], tile: 2 },
+  { res: 8, from: 9.5, km2: "0,7", steps: [15, 60, 120, 250, 900], tile: 0.5 },
+  { res: 9, from: 11, km2: "0,1", steps: [10, 50, 150, 400, 800], tile: 0.25 },
+];
+
+export const levelAt = (zoom: number): Level => LEVELS.findLast((level) => zoom >= level.from) ?? LEVELS[0]!;
+
+/** The colour of a hexagon: 0 nobody without a device, 1 fewer than the first step, then one for each step reached. */
+export function toneOf(uncovered: number, steps: Level["steps"]): number {
+  if (uncovered < 0.5) return 0;
+  let tone = 1;
+  for (const step of steps) if (uncovered >= step) tone++;
+  return tone;
+}
 
 /** Quick starts: the biggest cities, each small enough for one analysis. */
 export const CITIES: { name: string; bbox: Bbox }[] = [

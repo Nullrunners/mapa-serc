@@ -10,7 +10,7 @@ import { AreaPicker } from "./area-picker";
 import { Dashboard } from "./dashboard";
 import type { Drawn } from "./draw";
 import { DrawToolbar } from "./draw-toolbar";
-import { useAnalysis, useNearHexes, useSummary } from "./hooks";
+import { useAnalysis, useGrid, useSummary } from "./hooks";
 import { Method } from "./method";
 import GapReport from "./report";
 import { GapsScreen } from "./screen";
@@ -41,7 +41,7 @@ export default function Gaps({ title, lead }: { title: string; lead: string }) {
 
   const summary = useSummary();
   const analysis = useAnalysis(area, attempt);
-  const near = useNearHexes(view, area === null);
+  const grid = useGrid(view);
 
   const result = analysis.state === "ready" ? analysis.data : null;
   const counted = result && !result.tooLarge ? result : null;
@@ -89,9 +89,6 @@ export default function Gaps({ title, lead }: { title: string; lead: string }) {
   const onView = useCallback((next: MapView) => setView(next), []);
 
   const canAnalyseView = view !== null && view.zoom >= DETAIL_ZOOM;
-  // Large hexagons stay wherever small ones do not fill the view yet, so the map is never empty.
-  const overview = counted ? counted.hexes.features.length === 0 : !near.covers;
-  const hexes = area ? (counted?.hexes ?? null) : near.hexes;
   const report = place && method;
 
   return (
@@ -102,8 +99,7 @@ export default function Gaps({ title, lead }: { title: string; lead: string }) {
       view={report ? `miejsce-${place.rank}` : area ? areaKey(area) : "wybor"}
       map={
         <GapsMap
-          overview={overview}
-          hexes={hexes}
+          grid={grid}
           area={area}
           places={places}
           selected={selected}

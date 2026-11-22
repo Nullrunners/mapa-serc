@@ -531,6 +531,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/gaps/grid.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Hexagons of a part of the map at the resolution that suits its zoom (the further out, the larger), as H3 indexes with their figures; for a map that shows them smaller as it comes closer */
+        get: operations["getGapsGrid"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/gaps/commune": {
         parameters: {
             query?: never;
@@ -1541,6 +1558,17 @@ export interface components {
                 /** @description Residents × share of the week without a device in reach */
                 uncovered: number;
             };
+        };
+        GapsGrid: {
+            res: number;
+            /** @description Too many hexagons of this resolution in the box; none are given then */
+            tooLarge: boolean;
+            /** @description H3 indexes of the hexagons whose centre lies in the box. Their outlines come from any H3 library (cellToBoundary): ten times less to send than GeoJSON */
+            hexes: string[];
+            /** @description Residents of each hexagon, in the order of hexes */
+            residents: number[];
+            /** @description Residents × share of the week without a device in reach, in the order of hexes */
+            uncovered: number[];
         };
         GapsCommune: {
             terc: string;
@@ -3169,6 +3197,49 @@ export interface operations {
             };
         };
     };
+    getGapsGrid: {
+        parameters: {
+            query: {
+                /** @description H3 resolution: 5 (hexagons of about 250 km²), 6 (36 km²), 7 (5 km²), 8 (0.7 km²) or 9 (0.1 km², the resolution of the analysis) */
+                res: number;
+                /** @description The part of the map: minLon,minLat,maxLon,maxLat; the hexagons whose centre lies in it */
+                bbox: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Hexagons whose centre lies in the box; resolutions 5–8 wait for the national figures after a start */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GapsGrid"];
+                };
+            };
+            /** @description The request does not match the contract */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unexpected error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getGapsCommune: {
         parameters: {
             query: {
@@ -3298,6 +3369,8 @@ export interface operations {
                 terc?: string;
                 /** @description How many places to recommend */
                 n?: number;
+                /** @description 0: leave out the hexagons of the area, for a map that fetches its own from /v1/gaps/grid.geojson */
+                hexes?: "0" | "1";
             };
             header?: never;
             path?: never;
@@ -3363,6 +3436,8 @@ export interface operations {
                 terc?: string;
                 /** @description How many places to recommend */
                 n?: number;
+                /** @description 0: leave out the hexagons of the area, for a map that fetches its own from /v1/gaps/grid.geojson */
+                hexes?: "0" | "1";
             };
             header?: never;
             path?: never;
