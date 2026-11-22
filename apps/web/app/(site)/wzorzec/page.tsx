@@ -73,7 +73,7 @@ export default function PatternPage() {
           <h2 id={`grupa-${group.id}`} className="text-lg font-bold">
             {group.title}
           </h2>
-          <div role="region" aria-labelledby={`grupa-${group.id}`} tabIndex={0} className="overflow-x-auto">
+          <div role="region" aria-label={`Tabela: ${group.title}`} tabIndex={0} className="overflow-x-auto">
             <table className="data-table min-w-176">
               <thead>
                 <tr>

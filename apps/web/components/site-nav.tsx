@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 const LINKS = [
   { href: "/", label: "Znajdź AED" },
@@ -23,12 +23,21 @@ export function CurrentNav() {
  */
 export function Nav({ current }: { current: string | null }) {
   const [open, setOpen] = useState(false);
+  const toggle = useRef<HTMLButtonElement>(null);
   const close = () => setOpen(false);
   const here = (href: string) => (current === href ? "page" : undefined);
 
   return (
-    <nav aria-label="Główna nawigacja">
-      <button type="button" aria-expanded={open} aria-controls="menu" onClick={() => setOpen(!open)} className="btn btn-secondary btn-sm lg:hidden">
+    // Esc folds the menu on a phone and puts the keyboard back on its button.
+    <nav
+      aria-label="Główna nawigacja"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !open) return;
+        close();
+        toggle.current?.focus();
+      }}
+    >
+      <button ref={toggle} type="button" aria-expanded={open} aria-controls="menu" onClick={() => setOpen(!open)} className="btn btn-secondary btn-sm lg:hidden">
         Menu
       </button>
       <ul

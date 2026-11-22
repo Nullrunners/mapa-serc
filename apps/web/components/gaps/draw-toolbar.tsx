@@ -35,7 +35,8 @@ export function DrawToolbar({ tool, onTool, hasArea, onClear, note }: DrawToolba
   const hint = note ?? (tool !== "move" && active ? `${active.hint}. Esc anuluje.` : null);
   return (
     <>
-      <div role="toolbar" aria-label="Zaznaczanie obszaru na mapie" className="pointer-events-auto flex flex-wrap overflow-hidden rounded-md border border-field bg-white text-sm font-semibold shadow-sm">
+      {/* A group, not a toolbar: each button is its own stop for Tab, without the arrow keys a toolbar promises. */}
+      <div role="group" aria-label="Zaznaczanie obszaru na mapie" className="pointer-events-auto flex flex-wrap overflow-hidden rounded-md border border-field bg-white text-sm font-semibold shadow-sm">
         {TOOLS.map((item) => (
           <button
             key={item.tool}

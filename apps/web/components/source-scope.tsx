@@ -53,7 +53,7 @@ export default function SourceScope({ sources: all, notIncluded }: { sources: So
       {sources.length === 0 ? (
         <p className="text-muted">Zakres danych pojawi się po najbliższym scaleniu źródeł.</p>
       ) : (
-        <div role="region" aria-labelledby="zakres" tabIndex={0} className="overflow-x-auto">
+        <div role="region" aria-label="Tabela: zakres danych w każdym źródle" tabIndex={0} className="overflow-x-auto">
           <table className="data-table min-w-4xl">
             <thead>
               <tr>

@@ -20,8 +20,11 @@ export default function StickerSheet() {
 
   if (loaded.state !== "ready") {
     return (
-      <div aria-live="polite" className="max-w-2xl">
-        <LoadStatus of={loaded} />
+      <div className="max-w-2xl space-y-4">
+        <PageHeader title="Naklejki na defibrylatory" />
+        <div aria-live="polite">
+          <LoadStatus of={loaded} />
+        </div>
       </div>
     );
   }
