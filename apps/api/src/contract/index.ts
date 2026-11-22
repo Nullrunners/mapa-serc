@@ -493,6 +493,19 @@ export const approveSourceRoute = createRoute({
   responses: { 200: json(ImportResult, 'Approved and merged'), 404: problem('No submission with this id'), ...operatorOnly.responses401, ...problems },
 })
 
+export const RemovedSource = z.object({ sourceId: z.string(), removed: z.literal(true) }).openapi('RemovedSource')
+
+export const removeSourceRoute = createRoute({
+  method: 'delete',
+  path: '/admin/sources/{id}',
+  operationId: 'removeSource',
+  tags: ['admin'],
+  summary: 'Rejects a wizard submission: deletes its file and rows and rebuilds the dataset without them',
+  security: operatorOnly.security,
+  request: { params: z.object({ id: z.string() }) },
+  responses: { 200: json(RemovedSource, 'Removed'), 404: problem('No wizard submission with this id'), ...operatorOnly.responses401, ...problems },
+})
+
 // --------------------------------------------------------------------- radar
 
 export const Candidate = z

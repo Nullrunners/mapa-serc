@@ -11,7 +11,7 @@ import type { RouteHandler } from '@hono/zod-openapi'
 import { COMPOSITE_TARGETS, FIELD_NAMES, type MappingTarget } from '@aed/schema'
 import { config, now } from './config'
 import { getContext } from './context'
-import type { ImportRequest, approveSourceRoute, importCommitRoute, importPreviewRoute, sourceCsvRoute } from './contract'
+import type { ImportRequest, approveSourceRoute, importCommitRoute, importPreviewRoute, removeSourceRoute, sourceCsvRoute } from './contract'
 import type { Store } from './db/store'
 import { ApiError } from './http/errors'
 import { runJob } from './jobs'
@@ -231,4 +231,17 @@ export const sourceCsvHandler: RouteHandler<typeof sourceCsvRoute> = async (c) =
   const { store } = await getContext()
   if (!store.reports.some((report) => report.id === id)) throw new ApiError(404, 'not_found', `No source with id ${id}.`)
   return c.body(toCsv(providerRecords(store, id)), 200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="aed-${id}.csv"` })
+}
+
+/** The operator rejects a submission (or removes one approved by mistake): its rows go, and so do its devices. */
+export const removeSourceHandler: RouteHandler<typeof removeSourceRoute> = async (c) => {
+  const { id } = c.req.valid('param')
+  if (config.adminToken === '' || c.req.header('Authorization') !== `Bearer ${config.adminToken}`) {
+    throw new ApiError(401, 'unauthorized', 'This action needs the operator token: Authorization: Bearer <ADMIN_TOKEN>.')
+  }
+  const { store } = await getContext()
+  if (!(await store.removeSource(id))) throw new ApiError(404, 'not_found', `No wizard submission with id ${id}.`)
+  await store.log({ actor: 'operator', entity: 'source', entityId: id, action: 'import_removed', detail: {} })
+  await runJob('pipeline')
+  return c.json({ sourceId: id, removed: true as const }, 200)
 }

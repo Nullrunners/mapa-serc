@@ -43,6 +43,7 @@ import {
   patternDocRoute,
   patternXlsxRoute,
   providerFeedRoute,
+  removeSourceRoute,
   schemaRoute,
   sourceCsvRoute,
   sourceScopeRoute,
@@ -85,7 +86,7 @@ import {
 } from './passport/handlers'
 import { gapsCommuneHandler, gapsCsvHandler, gapsHandler, gapsLocalitiesHandler, gapsNearHandler, gapsOverviewHandler, gapsSummaryHandler } from './gaps/handlers'
 import { candidateDecisionHandler, candidatesHandler } from './radar/handlers'
-import { approveSourceHandler, importCommitHandler, importPreviewHandler, sourceCsvHandler } from './wizard'
+import { approveSourceHandler, importCommitHandler, importPreviewHandler, removeSourceHandler, sourceCsvHandler } from './wizard'
 
 export type EndpointStatus = 'stub' | 'live'
 
@@ -136,6 +137,7 @@ export const endpoints: Endpoint[] = [
   live(importCommitRoute, importCommitHandler),
   live(sourceCsvRoute, sourceCsvHandler),
   live(approveSourceRoute, approveSourceHandler),
+  live(removeSourceRoute, removeSourceHandler),
 
   live(candidatesRoute, candidatesHandler),
   live(candidateDecisionRoute, candidateDecisionHandler),

@@ -183,6 +183,14 @@ export class Store {
     return true
   }
 
+  /** Deletes a wizard submission with its rows; the next pipeline run drops its devices. File sources cannot be removed. */
+  async removeSource(id: string): Promise<boolean> {
+    if (!(await this.storedDef(id))) return false
+    await this.db.run('DELETE FROM source_records WHERE source_id = ?', [id])
+    await this.db.run('DELETE FROM sources WHERE id = ?', [id])
+    return true
+  }
+
   /** Persists a pipeline run and makes it the state requests are answered from. */
   async savePipeline(result: PipelineResult, fileDefs: SourceDef[]): Promise<void> {
     const fileIds = new Set(fileDefs.map((def) => def.id))

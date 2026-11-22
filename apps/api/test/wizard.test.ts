@@ -160,6 +160,23 @@ describe('commit and approval', () => {
     expect(await counts()).toEqual(before)
   })
 
+  it('lets the operator reject a submission, which takes its devices away', async () => {
+    const file = ['nazwa,miejscowosc,kod_terc,szerokosc_geograficzna,dlugosc_geograficzna', 'Świetlica w Odrzuconej Woli,Białe Błota,0403022,53.1105,17.9504'].join('\r\n')
+    const before = await counts()
+    const submitted = (await (await post('/v1/import/commit', upload(file, 'do-odrzucenia.csv', { provider: { name: 'Gmina Odrzucona Wola', licence: 'CC0 1.0' } }))).json()) as any
+    expect(await counts()).toEqual({ ...before, pending: before.pending + 1 })
+
+    const remove = (headers: Record<string, string> = {}) => app.request(`/admin/sources/${submitted.sourceId}`, { method: 'DELETE', headers })
+    expect((await remove()).status).toBe(401)
+    // Sources read from files are not the wizard's to delete.
+    expect((await app.request('/admin/sources/um-warszawa', { method: 'DELETE', headers: OPERATOR })).status).toBe(404)
+    expect(await (await remove(OPERATOR)).json()).toEqual({ sourceId: submitted.sourceId, removed: true })
+    expect(await counts()).toEqual(before)
+    const sources = ((await (await app.request('/v1/sources')).json()) as any).items as any[]
+    expect(sources.some((source) => source.id === submitted.sourceId)).toBe(false)
+    expect((await remove(OPERATOR)).status).toBe(404)
+  })
+
   it('refuses a commit without the provider name', async () => {
     expect((await post('/v1/import/commit', upload(NEW_TOWN, 'aed.csv'))).status).toBe(422)
   })
