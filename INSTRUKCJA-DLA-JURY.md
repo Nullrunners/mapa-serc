@@ -66,7 +66,7 @@ Jak postawić portal u siebie i powtórzyć te kroki: [portal/README.md](portal/
 | Zasilenie ręczne i automatyczne | ta sama sekcja, kroki 2 i 3; opis w [portal/README.md](portal/README.md#zasilenie-ręczne-i-automatyczne) | `portal/dane-pokazowe.py`, `mcod/resources/forms.py` w zmianie backendu |
 | Format odczytywalny maszynowo | `/dane/aed.csv`, `/dane/aed.geojson`, `/dane/aed.jsonld`, `/dane/aed.csv-metadata.json` (CSVW), `/dane/schema.json` (Table Schema) | `apps/api/src/publish/files.ts` |
 | Zachęcenie dysponentów do udostępniania | kreator i zgłoszenie jednego urządzenia przez każdego (krok 4), Radar (krok 9), naklejki QR i raport urządzenia (krok 7), przypomnienia o terminach elektrod i baterii | `apps/web/components/wizard/`, `apps/web/components/device-form/`, `apps/api/src/submission/`, `apps/api/src/radar/`, `apps/api/src/passport/` |
-| Nazwa akcji i hasło | „Mapa serc – dane na ratunek”, nagłówek każdej strony | `apps/web/lib/brand.ts` |
+| Nazwa akcji i hasło | „Mapa serc – kierunek ratunek”, nagłówek każdej strony | `apps/web/lib/brand.ts` |
 | Strona o akcji | „O projekcie” (`/o-projekcie`, link w menu i w stopce): czym jest Mapa serc, wejście do każdej części serwisu, aplikacja mobilna, ile urządzeń znamy dziś i strony o danych | `apps/web/app/(site)/o-projekcie/page.tsx` |
 | Logotyp (JPG, PNG, PDF, format otwarty) i księga znaku (PDF) | UZUPEŁNIĆ: ścieżki plików w `zgloszenie/` | |
 | Responsywność | każda strona działa w szerokości telefonu i komputera | `apps/web/` |
