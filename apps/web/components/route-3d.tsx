@@ -33,12 +33,19 @@ const RISE_S = 0.8;
 /** The walker's height as a share of the view, with the camera where it usually is. */
 const WALKER_SHARE = 16;
 
-/** At normal pace the whole way takes about this long, however long it is, within the speeds below. */
+/** The walker's speed in km/h, as the person sets it: from a slow walk to fast-forward; faster outruns the map tiles. */
+const SLOWEST_KMH = 3;
+const FASTEST_KMH = 60;
+/** At first the whole way takes about this long, though never slower than a sprint. */
 const RUN_S = 45;
-/** Metres a second: slower is dull on a short way, faster outruns the map tiles on a long one. */
-const SLOWEST = 4;
-const FASTEST = 18;
-const PACES = [0.5, 1, 2] as const;
+const FIRST_MIN_KMH = 15;
+/** What a speed means to a person on foot, up to each limit; above the last one the walk is fast-forwarded. */
+const GAITS: [number, string][] = [
+  [7, "marsz"],
+  [16, "bieg"],
+  [26, "sprint"],
+];
+const gaitOf = (kmh: number) => GAITS.find(([below]) => kmh < below)?.[1] ?? "przewijanie";
 
 /** How quickly the camera swings round after the walker: the time it takes to cover most of a turn. */
 const TURN_S = 0.45;
@@ -78,7 +85,8 @@ export interface Route3DProps {
 interface Sim {
   phase: Phase;
   playing: boolean;
-  pace: number;
+  /** Metres a second. */
+  speed: number;
   doneM: number;
   heading: number;
   orbitLeft: number;
@@ -277,7 +285,8 @@ export default function Route3D({ route, onClose, onGuide }: Route3DProps) {
   const steps = useRef<Animation[]>([]);
 
   const totalM = route.alongM[route.alongM.length - 1];
-  const speed = clamp(totalM / RUN_S, SLOWEST, FASTEST);
+  // About RUN_S for the whole way to start with; the person changes it as they like.
+  const firstKmh = clamp(Math.round((totalM / RUN_S) * 3.6), FIRST_MIN_KMH, FASTEST_KMH);
   const bounds = useMemo(() => {
     const lons = route.line.map(([lon]) => lon);
     const lats = route.line.map(([, lat]) => lat);
@@ -289,13 +298,13 @@ export default function Route3D({ route, onClose, onGuide }: Route3DProps) {
   const [still] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [phase, setPhase] = useState<Phase>("loading");
   const [playing, setPlaying] = useState(!still);
-  const [pace, setPace] = useState<number>(1);
+  const [kmh, setKmh] = useState(firstKmh);
   const [words, setWords] = useState(() => guideWords(walkAt(route, 0), false));
   const [shownM, setShownM] = useState(0);
   const sim = useRef<Sim>({
     phase: "loading",
     playing: !still,
-    pace: 1,
+    speed: firstKmh / 3.6,
     doneM: 0,
     heading: route.steps[0]?.heading ?? 0,
     orbitLeft: 0,
@@ -402,7 +411,7 @@ export default function Route3D({ route, onClose, onGuide }: Route3DProps) {
       if (!map || s.phase === "loading" || s.phase === "intro") return;
 
       if (s.phase === "walking" && s.playing) {
-        s.doneM = Math.min(totalM, s.doneM + speed * s.pace * dt);
+        s.doneM = Math.min(totalM, s.doneM + s.speed * dt);
         if (s.doneM >= totalM) {
           s.playing = false;
           setPlaying(false);
@@ -452,16 +461,17 @@ export default function Route3D({ route, onClose, onGuide }: Route3DProps) {
     };
     raf = requestAnimationFrame(frameStep);
     return () => cancelAnimationFrame(raf);
-  }, [mapRef, route, totalM, speed, still]);
+  }, [mapRef, route, totalM, still]);
 
-  // The walker's legs move only while they walk.
+  // The walker's legs move only while they walk, quicker the faster they go.
   useEffect(() => {
     const moving = playing && phase === "walking";
     for (const animation of steps.current) {
+      animation.updatePlaybackRate(clamp(kmh / 12, 0.5, 2.5));
       if (moving) animation.play();
       else animation.pause();
     }
-  }, [playing, phase]);
+  }, [playing, phase, kmh]);
 
   useEffect(() => {
     if (phase === "arrived") endHeading.current?.focus();
@@ -510,9 +520,9 @@ export default function Route3D({ route, onClose, onGuide }: Route3DProps) {
     seek([...stops].reverse().find((stop) => stop < doneM - 1) ?? 0);
   };
 
-  const setPaceTo = (value: number) => {
-    sim.current.pace = value;
-    setPace(value);
+  const setSpeed = (value: number) => {
+    sim.current.speed = value / 3.6;
+    setKmh(value);
   };
 
   const close = () => dialog.current?.close();
@@ -556,6 +566,16 @@ export default function Route3D({ route, onClose, onGuide }: Route3DProps) {
           <MapFrame frameRef={frame} containerRef={container} label="Widok trasy w 3D">
             {phase !== "loading" && <GuideBanner words={words} />}
             {phase === "loading" && <p className="absolute top-2 left-2 rounded-md bg-white/95 px-2.5 py-1.5 text-sm shadow-sm">Wczytuję mapę…</p>}
+            {phase !== "loading" && (
+              // The same speed as on the slider below, which a screen reader announces; on a phone the map's
+              // credits take the bottom edge, so it stands above them.
+              <div aria-hidden className="absolute bottom-14 left-2 rounded-lg bg-white/95 px-3 py-1.5 leading-tight shadow-sm sm:bottom-2">
+                <p>
+                  <span className="text-2xl font-bold tabular-nums">{kmh}</span> <span className="text-sm font-semibold">km/h</span>
+                </p>
+                <p className="text-xs text-muted">{gaitOf(kmh)}</p>
+              </div>
+            )}
           </MapFrame>
         ) : (
           <MapUnavailable>Ta przeglądarka nie wyświetli widoku 3D.</MapUnavailable>
@@ -602,15 +622,21 @@ export default function Route3D({ route, onClose, onGuide }: Route3DProps) {
               <button type="button" onClick={() => seek(0)} className="btn btn-secondary btn-sm">
                 Od początku
               </button>
-              <div role="group" aria-labelledby="tempo-3d" className="flex items-center gap-1.5">
-                <span id="tempo-3d" className="text-sm font-semibold">
-                  Tempo
-                </span>
-                {PACES.map((value) => (
-                  <button key={value} type="button" aria-pressed={pace === value} onClick={() => setPaceTo(value)} className="chip">
-                    {String(value).replace(".", ",")}×
-                  </button>
-                ))}
+              <div className="flex items-center gap-2">
+                <label htmlFor="predkosc-3d" className="text-sm font-semibold">
+                  Prędkość
+                </label>
+                <input
+                  id="predkosc-3d"
+                  type="range"
+                  min={SLOWEST_KMH}
+                  max={FASTEST_KMH}
+                  step={1}
+                  value={kmh}
+                  aria-valuetext={`${kmh} km/h, ${gaitOf(kmh)}`}
+                  onChange={(event) => setSpeed(Number(event.target.value))}
+                  className="w-36 accent-gov"
+                />
               </div>
             </div>
           )}
