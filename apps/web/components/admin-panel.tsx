@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import Candidates from "@/components/candidates";
+import PendingDevices from "@/components/pending-devices";
 import { api, API_URL, type SourceReport } from "@/lib/api/client";
 import { count } from "@/lib/format";
 import { useLoad } from "@/lib/use-load";
 
 const TOKEN_KEY = "admin-token";
 
-/** The operator's desk: submissions from the wizard waiting for approval, then the Radar leads. One token for both. */
+/** The operator's desk: submissions from the wizard and single reported devices waiting for approval, then the Radar leads. One token for all. */
 export default function AdminPanel() {
   const field = useRef<HTMLInputElement>(null);
   const token = () => field.current?.value ?? "";
@@ -41,6 +42,13 @@ export default function AdminPanel() {
           Zgłoszenia do zatwierdzenia
         </h2>
         <PendingSources token={token} />
+      </section>
+
+      <section aria-labelledby="pojedyncze" className="space-y-4">
+        <h2 id="pojedyncze" className="text-xl font-bold">
+          Pojedyncze urządzenia
+        </h2>
+        <PendingDevices token={token} />
       </section>
 
       <section aria-labelledby="radar" className="space-y-4">
