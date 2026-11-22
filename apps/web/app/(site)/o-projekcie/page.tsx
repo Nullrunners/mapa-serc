@@ -79,7 +79,8 @@ export default function AboutPage() {
             {!MOBILE_APP_URL && <span className="rounded-full border border-gov px-2.5 py-0.5 text-sm font-semibold text-gov">wkrótce</span>}
           </h2>
           <p className="text-muted">
-            {MOBILE_APP_URL ? "Najbliższy defibrylator zawsze pod ręką." : "Do tego czasu otwórz tę stronę w telefonie: mapa działa tak samo."}
+            Na nagły wypadek: szybko znajdziesz w niej najbliższy defibrylator.
+            {!MOBILE_APP_URL && " Na razie otwórz tę stronę w telefonie: mapa działa tak samo."}
           </p>
         </div>
         {MOBILE_APP_URL && (
