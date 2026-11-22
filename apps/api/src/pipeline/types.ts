@@ -1,12 +1,17 @@
 /** Shapes shared by the pipeline steps. No logic here. */
 import type { AedInput, Licence, MappingTarget } from '@aed/schema'
 
-export type SourceKind = 'official' | 'osm' | 'owner' | 'upload'
+/** user = the shared source of single devices reported by anyone through the form and approved by an operator. */
+export type SourceKind = 'official' | 'osm' | 'owner' | 'upload' | 'user'
 
-/** Source priority decides whose value wins when sources disagree. */
-export const PRIORITY: Record<SourceKind, number> = { owner: 100, upload: 90, official: 80, osm: 40 }
+/**
+ * Source priority decides whose value wins when sources disagree. A user's report stands below official data,
+ * so next to an institution's record it only fills empty fields, and above OpenStreetMap, so it makes a device
+ * known only from OSM official, with the user's values.
+ */
+export const PRIORITY: Record<SourceKind, number> = { owner: 100, upload: 90, official: 80, user: 60, osm: 40 }
 
-/** One entry of apps/api/sources/*.json, or a source registered by the wizard. */
+/** One entry of apps/api/sources/*.json, a source registered by the wizard, or the shared source of user reports. */
 export interface SourceDef {
   id: string
   kind: SourceKind

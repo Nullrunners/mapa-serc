@@ -6,7 +6,7 @@
  * published CSV. Everything around it is camelCase. A missing value is null; fields are never omitted.
  */
 import { createRoute, z } from '@hono/zod-openapi'
-import { ACCESS_METHODS, FIELDS, STATUS, type FieldDef } from '@aed/schema'
+import { ACCESS, ACCESS_METHODS, FIELDS, STATUS, type FieldDef } from '@aed/schema'
 
 // ---------------------------------------------------------------- building blocks
 
@@ -49,7 +49,7 @@ export const AedRecord = z.object(Object.fromEntries((FIELDS as readonly FieldDe
 
 export const Publication = z.enum(['official', 'community', 'pending', 'incomplete']).openapi('Publication', {
   description:
-    'official = dane od opiekuna lub ze zbioru urzędowego, trafia do pliku dla dane.gov.pl. community = znane tylko z OpenStreetMap (ODbL), niepotwierdzone. pending = zgłoszenie z kreatora czeka na zatwierdzenie przez operatora. incomplete = brakuje pola wymaganego, zwykle położenia.',
+    'official = dane od opiekuna, ze zbioru urzędowego albo zatwierdzone zgłoszenie użytkownika, trafia do pliku dla dane.gov.pl. community = znane tylko z OpenStreetMap (ODbL), niepotwierdzone. pending = zgłoszenie z kreatora czeka na zatwierdzenie przez operatora. incomplete = brakuje pola wymaganego, zwykle położenia.',
 })
 
 export const Layer = z.enum(['official', 'community', 'all']).openapi('Layer')
@@ -254,7 +254,7 @@ const FieldCoverage = z
 export const SourceReport = z
   .object({
     id: z.string(),
-    kind: z.enum(['official', 'osm', 'owner', 'upload']),
+    kind: z.enum(['official', 'osm', 'owner', 'upload', 'user']).openapi({ description: 'user = wspólne źródło zatwierdzonych zgłoszeń pojedynczych urządzeń od użytkowników' }),
     awaitingApproval: z.boolean().openapi({ description: 'Zgłoszenie z kreatora, którego operator jeszcze nie zatwierdził' }),
     name: z.string(),
     attribution: z.string(),
@@ -398,6 +398,9 @@ export const ImportRequest = z
   })
   .openapi('ImportRequest')
 
+/** A device the system already knows that a submitted one looks like. Not a named component, so both uses stay inline. */
+const DuplicateOf = z.object({ id: z.string(), nazwa: z.string(), distanceM: z.number().int(), decision: z.enum(['auto', 'review']), publication: Publication })
+
 export const ImportPreview = z
   .object({
     stub: z.boolean().openapi({ description: 'true while this endpoint answers with sample data' }),
@@ -418,13 +421,10 @@ export const ImportPreview = z
         record: z.record(z.string(), z.unknown()).openapi({ description: 'Pola wzorca, które udało się ustalić' }),
         fixes: z.array(FixSchema),
         issues: z.array(IssueSchema),
-        duplicateOf: z
-          .object({ id: z.string(), nazwa: z.string(), distanceM: z.number().int(), decision: z.enum(['auto', 'review']), publication: Publication })
-          .nullable()
-          .openapi({
-            description:
-              'Urządzenie już znane systemowi, które wygląda na to samo. Przy publication = community zgłoszenie potwierdza urządzenie znane dotąd tylko z OpenStreetMap.',
-          }),
+        duplicateOf: DuplicateOf.nullable().openapi({
+          description:
+            'Urządzenie już znane systemowi, które wygląda na to samo. Przy publication = community zgłoszenie potwierdza urządzenie znane dotąd tylko z OpenStreetMap.',
+        }),
       }),
     ),
     summary: z.object({ rows: z.number().int(), ready: z.number().int(), withFixes: z.number().int(), withErrors: z.number().int(), duplicates: z.number().int() }),
@@ -504,6 +504,152 @@ export const removeSourceRoute = createRoute({
   security: operatorOnly.security,
   request: { params: z.object({ id: z.string() }) },
   responses: { 200: json(RemovedSource, 'Removed'), 404: problem('No wizard submission with this id'), ...operatorOnly.responses401, ...problems },
+})
+
+// ------------------------------------------------------------- single device
+
+const maxLength = (name: string) => (FIELDS as readonly FieldDef[]).find((field) => field.name === name)?.maxLength ?? 200
+
+export const DeviceReport = z
+  .object({
+    record: z
+      .object({
+        nazwa: z.string().trim().min(2).max(maxLength('nazwa')).openapi({ example: 'Apteka Pod Lipami' }),
+        szerokosc_geograficzna: z.number().openapi({ example: 53.0951 }),
+        dlugosc_geograficzna: z.number().openapi({ example: 17.9172 }),
+        opis_lokalizacji: z.string().trim().max(maxLength('opis_lokalizacji')).optional().openapi({ example: 'Przy wejściu, na lewo od kas' }),
+        dostep: z.enum(ACCESS).optional(),
+        godziny_dostepnosci: z
+          .string()
+          .trim()
+          .max(maxLength('godziny_dostepnosci'))
+          .optional()
+          .openapi({ description: 'Składnia opening_hours albo zwykły zapis („pn-pt 8-16”, „całodobowo”), który system przepisze', example: 'pn-pt 8-16' }),
+        wewnatrz_budynku: z.boolean().optional(),
+      })
+      .openapi({ description: 'Pola wzorca, które da się podać, patrząc na urządzenie. Adres, gminę i kod TERC system bierze z państwowych rejestrów.' }),
+    keeperEmail: z
+      .string()
+      .trim()
+      .email()
+      .max(120)
+      .optional()
+      .openapi({ description: 'Tylko gdy zgłasza opiekun urządzenia: po zatwierdzeniu wyślemy tu naklejkę QR i link do panelu opiekuna. Nie jest publikowany.' }),
+    consent: z.literal(true).openapi({ description: 'Zgoda na udostępnienie opisu jako otwartych danych (CC0 1.0); w opisie nie ma danych osobowych' }),
+  })
+  .openapi('DeviceReport')
+
+export const DeviceReportResult = z.object({ id: z.string(), status: z.literal('pending') }).openapi('DeviceReportResult')
+
+export const submitDeviceRoute = createRoute({
+  method: 'post',
+  path: '/v1/import/device',
+  operationId: 'submitDevice',
+  tags: ['wizard'],
+  summary: 'Reports one device, without logging in; it waits for an operator, who adds it to the shared source of user reports',
+  request: { body: { required: true, content: { 'application/json': { schema: DeviceReport } } } },
+  responses: {
+    200: json(DeviceReportResult, 'Saved; waits for approval'),
+    409: problem('This client has left too many reports waiting today'),
+    503: problem('Too many reports wait for the operator'),
+    ...problems,
+  },
+})
+
+const SubmittedDevice = z
+  .object({
+    nazwa: z.string().nullable(),
+    szerokosc_geograficzna: z.number().nullable(),
+    dlugosc_geograficzna: z.number().nullable(),
+    cecha_ulicy: z.string().nullable(),
+    nazwa_ulicy: z.string().nullable(),
+    nr_budynku: z.string().nullable(),
+    kod_pocztowy: z.string().nullable(),
+    miejscowosc: z.string().nullable(),
+    kod_terc: z.string().nullable(),
+    opis_lokalizacji: z.string().nullable(),
+    wewnatrz_budynku: z.boolean().nullable(),
+    dostep: z.enum(ACCESS).nullable(),
+    godziny_dostepnosci: z.string().nullable(),
+    uwagi_dostepu: z.string().nullable(),
+  })
+  .openapi('SubmittedDevice', { description: 'Zgłoszone urządzenie po uporządkowaniu, z adresem i gminą z rejestrów' })
+
+export const DeviceSubmission = z
+  .object({
+    id: z.string(),
+    createdAt: z.string(),
+    record: SubmittedDevice,
+    warnings: z.array(z.string()).openapi({ description: 'Czego system nie odczytał, np. godzin w nieznanym zapisie' }),
+    keeperEmail: z.string().nullable().openapi({ description: 'Adres opiekuna, zamaskowany; null, gdy zgłasza przechodzień' }),
+    duplicateOf: DuplicateOf.nullable().openapi({ description: 'Urządzenie już znane systemowi, które wygląda na to samo' }),
+  })
+  .openapi('DeviceSubmission')
+
+export const DeviceSubmissionList = z.object({ items: z.array(DeviceSubmission) }).openapi('DeviceSubmissionList')
+
+export const deviceSubmissionsRoute = createRoute({
+  method: 'get',
+  path: '/admin/device-submissions',
+  operationId: 'listDeviceSubmissions',
+  tags: ['admin'],
+  summary: 'Single devices reported through the form and waiting for a decision, oldest first',
+  security: operatorOnly.security,
+  responses: { 200: json(DeviceSubmissionList, 'Waiting reports'), ...operatorOnly.responses401, ...problems },
+})
+
+export const DeviceApproval = z
+  .object({
+    id: z.string(),
+    device: z.object({ id: z.string(), publication: Publication }).nullable().openapi({ description: 'The device the report became or joined' }),
+    keeper: z.enum(['sent', 'not_asked', 'not_published', 'shared', 'has_keeper']).openapi({
+      description:
+        'sent = naklejka i link do panelu poszły do opiekuna; not_asked = zgłaszał przechodzień; not_published = urządzenie nie jest oficjalne; shared = połączone z urządzeniem instytucji, więc linku nie wysłaliśmy; has_keeper = urządzenie ma już opiekuna',
+    }),
+  })
+  .openapi('DeviceApproval')
+
+const ReportIdParam = z.object({ id: z.string() })
+
+export const approveDeviceSubmissionRoute = createRoute({
+  method: 'post',
+  path: '/admin/device-submissions/{id}/approve',
+  operationId: 'approveDeviceSubmission',
+  tags: ['admin'],
+  summary: 'Approves a reported device: it joins the shared source of user reports and the dataset is rebuilt',
+  security: operatorOnly.security,
+  request: { params: ReportIdParam },
+  responses: {
+    200: json(DeviceApproval, 'Approved and merged'),
+    404: problem('No waiting report with this id'),
+    503: problem('The commune register did not answer, so the device has no commune yet'),
+    ...operatorOnly.responses401,
+    ...problems,
+  },
+})
+
+export const RemovedReport = z.object({ id: z.string(), removed: z.literal(true) }).openapi('RemovedReport')
+
+export const rejectDeviceSubmissionRoute = createRoute({
+  method: 'delete',
+  path: '/admin/device-submissions/{id}',
+  operationId: 'rejectDeviceSubmission',
+  tags: ['admin'],
+  summary: 'Rejects a reported device: the report is deleted together with the keeper address it had',
+  security: operatorOnly.security,
+  request: { params: ReportIdParam },
+  responses: { 200: json(RemovedReport, 'Removed'), 404: problem('No waiting report with this id'), ...operatorOnly.responses401, ...problems },
+})
+
+export const removeUserReportRoute = createRoute({
+  method: 'delete',
+  path: '/admin/aed/{id}/user-report',
+  operationId: 'removeUserReport',
+  tags: ['admin'],
+  summary: 'Takes an approved user report back out of the dataset (approved by mistake, spam); a device known only from it disappears',
+  security: operatorOnly.security,
+  request: { params: ReportIdParam },
+  responses: { 200: json(RemovedReport, 'Removed; id is the device'), 404: problem('The device has no approved user report'), ...operatorOnly.responses401, ...problems },
 })
 
 // --------------------------------------------------------------------- radar
@@ -1140,6 +1286,44 @@ export const gapsCsvRoute = createRoute({
   summary: 'The recommended places of an area as CSV (ODbL 1.0: device positions come partly from OpenStreetMap)',
   request: { query: GapsQuery },
   responses: { 200: file('text/csv', 'One row per recommended place'), ...gapsProblems },
+})
+
+// ----------------------------------------------------------------------- geo
+
+export const GeoAddress = z
+  .object({
+    label: z.string().openapi({ example: 'Szubińska 7, Białe Błota' }),
+    lat: z.number(),
+    lon: z.number(),
+    city: z.string(),
+    street: z.string().openapi({ description: 'Pusta w miejscowości bez nazw ulic' }),
+    number: z.string(),
+    postcode: z.string(),
+  })
+  .openapi('GeoAddress', { description: 'Punkt adresowy z państwowego rejestru adresów (UUG)' })
+
+export const GeoAnswer = z.object({ address: GeoAddress.nullable() }).openapi('GeoAnswer')
+
+const geoProblems = { 503: problem('The state address register did not answer, or this client asked too often'), ...problems }
+
+export const nearestAddressRoute = createRoute({
+  method: 'get',
+  path: '/v1/geo/nearest',
+  operationId: 'getNearestAddress',
+  tags: ['geo'],
+  summary: 'The address point nearest to a position, within 100 m (state address register UUG); for the map of the single-device form',
+  request: { query: z.object({ at: z.string().regex(POINT).openapi({ description: 'lon,lat', example: '17.9172,53.0951' }) }) },
+  responses: { 200: json(GeoAnswer, 'The address, or null when none is within 100 m'), ...geoProblems },
+})
+
+export const findAddressRoute = createRoute({
+  method: 'get',
+  path: '/v1/geo/address',
+  operationId: 'findAddress',
+  tags: ['geo'],
+  summary: 'Finds an address or a town in the state address register (UUG), e.g. "Białe Błota, Szubińska 7" or "Legionowo"',
+  request: { query: z.object({ q: z.string().trim().min(2).max(120).openapi({ example: 'Białe Błota, Szubińska 7' }) }) },
+  responses: { 200: json(GeoAnswer, 'The first match, or null'), ...geoProblems },
 })
 
 // --------------------------------------------------------------------- admin

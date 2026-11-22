@@ -30,7 +30,11 @@
     },
     {
       "name": "wizard",
-      "description": "Provider wizard: preview a file, then save it"
+      "description": "Provider wizard (preview a file, then save it) and the form for reporting one device"
+    },
+    {
+      "name": "geo",
+      "description": "Lookups in the state address register for the map of the single-device form"
     },
     {
       "name": "radar",
@@ -256,7 +260,7 @@
           "pending",
           "incomplete"
         ],
-        "description": "official = dane od opiekuna lub ze zbioru urzędowego, trafia do pliku dla dane.gov.pl. community = znane tylko z OpenStreetMap (ODbL), niepotwierdzone. pending = zgłoszenie z kreatora czeka na zatwierdzenie przez operatora. incomplete = brakuje pola wymaganego, zwykle położenia."
+        "description": "official = dane od opiekuna, ze zbioru urzędowego albo zatwierdzone zgłoszenie użytkownika, trafia do pliku dla dane.gov.pl. community = znane tylko z OpenStreetMap (ODbL), niepotwierdzone. pending = zgłoszenie z kreatora czeka na zatwierdzenie przez operatora. incomplete = brakuje pola wymaganego, zwykle położenia."
       },
       "AedRecord": {
         "type": "object",
@@ -1249,8 +1253,10 @@
               "official",
               "osm",
               "owner",
-              "upload"
-            ]
+              "upload",
+              "user"
+            ],
+            "description": "user = wspólne źródło zatwierdzonych zgłoszeń pojedynczych urządzeń od użytkowników"
           },
           "awaitingApproval": {
             "type": "boolean",
@@ -1989,6 +1995,403 @@
           "sourceId",
           "removed"
         ]
+      },
+      "DeviceReportResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ]
+      },
+      "DeviceReport": {
+        "type": "object",
+        "properties": {
+          "record": {
+            "type": "object",
+            "properties": {
+              "nazwa": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 200,
+                "example": "Apteka Pod Lipami"
+              },
+              "szerokosc_geograficzna": {
+                "type": "number",
+                "example": 53.0951
+              },
+              "dlugosc_geograficzna": {
+                "type": "number",
+                "example": 17.9172
+              },
+              "opis_lokalizacji": {
+                "type": "string",
+                "maxLength": 300,
+                "example": "Przy wejściu, na lewo od kas"
+              },
+              "dostep": {
+                "type": "string",
+                "enum": [
+                  "publiczny",
+                  "ograniczony",
+                  "prywatny"
+                ]
+              },
+              "godziny_dostepnosci": {
+                "type": "string",
+                "maxLength": 200,
+                "description": "Składnia opening_hours albo zwykły zapis („pn-pt 8-16”, „całodobowo”), który system przepisze",
+                "example": "pn-pt 8-16"
+              },
+              "wewnatrz_budynku": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "nazwa",
+              "szerokosc_geograficzna",
+              "dlugosc_geograficzna"
+            ],
+            "description": "Pola wzorca, które da się podać, patrząc na urządzenie. Adres, gminę i kod TERC system bierze z państwowych rejestrów."
+          },
+          "keeperEmail": {
+            "type": "string",
+            "maxLength": 120,
+            "format": "email",
+            "description": "Tylko gdy zgłasza opiekun urządzenia: po zatwierdzeniu wyślemy tu naklejkę QR i link do panelu opiekuna. Nie jest publikowany."
+          },
+          "consent": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "Zgoda na udostępnienie opisu jako otwartych danych (CC0 1.0); w opisie nie ma danych osobowych"
+          }
+        },
+        "required": [
+          "record",
+          "consent"
+        ]
+      },
+      "DeviceSubmissionList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceSubmission"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "DeviceSubmission": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "record": {
+            "$ref": "#/components/schemas/SubmittedDevice"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Czego system nie odczytał, np. godzin w nieznanym zapisie"
+          },
+          "keeperEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Adres opiekuna, zamaskowany; null, gdy zgłasza przechodzień"
+          },
+          "duplicateOf": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "nazwa": {
+                "type": "string"
+              },
+              "distanceM": {
+                "type": "integer"
+              },
+              "decision": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "review"
+                ]
+              },
+              "publication": {
+                "$ref": "#/components/schemas/Publication"
+              }
+            },
+            "required": [
+              "id",
+              "nazwa",
+              "distanceM",
+              "decision",
+              "publication"
+            ],
+            "description": "Urządzenie już znane systemowi, które wygląda na to samo"
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "record",
+          "warnings",
+          "keeperEmail",
+          "duplicateOf"
+        ]
+      },
+      "SubmittedDevice": {
+        "type": "object",
+        "properties": {
+          "nazwa": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "szerokosc_geograficzna": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "dlugosc_geograficzna": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cecha_ulicy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nazwa_ulicy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nr_budynku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kod_pocztowy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "miejscowosc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kod_terc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "opis_lokalizacji": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "wewnatrz_budynku": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "dostep": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "publiczny",
+              "ograniczony",
+              "prywatny",
+              null
+            ]
+          },
+          "godziny_dostepnosci": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uwagi_dostepu": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "nazwa",
+          "szerokosc_geograficzna",
+          "dlugosc_geograficzna",
+          "cecha_ulicy",
+          "nazwa_ulicy",
+          "nr_budynku",
+          "kod_pocztowy",
+          "miejscowosc",
+          "kod_terc",
+          "opis_lokalizacji",
+          "wewnatrz_budynku",
+          "dostep",
+          "godziny_dostepnosci",
+          "uwagi_dostepu"
+        ],
+        "description": "Zgłoszone urządzenie po uporządkowaniu, z adresem i gminą z rejestrów"
+      },
+      "DeviceApproval": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "device": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "publication": {
+                "$ref": "#/components/schemas/Publication"
+              }
+            },
+            "required": [
+              "id",
+              "publication"
+            ],
+            "description": "The device the report became or joined"
+          },
+          "keeper": {
+            "type": "string",
+            "enum": [
+              "sent",
+              "not_asked",
+              "not_published",
+              "shared",
+              "has_keeper"
+            ],
+            "description": "sent = naklejka i link do panelu poszły do opiekuna; not_asked = zgłaszał przechodzień; not_published = urządzenie nie jest oficjalne; shared = połączone z urządzeniem instytucji, więc linku nie wysłaliśmy; has_keeper = urządzenie ma już opiekuna"
+          }
+        },
+        "required": [
+          "id",
+          "device",
+          "keeper"
+        ]
+      },
+      "RemovedReport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "removed"
+        ]
+      },
+      "GeoAnswer": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/GeoAddress"
+          }
+        },
+        "required": [
+          "address"
+        ]
+      },
+      "GeoAddress": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "example": "Szubińska 7, Białe Błota"
+          },
+          "lat": {
+            "type": "number"
+          },
+          "lon": {
+            "type": "number"
+          },
+          "city": {
+            "type": "string"
+          },
+          "street": {
+            "type": "string",
+            "description": "Pusta w miejscowości bez nazw ulic"
+          },
+          "number": {
+            "type": "string"
+          },
+          "postcode": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "lat",
+          "lon",
+          "city",
+          "street",
+          "number",
+          "postcode"
+        ],
+        "description": "Punkt adresowy z państwowego rejestru adresów (UUG)"
       },
       "CandidateList": {
         "type": "object",
@@ -4960,6 +5363,507 @@
           },
           "500": {
             "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/import/device": {
+      "post": {
+        "operationId": "submitDevice",
+        "tags": [
+          "wizard"
+        ],
+        "summary": "Reports one device, without logging in; it waits for an operator, who adds it to the shared source of user reports",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved; waits for approval",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceReportResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This client has left too many reports waiting today",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Too many reports wait for the operator",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/admin/device-submissions": {
+      "get": {
+        "operationId": "listDeviceSubmissions",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Single devices reported through the form and waiting for a decision, oldest first",
+        "security": [
+          {
+            "operatorToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Waiting reports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceSubmissionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong operator token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/admin/device-submissions/{id}/approve": {
+      "post": {
+        "operationId": "approveDeviceSubmission",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Approves a reported device: it joins the shared source of user reports and the dataset is rebuilt",
+        "security": [
+          {
+            "operatorToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approved and merged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceApproval"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong operator token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No waiting report with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The commune register did not answer, so the device has no commune yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/admin/device-submissions/{id}": {
+      "delete": {
+        "operationId": "rejectDeviceSubmission",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Rejects a reported device: the report is deleted together with the keeper address it had",
+        "security": [
+          {
+            "operatorToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemovedReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong operator token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No waiting report with this id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/admin/aed/{id}/user-report": {
+      "delete": {
+        "operationId": "removeUserReport",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Takes an approved user report back out of the dataset (approved by mistake, spam); a device known only from it disappears",
+        "security": [
+          {
+            "operatorToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed; id is the device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemovedReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong operator token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The device has no approved user report",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/geo/nearest": {
+      "get": {
+        "operationId": "getNearestAddress",
+        "tags": [
+          "geo"
+        ],
+        "summary": "The address point nearest to a position, within 100 m (state address register UUG); for the map of the single-device form",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?,-?\\d+(\\.\\d+)?$",
+              "description": "lon,lat",
+              "example": "17.9172,53.0951"
+            },
+            "required": true,
+            "description": "lon,lat",
+            "name": "at",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The address, or null when none is within 100 m",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeoAnswer"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The state address register did not answer, or this client asked too often",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-status": "live"
+      }
+    },
+    "/v1/geo/address": {
+      "get": {
+        "operationId": "findAddress",
+        "tags": [
+          "geo"
+        ],
+        "summary": "Finds an address or a town in the state address register (UUG), e.g. \"Białe Błota, Szubińska 7\" or \"Legionowo\"",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 120,
+              "example": "Białe Błota, Szubińska 7"
+            },
+            "required": true,
+            "name": "q",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The first match, or null",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeoAnswer"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request does not match the contract",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The state address register did not answer, or this client asked too often",
             "content": {
               "application/problem+json": {
                 "schema": {

@@ -16,6 +16,7 @@ import type { Store } from './db/store'
 import { ApiError } from './http/errors'
 import { runJob } from './jobs'
 import { compare } from './pipeline/dedup'
+import type { MergedAed } from './pipeline/merge'
 import { enrich } from './pipeline/geocode'
 import { suggestMapping, toMapping, type ColumnSuggestion } from './pipeline/mapping'
 import { parseAny } from './pipeline/parse'
@@ -108,8 +109,12 @@ async function prepare(request: Request, pending: boolean): Promise<Prepared> {
   return { def, records, columns, format: table.format, fileFixes: table.fixes, table }
 }
 
-/** The device the system already knows that a row most likely describes. */
-function findDuplicate(record: NormalizedRecord, store: Store) {
+/**
+ * The device the system already knows that a row most likely describes. Devices built only from `skipSource` are
+ * not counted: a re-upload of a file must not find its own earlier copy. A single-device report passes null, since
+ * the reports approved before it share one source and are exactly what it may repeat.
+ */
+export function findDuplicate(record: NormalizedRecord, store: Store, skipSource: string | null = record.sourceId) {
   const { szerokosc_geograficzna: lat, dlugosc_geograficzna: lon } = record.input
   if (lat == null || lon == null) return null
   const item = { index: -1, sourceId: record.sourceId, priority: PRIORITY.upload, lat, lon, name: record.input.nazwa ?? '', street: record.input.nazwa_ulicy ?? '', number: record.input.nr_budynku ?? '' }
@@ -120,7 +125,7 @@ function findDuplicate(record: NormalizedRecord, store: Store) {
     // Cheap box test first: 0.002° is more than the 150 m the comparison allows.
     if (Math.abs(other.szerokosc_geograficzna - lat) > 0.002 || Math.abs(other.dlugosc_geograficzna - lon) > 0.004) continue
     // A re-upload of the same file must not report its own earlier copy as a duplicate.
-    if (aed.sources.every((ref) => ref.sourceId === record.sourceId)) continue
+    if (skipSource !== null && aed.sources.every((ref) => ref.sourceId === skipSource)) continue
     const comparison = compare(item, { index: 0, sourceId: 'national', priority: 0, lat: other.szerokosc_geograficzna, lon: other.dlugosc_geograficzna, name: other.nazwa, street: other.nazwa_ulicy ?? '', number: other.nr_budynku ?? '' })
     if (comparison.decision === 'different') continue
     // An official match matters more to the provider than a community one at the same score.
@@ -170,11 +175,18 @@ function outcome(store: Store, sourceId: string) {
   }
 }
 
-/** Published devices of a submission with the links its keeper needs: passport management and the sticker. */
+/** The links a device's keeper needs: passport management and the sticker. */
+export const linksOf = (store: Store, aed: MergedAed): DeviceLinks => ({
+  id: aed.id,
+  name: deviceName(aed.record),
+  ownerUrl: ownerUrl(aed.id, store.passports.get(aed.id)?.linkVersion ?? 0),
+  passportUrl: passportUrl(aed.id),
+  stickerUrl: stickerUrl(aed.id),
+})
+
+/** Published devices of a submission with the links its keeper needs. */
 function deviceLinks(store: Store, sourceId: string): DeviceLinks[] {
-  return store.aeds
-    .filter((aed) => aed.publication === 'official' && aed.sources.some((ref) => ref.sourceId === sourceId && ref.role === 'values'))
-    .map((aed) => ({ id: aed.id, name: deviceName(aed.record), ownerUrl: ownerUrl(aed.id, store.passports.get(aed.id)?.linkVersion ?? 0), passportUrl: passportUrl(aed.id), stickerUrl: stickerUrl(aed.id) }))
+  return store.aeds.filter((aed) => aed.publication === 'official' && aed.sources.some((ref) => ref.sourceId === sourceId && ref.role === 'values')).map((aed) => linksOf(store, aed))
 }
 
 const files = (store: Store, sourceId: string) => ({

@@ -12,6 +12,7 @@ import type { Candidate, CandidateStatus } from '../radar/build'
 import type { Db, Param } from './duck'
 import { KeeperBook } from './keepers'
 import { PassportBook } from './passport'
+import { SubmissionBook } from './submissions'
 
 const json = (value: unknown): string => JSON.stringify(value)
 const parse = <T>(text: unknown): T => JSON.parse(String(text)) as T
@@ -42,10 +43,13 @@ export class Store {
   readonly passports: PassportBook
   /** Keepers who logged in, and the devices each of them looks after. */
   readonly keepers: KeeperBook
+  /** Single devices reported through the form, waiting for an operator. */
+  readonly submissions: SubmissionBook
 
   constructor(private readonly db: Db) {
     this.passports = new PassportBook(db)
     this.keepers = new KeeperBook(db)
+    this.submissions = new SubmissionBook(db)
   }
 
   /** Reads the last persisted state. An empty database is a valid state: the first pipeline run fills it. */
@@ -81,6 +85,7 @@ export class Store {
     }))
     await this.passports.load()
     await this.keepers.load()
+    await this.submissions.load()
   }
 
   /** aed id → fields the keeper set through the passport; the pipeline applies them after every merge. */
@@ -143,9 +148,15 @@ export class Store {
     return new Map(this.aeds.map((aed) => [aed.id, aed.record]))
   }
 
-  /** Sources kept in the database (uploads, owner submissions) with their records. */
+  /** The device a source record ended up in after the last pipeline run. */
+  deviceOf(sourceId: string, sourceKey: string): MergedAed | undefined {
+    const id = this.links.get(memberKey({ sourceId, sourceKey }))
+    return id === undefined ? undefined : this.byId.get(id)
+  }
+
+  /** Sources kept in the database (uploads, owner submissions, the shared source of user reports) with their records. */
   async storedSources(): Promise<StoredSource[]> {
-    const defs = (await this.db.all<{ def: string }>(`SELECT def FROM sources WHERE kind IN ('upload', 'owner')`)).map((row) => parse<SourceDef>(row.def))
+    const defs = (await this.db.all<{ def: string }>(`SELECT def FROM sources WHERE kind IN ('upload', 'owner', 'user')`)).map((row) => parse<SourceDef>(row.def))
     const stored: StoredSource[] = []
     for (const def of defs) {
       const rows = await this.db.all<Record<string, string>>('SELECT source_key, input, raw, fixes, issues FROM source_records WHERE source_id = ?', [def.id])
@@ -169,7 +180,39 @@ export class Store {
     })
   }
 
-  /** Definition of a database-kept source, or undefined when there is none with this id. */
+  /**
+   * Adds one record to a database-kept source, creating the source with its first record; a record with the same
+   * key is replaced. The shared source of user reports grows this way, one approved report at a time.
+   */
+  async addStoredRecord(def: SourceDef, record: NormalizedRecord): Promise<void> {
+    await this.db.run('INSERT INTO sources (id, kind, def, report, updated_at) SELECT ?, ?, ?, NULL, ? WHERE NOT EXISTS (SELECT 1 FROM sources WHERE id = ?)', [
+      def.id,
+      def.kind,
+      json(def),
+      new Date().toISOString(),
+      def.id,
+    ])
+    await this.db.run('UPDATE sources SET def = ? WHERE id = ?', [json(def), def.id])
+    await this.db.replace('source_records', ['source_id', 'source_key', 'input', 'raw', 'fixes', 'issues'], [recordRow({ ...record, sourceId: def.id })], {
+      sql: 'DELETE FROM source_records WHERE source_id = ? AND source_key = ?',
+      params: [def.id, record.sourceKey],
+    })
+  }
+
+  /** Takes one record out of a database-kept source; the source goes too once it has no records left. */
+  async removeStoredRecord(sourceId: string, sourceKey: string): Promise<boolean> {
+    const count = async (sql: string, params: Param[]) => Number((await this.db.all<{ n: unknown }>(sql, params))[0]?.n ?? 0)
+    if ((await count('SELECT count(*) AS n FROM source_records WHERE source_id = ? AND source_key = ?', [sourceId, sourceKey])) === 0) return false
+    await this.db.run('DELETE FROM source_records WHERE source_id = ? AND source_key = ?', [sourceId, sourceKey])
+    if ((await count('SELECT count(*) AS n FROM source_records WHERE source_id = ?', [sourceId])) === 0) await this.db.run('DELETE FROM sources WHERE id = ?', [sourceId])
+    return true
+  }
+
+  /**
+   * Definition of a wizard submission (or owner source), or undefined when there is none with this id. The shared
+   * source of user reports is left out on purpose: the endpoints that approve or delete a whole submission must
+   * not touch it.
+   */
   async storedDef(id: string): Promise<SourceDef | undefined> {
     const row = (await this.db.all<{ def: string }>(`SELECT def FROM sources WHERE id = ? AND kind IN ('upload', 'owner')`, [id]))[0]
     return row ? parse<SourceDef>(row.def) : undefined

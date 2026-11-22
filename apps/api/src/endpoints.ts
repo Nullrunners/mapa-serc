@@ -7,7 +7,14 @@ import type { RouteConfig, RouteHandler } from '@hono/zod-openapi'
 import {
   aedDetailRoute,
   aedListRoute,
+  approveDeviceSubmissionRoute,
   approveSourceRoute,
+  deviceSubmissionsRoute,
+  findAddressRoute,
+  nearestAddressRoute,
+  rejectDeviceSubmissionRoute,
+  removeUserReportRoute,
+  submitDeviceRoute,
   candidateDecisionRoute,
   candidatesRoute,
   communityRoute,
@@ -88,6 +95,15 @@ import {
 import { gapsCommuneHandler, gapsCsvHandler, gapsGridHandler, gapsHandler, gapsLocalitiesHandler, gapsNearHandler, gapsOverviewHandler, gapsSummaryHandler } from './gaps/handlers'
 import { candidateDecisionHandler, candidatesHandler } from './radar/handlers'
 import { approveSourceHandler, importCommitHandler, importPreviewHandler, removeSourceHandler, sourceCsvHandler } from './wizard'
+import {
+  approveDeviceSubmissionHandler,
+  deviceSubmissionsHandler,
+  findAddressHandler,
+  nearestAddressHandler,
+  rejectDeviceSubmissionHandler,
+  removeUserReportHandler,
+  submitDeviceHandler,
+} from './submission/handlers'
 
 export type EndpointStatus = 'stub' | 'live'
 
@@ -139,6 +155,14 @@ export const endpoints: Endpoint[] = [
   live(sourceCsvRoute, sourceCsvHandler),
   live(approveSourceRoute, approveSourceHandler),
   live(removeSourceRoute, removeSourceHandler),
+
+  live(submitDeviceRoute, submitDeviceHandler),
+  live(deviceSubmissionsRoute, deviceSubmissionsHandler),
+  live(approveDeviceSubmissionRoute, approveDeviceSubmissionHandler),
+  live(rejectDeviceSubmissionRoute, rejectDeviceSubmissionHandler),
+  live(removeUserReportRoute, removeUserReportHandler),
+  live(nearestAddressRoute, nearestAddressHandler),
+  live(findAddressRoute, findAddressHandler),
 
   live(candidatesRoute, candidatesHandler),
   live(candidateDecisionRoute, candidateDecisionHandler),

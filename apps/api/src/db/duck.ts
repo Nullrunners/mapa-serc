@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS keeper_account (
   id VARCHAR, provider VARCHAR, subject_key VARCHAR, name VARCHAR, created_at VARCHAR, last_login_at VARCHAR);
 CREATE TABLE IF NOT EXISTS keeper_device (
   account_id VARCHAR, aed_id VARCHAR, linked_at VARCHAR);
+CREATE TABLE IF NOT EXISTS device_submissions (
+  id VARCHAR, created_at VARCHAR, input VARCHAR, raw VARCHAR, fixes VARCHAR, issues VARCHAR, keeper_email VARCHAR, client_hash VARCHAR);
 `
 
 export class Db {

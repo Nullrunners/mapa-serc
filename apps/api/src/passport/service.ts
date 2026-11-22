@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { UNNAMED_PLACE, type AedRecord } from '@aed/schema'
 import { SIGNATURE, SMS_PREFIX } from '../brand'
 import { config } from '../config'
+import type { OutboxMessage } from '../db/passport'
 import type { Store } from '../db/store'
 import { send } from '../notify'
 import type { MergedAed } from '../pipeline/merge'
@@ -172,7 +173,8 @@ export interface DeviceLinks {
 /**
  * Once a provider's devices are published: each gets a passport whose reminders go to the address the provider
  * typed in the wizard (a keeper who already set their own contact keeps it), and the provider gets one message
- * with the sticker and the management link of every device. At most one such message to an address in 10 minutes.
+ * with the sticker and the management link of every device. At most one such message about the same devices to an
+ * address in 10 minutes; a keeper whose second reported device is approved right after the first still gets its links.
  */
 export async function welcomeProvider(store: Store, email: string, devices: readonly DeviceLinks[], nowIso: string): Promise<'sent' | 'too_soon' | 'no_devices'> {
   if (devices.length === 0) return 'no_devices'
@@ -180,10 +182,13 @@ export async function welcomeProvider(store: Store, email: string, devices: read
     const passport = store.passports.getOrEmpty(device.id)
     if (!passport.notifyEmail) await store.passports.save({ ...passport, notifyEmail: email })
   }
-  if (store.passports.outbox.some((message) => message.reason === 'passports_ready' && message.recipient === email && Date.parse(nowIso) - Date.parse(message.at) < 10 * 60 * 1000)) return 'too_soon'
   const one = devices.length === 1
+  const about = one ? devices[0]!.id : null
+  const recent = (message: OutboxMessage) =>
+    message.reason === 'passports_ready' && message.recipient === email && message.aedId === about && Date.parse(nowIso) - Date.parse(message.at) < 10 * 60 * 1000
+  if (store.passports.outbox.some(recent)) return 'too_soon'
   await send(store.passports, {
-    aedId: one ? devices[0]!.id : null,
+    aedId: about,
     channel: 'email',
     recipient: email,
     subject: one ? `Naklejka i raport defibrylatora „${devices[0]!.name}”` : `Naklejki i raporty Twoich defibrylatorów (${devices.length})`,
